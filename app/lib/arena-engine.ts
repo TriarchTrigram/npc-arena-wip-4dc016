@@ -30,6 +30,22 @@ const AIR: Pose = { t: 0.2, aF1: 2.1, aF2: 2.6, aB1: -0.7, aB2: -0.2, lF1: 1.3, 
 const HURT: Pose = { t: -0.45, aF1: -0.35, aF2: 0.5, aB1: -0.9, aB2: -0.4, lF1: 0.35, lF2: 0.1, lB1: -0.25, lB2: -0.1 };
 const DAZED: Pose = { t: 0.45, aF1: 0.15, aF2: 0.05, aB1: -0.1, aB2: -0.15, lF1: 0.3, lF2: -0.2, lB1: -0.2, lB2: -0.45 };
 const KO: Pose = { t: -1.52, aF1: -1.35, aF2: -1.75, aB1: -1.75, aB2: -1.45, lF1: 1.55, lF2: 1.6, lB1: 1.4, lB2: 1.62 };
+// forward dash: leaning in, arms streaming back
+const DASH: Pose = { t: 0.62, aF1: -0.95, aF2: -0.6, aB1: -1.15, aB2: -0.85, lF1: 0.95, lF2: 0.3, lB1: -0.75, lB2: -0.95 };
+// back dash: guard up, leaning away
+const BACKDASH: Pose = { t: -0.28, aF1: 0.95, aF2: 2.0, aB1: 0.55, aB2: 1.7, lF1: 0.65, lF2: 0.2, lB1: -0.4, lB2: -0.2 };
+// thrown back by a clash, arms crossed in guard
+const CLASHED: Pose = { t: -0.38, aF1: 1.25, aF2: 2.65, aB1: 1.0, aB2: 2.45, lF1: 0.75, lF2: 0.0, lB1: -0.2, lB2: -0.55 };
+// down on one knee, catching breath
+const KNEEL: Pose = { t: 0.38, aF1: 0.95, aF2: 0.3, aB1: 0.15, aB2: 0.05, lF1: 1.4, lF2: 0.02, lB1: 0.1, lB2: -1.5 };
+
+const DASH_TIME = 0.17;
+const DASH_DIST = 150;
+const DASH_CD = 0.85;
+const IFRAMES = 0.13;
+const KNEEL_TIME = 1.0;
+/** Personality: how readily each kind of fighter presses in, counters and dashes. */
+const AGGRO: Record<FighterDef["role"], number> = { attacker: 0.85, trickster: 0.75, tank: 0.6, support: 0.4, control: 0.35 };
 
 const ANIMS: Record<Anim, { wind: Partial<Pose>; strike: Partial<Pose> }> = {
   jab: {
@@ -92,7 +108,8 @@ const FX: Record<Power, { shape: PShape; add: boolean; grav: number }> = {
 };
 
 // ---------- game state ----------
-type Action = { move: Move; power: Power; t: number; fired: boolean; target: number; hits: number[]; label: string };
+type Action = { id: number; move: Move; power: Power; t: number; fired: boolean; target: number; hits: number[]; label: string; landed: boolean };
+type Ghost = { x: number; y: number; pose: Pose; face: number; life: number };
 
 export type Fighter = {
   key: number;
@@ -111,17 +128,25 @@ export type Fighter = {
   status: Record<StatusEffect, number>;
   lastHitBy: Power | null; lastAttacker: number | null;
   pose: Pose;
+  // dashing
+  dashT: number; dashDir: number; dashCd: number; iframeT: number; airDashed: boolean;
+  ghosts: Ghost[]; ghostT: number;
+  // clashes
+  clashAir: boolean; kneelT: number;
+  // brain
+  aggro: number; targetKey: number | null; reacted: number; comboT: number;
 };
 
 type Projectile = {
   x: number; y: number; vx: number; vy: number; r: number; grav: number; rot: number;
   owner: number; power: Power; move: Move; life: number; hits: number[]; shape: NonNullable<Move["shape"]>;
 };
-type Beam = { owner: number; power: Power; x: number; y: number; ang: number; len: number; width: number; life: number; max: number; jag: boolean };
+type Beam = { owner: number; power: Power; x: number; y: number; ang: number; len: number; width: number; life: number; max: number; jag: boolean; clash?: boolean };
 type Eruption = { owner: number; power: Power; move: Move; x: number; t: number; fired: boolean };
 type Zone = { owner: number; power: Power; move: Move; x: number; life: number; max: number };
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; color: string; shape: PShape; grav: number; add: boolean; rot: number };
 type Pop = { x: number; y: number; text: string; color: string; life: number; max: number; size: number };
+type Wave = { x: number; y: number; r: number; life: number; max: number; a: string; b: string };
 
 export type FeedItem = { id: number; killer: string | null; victim: string };
 
@@ -134,6 +159,7 @@ export type Game = {
   zones: Zone[];
   particles: Particle[];
   pops: Pop[];
+  waves: Wave[];
   feed: FeedItem[];
   shake: number;
   hitstop: number;
@@ -169,10 +195,14 @@ export function newGame(ids: Power[], preview = false): Game {
       status: { burn: 0, slow: 0, stun: 0, poison: 0, blind: 0, freeze: 0 },
       lastHitBy: null, lastAttacker: null,
       pose: { ...STANCE },
+      dashT: 0, dashDir: 0, dashCd: rand(0, 0.6), iframeT: 0, airDashed: false,
+      ghosts: [], ghostT: 0,
+      clashAir: false, kneelT: 0,
+      aggro: clamp(AGGRO[def.role] + rand(-0.08, 0.08), 0.2, 0.95), targetKey: null, reacted: -1, comboT: 0,
     };
   });
   return {
-    t: 0, fighters, projectiles: [], beams: [], eruptions: [], zones: [], particles: [], pops: [], feed: [],
+    t: 0, fighters, projectiles: [], beams: [], eruptions: [], zones: [], particles: [], pops: [], waves: [], feed: [],
     shake: 0, hitstop: 0, ending: 0, over: false, winner: null, preview, duel: n === 2,
   };
 }
@@ -201,6 +231,90 @@ function pop(g: Game, x: number, y: number, text: string, color: string, size = 
   g.pops.push({ x, y, text, color, life, max: life, size });
 }
 
+// ---------- clashes and dashes ----------
+let actId = 0;
+
+/** Two powers met: blast ring, flash, and everyone nearby is shoved away. */
+function shockwave(g: Game, x: number, y: number, pa: Power, pb: Power, r = 170) {
+  const A = DEF_BY_ID[pa], B = DEF_BY_ID[pb];
+  g.waves.push({ x, y, r, life: 0.6, max: 0.6, a: A.glow, b: B.glow });
+  emit(g, pa, x, y, 22, 520);
+  emit(g, pb, x, y, 22, 520);
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    g.particles.push({ x, y, vx: Math.cos(a) * 900, vy: Math.sin(a) * 900, life: 0.22, max: 0.22, size: 6, color: "white", shape: "spark", grav: 0, add: true, rot: 0 });
+  }
+  for (const f of g.fighters) {
+    if (!f.alive) continue;
+    const c = center(f);
+    const d = Math.hypot(c.x - x, (c.y - y) * 0.8);
+    if (d > r) continue;
+    const k = 1 - d / r;
+    const dir = Math.sign(f.x - x) || (f.key % 2 ? 1 : -1);
+    f.vx = dir * (260 + 520 * k);
+    if (f.onGround) { f.vy = -180 - 220 * k; f.onGround = false; }
+    f.hurtT = Math.max(f.hurtT, 0.18 + 0.2 * k);
+    f.act = null;
+    f.kneelT = 0;
+  }
+  pop(g, x, y - 46, "CLASH!", "hsl(46 100% 62%)", 30, 0.9);
+  g.shake = Math.max(g.shake, 13);
+  g.hitstop = Math.max(g.hitstop, 0.09);
+}
+
+/** Two close-range strikes met head on: both fly back and drop to one knee. */
+function m1Clash(g: Game, a: Fighter, b: Fighter) {
+  const ha = hand(a), hb = hand(b);
+  const x = (ha.x + hb.x) / 2, y = (ha.y + hb.y) / 2;
+  g.particles.push({ x, y, vx: 0, vy: 0, life: 0.2, max: 0.2, size: 46, color: "white", shape: "ring", grav: 0, add: true, rot: 1 });
+  g.particles.push({ x, y, vx: 0, vy: 0, life: 0.3, max: 0.3, size: 30, color: "hsl(46 100% 70%)", shape: "ring", grav: 0, add: true, rot: 1 });
+  for (let i = 0; i < 14; i++) {
+    const ang = rand(-0.9, 0.9) + (i % 2 ? Math.PI : 0);
+    const sp = rand(380, 760);
+    g.particles.push({ x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 120, life: 0.3, max: 0.3, size: 5, color: i % 2 ? a.def.glow : b.def.glow, shape: "spark", grav: 900, add: true, rot: 0 });
+  }
+  for (const f of [a, b]) {
+    const other = f === a ? b : a;
+    const dir = Math.sign(f.x - other.x) || (f === a ? -1 : 1);
+    f.act = null;
+    f.dashT = 0;
+    f.vx = dir * 600;
+    f.vy = -430;
+    f.onGround = false;
+    f.clashAir = true;
+    f.kneelT = 0;
+    f.facing = dir > 0 ? -1 : 1;
+    for (const m of f.def.moves) if (m.kind === "melee") f.cds[m.id] = Math.max(f.cds[m.id], 0.5);
+  }
+  pop(g, x, y - 40, "CLASH!", "white", 28, 0.9);
+  g.shake = Math.max(g.shake, 10);
+  g.hitstop = Math.max(g.hitstop, 0.13);
+}
+
+function startDash(g: Game, f: Fighter, dir: number) {
+  if (f.dashCd > 0 || f.dashT > 0 || f.kneelT > 0 || f.clashAir) return false;
+  if (!f.onGround) {
+    if (f.airDashed) return false;
+    f.airDashed = true;
+  }
+  f.dashT = DASH_TIME;
+  f.dashDir = dir;
+  f.dashCd = DASH_CD * (1.15 - f.aggro * 0.3);
+  f.iframeT = IFRAMES;
+  f.vx = 0;
+  f.ghostT = 0;
+  const s = f.scale;
+  if (f.onGround) {
+    for (let i = 0; i < 8; i++) {
+      g.particles.push({ x: f.x - dir * rand(0, 14), y: GROUND - 2, vx: -dir * rand(80, 260), vy: -rand(20, 120), life: 0.35, max: 0.35, size: rand(4, 8) * s, color: "hsl(34 40% 82%)", shape: "dot", grav: 300, add: false, rot: 0 });
+    }
+  }
+  emit(g, f.def.id, f.x, f.y - 50 * s, 6, 160);
+  return true;
+}
+
+const invuln = (f: Fighter) => f.iframeT > 0;
+
 // ---------- combat ----------
 function knockOut(g: Game, f: Fighter, by: Fighter | null) {
   f.alive = false;
@@ -228,6 +342,10 @@ function hurt(g: Game, f: Fighter, amount: number, by: Fighter | null) {
 function hit(g: Game, a: Fighter, o: Fighter, move: Move, power: Power, dir: number, mult = 1) {
   if (!o.alive || o === a) return false;
   const c = center(o);
+  if (invuln(o)) {
+    if (Math.random() < 0.5) pop(g, c.x, c.y - 50 * o.scale, "dodge", o.def.glow, 15, 0.5);
+    return false;
+  }
   if (o.def.id === "tele" && Math.random() < 0.25) {
     pop(g, c.x, c.y - 50 * o.scale, "dodge", o.def.glow, 16);
     emit(g, "tele", c.x, c.y, 8, 160);
@@ -248,6 +366,8 @@ function hit(g: Game, a: Fighter, o: Fighter, move: Move, power: Power, dir: num
   if (move.status) o.status[move.status] = Math.max(o.status[move.status], g.t + (move.statusDur ?? 1));
   const heavy = dmg >= 9 || move.lift != null || move.status === "stun" || move.status === "freeze";
   if (heavy && o.act) o.act = null;
+  o.kneelT = 0;
+  if (heavy) o.dashT = 0;
   o.hurtT = Math.max(o.hurtT, heavy ? 0.32 : 0.16);
   emit(g, power, c.x - dir * 8, c.y, crit ? 18 : 10, crit ? 380 : 260);
   // white impact star
@@ -258,6 +378,34 @@ function hit(g: Game, a: Fighter, o: Fighter, move: Move, power: Power, dir: num
   if (move.heal) a.hp = Math.min(a.maxHp, a.hp + move.heal);
   hurt(g, o, dmg, a);
   return true;
+}
+
+/** Where two beams cross, if they do. */
+function segHit(a: Beam, b: Beam) {
+  const ax = Math.cos(a.ang) * a.len, ay = Math.sin(a.ang) * a.len;
+  const bx = Math.cos(b.ang) * b.len, by = Math.sin(b.ang) * b.len;
+  const den = ax * by - ay * bx;
+  if (Math.abs(den) < 1e-3) {
+    // nearly parallel: clash if they point at each other along the same line
+    const off = Math.abs((b.x - a.x) * Math.sin(a.ang) - (b.y - a.y) * Math.cos(a.ang));
+    const facing = Math.cos(a.ang) * Math.cos(b.ang) < 0;
+    const gap = Math.hypot(b.x - a.x, b.y - a.y);
+    if (facing && off < 40 && gap < a.len + b.len) {
+      const t = a.len / (a.len + b.len);
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    }
+    return null;
+  }
+  const t = ((b.x - a.x) * by - (b.y - a.y) * bx) / den;
+  const u = ((b.x - a.x) * ay - (b.y - a.y) * ax) / den;
+  if (t < 0 || t > 1 || u < 0 || u > 1) return null;
+  return { x: a.x + ax * t, y: a.y + ay * t };
+}
+
+function segDist(px: number, py: number, b: Beam) {
+  const cx = Math.cos(b.ang), cy = Math.sin(b.ang);
+  const along = clamp((px - b.x) * cx + (py - b.y) * cy, 0, b.len);
+  return Math.hypot(px - (b.x + cx * along), py - (b.y + cy * along));
 }
 
 function inBox(o: Fighter, x0: number, x1: number, yTop: number, yBot: number) {
@@ -276,7 +424,18 @@ function fire(g: Game, f: Fighter, act: Action) {
   switch (m.kind) {
     case "melee": {
       const x1 = f.x + f.facing * (m.range + 14) * s;
-      for (const o of enemies) if (inBox(o, f.x, x1, f.y - 110 * s, f.y)) hit(g, f, o, m, power, f.facing);
+      for (const o of enemies) {
+        const oa = o.act;
+        if (!oa || oa.move.kind !== "melee" || o.facing !== -f.facing) continue;
+        const reach = Math.max(m.range * s, oa.move.range * o.scale) + 24;
+        if (Math.abs(o.x - f.x) > reach || Math.abs(o.y - f.y) > 50 * s) continue;
+        const sinceStrike = oa.t - oa.move.wind;
+        if ((oa.fired && sinceStrike < 0.15) || (!oa.fired && -sinceStrike < 0.11)) {
+          m1Clash(g, f, o);
+          return;
+        }
+      }
+      for (const o of enemies) if (inBox(o, f.x, x1, f.y - 110 * s, f.y) && hit(g, f, o, m, power, f.facing)) act.landed = true;
       emit(g, power, h.x + f.facing * 14, h.y, 10, 240);
       if (m.range > 100) {
         g.beams.push({ owner: f.key, power, x: h.x, y: h.y, ang: f.facing > 0 ? 0 : Math.PI, len: m.range * s, width: 10, life: 0.16, max: 0.16, jag: false });
@@ -316,7 +475,20 @@ function fire(g: Game, f: Fighter, act: Action) {
       d = Math.atan2(Math.sin(d), Math.cos(d));
       const ang = base + clamp(d, -0.35, 0.35);
       const len = m.range * 1.1;
-      g.beams.push({ owner: f.key, power, x: h.x, y: h.y, ang, len, width: power === "magneto" ? 14 : 22, life: Math.max(m.act, 0.2) + 0.15, max: Math.max(m.act, 0.2) + 0.15, jag: power === "electro" });
+      const nb: Beam = { owner: f.key, power, x: h.x, y: h.y, ang, len, width: power === "magneto" ? 14 : 22, life: Math.max(m.act, 0.2) + 0.15, max: Math.max(m.act, 0.2) + 0.15, jag: power === "electro", clash: true };
+      for (const ob of g.beams) {
+        if (!ob.clash || ob.owner === f.key || ob.life < 0.05) continue;
+        const pt = segHit(nb, ob);
+        if (!pt) continue;
+        nb.len = Math.hypot(pt.x - nb.x, pt.y - nb.y);
+        ob.len = Math.hypot(pt.x - ob.x, pt.y - ob.y);
+        ob.life = Math.min(ob.life, 0.25);
+        nb.life = nb.max = 0.3;
+        g.beams.push(nb);
+        shockwave(g, pt.x, pt.y, power, ob.power, 200);
+        return;
+      }
+      g.beams.push(nb);
       const cx = Math.cos(ang), cy = Math.sin(ang);
       for (const o of enemies) {
         const c = center(o);
@@ -413,13 +585,71 @@ function fire(g: Game, f: Fighter, act: Action) {
   }
 }
 
+/** Picks who to fight: close, hurt, open to a punish, or whoever hit last. Sticks with a target unless a better one shows up. */
 function chooseTarget(g: Game, f: Fighter) {
   let best: Fighter | null = null;
-  let bd = Infinity;
+  let bs = Infinity;
   for (const o of g.fighters) {
     if (!o.alive || o === f) continue;
-    const d = Math.abs(o.x - f.x) + Math.abs(o.y - f.y) * 0.5;
-    if (d < bd) { bd = d; best = o; }
+    let sc = Math.abs(o.x - f.x) + Math.abs(o.y - f.y) * 0.5;
+    sc -= (1 - o.hp / o.maxHp) * 160 * f.aggro;
+    if (f.lastAttacker === o.key) sc -= 110;
+    if (f.targetKey === o.key) sc -= 90;
+    if (isOpen(g, o)) sc -= 140;
+    if (sc < bs) { bs = sc; best = o; }
+  }
+  f.targetKey = best?.key ?? null;
+  return best;
+}
+
+/** Can't defend right now: catching breath, stunned, frozen, reeling or stuck in recovery. */
+function isOpen(g: Game, o: Fighter) {
+  if (o.kneelT > 0 || o.clashAir || o.status.stun > g.t || o.status.freeze > g.t || o.hurtT > 0.1) return true;
+  const a = o.act;
+  return !!a && a.fired && a.t > a.move.wind + a.move.act;
+}
+
+const reachOf = (m: Move, s: number) => m.range * (m.range < 200 ? s : 1);
+
+function usableMoves(g: Game, f: Fighter, target: Fighter) {
+  const adx = Math.abs(target.x - f.x);
+  const s = f.scale;
+  return f.def.moves.filter((m) =>
+    f.cds[m.id] <= 0 &&
+    adx <= reachOf(m, s) + 10 &&
+    adx >= (m.minRange ?? 0) &&
+    Math.abs(target.y - f.y) < (m.kind === "melee" ? 70 * s : 400) &&
+    (m.kind !== "heal" || f.hp / f.maxHp < (m.below ?? 0.6)),
+  );
+}
+
+/** How good a move is right now, instead of a coin flip. */
+function scoreMove(g: Game, f: Fighter, m: Move, target: Fighter) {
+  const s = f.scale;
+  let sc = m.dmg * (m.count ?? 1) * (m.kind === "zone" ? (m.dur ?? 3) * 0.6 : 1);
+  if (m.status && target.status[m.status] <= g.t) sc += 6;
+  if (m.kind === "burst") {
+    let n = 0;
+    const c = center(f);
+    for (const o of g.fighters) if (o.alive && o !== f && Math.hypot(center(o).x - c.x, center(o).y - c.y) < (m.radius ?? 120) * s) n++;
+    sc += n === 0 ? -20 : 6 * (n - 1);
+  }
+  if (target.hp <= m.dmg * 1.2) sc += 18;
+  if (isOpen(g, target) && (m.kind === "melee" || m.kind === "blink" || m.kind === "dash")) sc += 10;
+  if (!target.onGround && (m.kind === "eruption" || m.kind === "zone")) sc -= 8;
+  if (m.kind === "heal") sc = 34 * (1 - f.hp / f.maxHp);
+  if (m.kind === "mimic") sc = f.lastHitBy ? 12 : 5;
+  if (f.comboT > 0 && m.kind === "melee") sc += 14;
+  return sc + rand(0, 5);
+}
+
+function bestMove(g: Game, f: Fighter, target: Fighter, only?: (m: Move) => boolean) {
+  let best: Move | null = null;
+  let bs = -Infinity;
+  for (const m of usableMoves(g, f, target)) {
+    if (only && !only(m)) continue;
+    const sc = scoreMove(g, f, m, target);
+    if (sc > bs) { bs = sc; best = m; }
   }
   return best;
 }
@@ -436,19 +666,85 @@ function startMove(g: Game, f: Fighter, move: Move, target: Fighter) {
     label = `${move.name}: ${m.name}`;
   }
   f.cds[move.id] = move.cd;
-  f.act = { move: m, power, t: 0, fired: false, target: target.key, hits: [], label };
+  f.act = { id: ++actId, move: m, power, t: 0, fired: false, target: target.key, hits: [], label, landed: false };
   f.facing = target.x >= f.x ? 1 : -1;
   const showCall = g.duel || move.cd >= 3;
   if (showCall) pop(g, f.x, f.y - bodyH(f) - 34, label, DEF_BY_ID[power].glow, g.duel ? 20 : 16, 1.1);
+}
+
+/** Split-second defence: counter a strike, shoot down a shot, dash through or out, or jump. Returns true when it acted. */
+function react(g: Game, f: Fighter, target: Fighter, dt: number) {
+  const s = f.scale;
+  const dashReady = f.dashCd <= 0;
+
+  // an enemy is winding up a close strike at me
+  for (const o of g.fighters) {
+    const oa = o.act;
+    if (!o.alive || o === f || !oa || oa.fired || oa.move.kind !== "melee" || oa.id === f.reacted) continue;
+    if (o.facing !== Math.sign(f.x - o.x) || Math.abs(o.x - f.x) > reachOf(oa.move, o.scale) + 40 * s || Math.abs(o.y - f.y) > 60 * s) continue;
+    f.reacted = oa.id;
+    const r = Math.random();
+    const counter = bestMove(g, f, o, (m) => m.kind === "melee");
+    if (counter && f.onGround && r < 0.3 + 0.45 * f.aggro) {
+      startMove(g, f, counter, o); // meet it head on: a clash if the timing lines up
+      return true;
+    }
+    if (dashReady && r < 0.85) {
+      const away = Math.sign(f.x - o.x) || -f.facing;
+      const cornered = (away < 0 && f.x < 90) || (away > 0 && f.x > W - 90);
+      return startDash(g, f, cornered ? -away : away); // cornered: dash through them instead
+    }
+    if (f.onGround && r < 0.95) { jump(f, 0); return true; }
+  }
+
+  // incoming shots
+  for (const p of g.projectiles) {
+    if (p.owner === f.key || p.move.kind === "rain") continue;
+    const toward = Math.sign(f.x - p.x) === Math.sign(p.vx);
+    if (!toward) continue;
+    const d = Math.abs(p.x - f.x);
+    const inBand = p.y > f.y - bodyH(f) - 20 && p.y < f.y + 10;
+    // shoot it down from range for a power clash
+    if (d > 170 && d < 480 && f.onGround && Math.random() < dt * 3.2 * f.aggro) {
+      const owner = g.fighters[p.owner];
+      const tgt = owner?.alive ? owner : target;
+      const shot = bestMove(g, f, tgt, (m) => m.kind === "projectile" || m.kind === "beam");
+      if (shot) { startMove(g, f, shot, tgt); return true; }
+    }
+    if (d < 150 && inBand && Math.random() < dt * 10) {
+      if (dashReady && Math.random() < 0.55) return startDash(g, f, Math.sign(p.x - f.x) || f.facing); // through it
+      if (f.onGround) { jump(f, f.walkDir); return true; }
+    }
+  }
+
+  // the ground is about to erupt under me
+  for (const e of g.eruptions) {
+    if (e.fired || e.owner === f.key || Math.abs(e.x - f.x) > (e.move.radius ?? 44) + 24) continue;
+    if (Math.random() < dt * 12) {
+      const away = Math.sign(f.x - e.x) || -f.facing;
+      if (dashReady) return startDash(g, f, away);
+      f.walkDir = away;
+    }
+  }
+  return false;
+}
+
+function jump(f: Fighter, dir: number) {
+  f.vy = -760;
+  f.vx += dir * 120;
+  f.onGround = false;
 }
 
 function updateFighter(g: Game, f: Fighter, dt: number) {
   const s = f.scale;
   f.flash = Math.max(0, f.flash - dt);
   f.hpTrail += (f.hp - f.hpTrail) * Math.min(1, dt * 2.2);
+  for (const gh of f.ghosts) gh.life -= dt;
+  if (f.ghosts.length) f.ghosts = f.ghosts.filter((gh) => gh.life > 0);
 
   if (!f.alive) {
     f.koT += dt;
+    f.dashT = 0; f.kneelT = 0; f.clashAir = false;
     physics(f, dt);
     smoothPose(f, KO, dt, 9);
     return;
@@ -473,18 +769,38 @@ function updateFighter(g: Game, f: Fighter, dt: number) {
 
   for (const k in f.cds) f.cds[k] -= dt;
   f.hurtT = Math.max(0, f.hurtT - dt);
+  f.dashCd -= dt;
+  f.iframeT -= dt;
+  f.comboT -= dt;
 
   if (frozen) {
     f.act = null;
+    f.dashT = 0;
     physics(f, dt);
     return; // pose holds
   }
 
+  // catching breath on one knee after a clash
+  if (f.kneelT > 0) {
+    f.kneelT -= dt;
+    if (Math.random() < dt * 3) {
+      const hx = f.x + f.facing * 14 * s, hy = f.y - 62 * s;
+      g.particles.push({ x: hx, y: hy, vx: f.facing * rand(30, 60), vy: -rand(20, 50), life: 0.6, max: 0.6, size: rand(3, 5) * s, color: "hsl(0 0% 100% / 0.85)", shape: "dot", grav: -40, add: false, rot: 0 });
+    }
+  }
+
   const target = chooseTarget(g, f);
-  const busy = !!f.act || stunned || f.hurtT > 0 || g.preview || g.t < 1 || g.ending > 0;
+  const intro = g.preview || g.t < 1 || g.ending > 0;
+  const locked = f.clashAir || f.kneelT > 0 || stunned || f.hurtT > 0 || intro;
   f.walkDir = 0;
 
-  if (f.act) {
+  if (f.dashT > 0) {
+    // dashing: a quick burst of ground (or air) with a moment of invulnerability
+    f.dashT -= dt;
+    f.x += f.dashDir * ((DASH_DIST * s * (0.8 + f.def.speed / 450)) / DASH_TIME) * dt;
+    if (!f.onGround) f.vy = 0;
+    if (f.dashDir === f.facing && Math.random() < dt * 40) emit(g, f.def.id, f.x - f.facing * 14 * s, f.y - rand(20, 80) * s, 1, 40);
+  } else if (f.act) {
     const a = f.act;
     const m = a.move;
     a.t += dt * (slowed ? 0.7 : 1);
@@ -492,79 +808,133 @@ function updateFighter(g: Game, f: Fighter, dt: number) {
       a.fired = true;
       fire(g, f, a);
     }
-    // charging glow at the hand
-    if (!a.fired && Math.random() < dt * 40) {
-      const h = hand(f);
-      emit(g, a.power, h.x, h.y, 1, 60);
-    }
-    if (m.kind === "dash" && a.fired && a.t < m.wind + m.act) {
-      const sp = ((m.dist ?? 240) * s) / m.act;
-      f.x += f.facing * sp * dt;
-      if (Math.random() < dt * 60) emit(g, a.power, f.x - f.facing * 10, f.y - rand(10, 90) * s, 1, 60);
-      for (const o of g.fighters) {
-        if (!o.alive || o === f || a.hits.includes(o.key)) continue;
-        if (Math.abs(o.x - f.x) < 34 * s && Math.abs(o.y - f.y) < 90 * s) {
-          a.hits.push(o.key);
-          hit(g, f, o, m, a.power, f.facing);
+    if (f.act === a) {
+      // charging glow at the hand
+      if (!a.fired && Math.random() < dt * 40) {
+        const h = hand(f);
+        emit(g, a.power, h.x, h.y, 1, 60);
+      }
+      if (m.kind === "dash" && a.fired && a.t < m.wind + m.act) {
+        const sp = ((m.dist ?? 240) * s) / m.act;
+        f.x += f.facing * sp * dt;
+        if (Math.random() < dt * 60) emit(g, a.power, f.x - f.facing * 10, f.y - rand(10, 90) * s, 1, 60);
+        for (const o of g.fighters) {
+          if (!o.alive || o === f || a.hits.includes(o.key)) continue;
+          if (Math.abs(o.x - f.x) < 34 * s && Math.abs(o.y - f.y) < 90 * s) {
+            a.hits.push(o.key);
+            hit(g, f, o, m, a.power, f.facing);
+          }
         }
       }
+      // a strike landed and knocked them back: dash-cancel the recovery to chase the combo
+      if (m.kind === "melee" && a.landed && a.t >= m.wind + m.act && target && !intro) {
+        a.landed = false;
+        const gap = Math.abs(target.x - f.x);
+        if (gap > 70 * s && gap < 300 && Math.random() < f.aggro * 0.75 && f.dashCd <= 0) {
+          f.act = null;
+          f.facing = target.x >= f.x ? 1 : -1;
+          startDash(g, f, f.facing);
+          f.comboT = 0.7;
+          f.think = 0;
+        }
+      }
+      if (f.act === a && a.t >= m.wind + m.act + m.rec) f.act = null;
     }
-    if (a.t >= m.wind + m.act + m.rec) f.act = null;
-  } else if (!busy && target) {
+  } else if (!locked && target) {
     const dx = target.x - f.x;
     const adx = Math.abs(dx);
     f.facing = dx >= 0 ? 1 : -1;
     f.think -= dt;
     f.prefT -= dt;
-    if (f.prefT <= 0) {
-      f.prefT = rand(1.5, 3.5);
-      const m = pick(f.def.moves.filter((x) => x.kind !== "heal"));
-      f.prefRange = clamp(m.range * rand(0.45, 0.85), 55, 420) * (m.range < 200 ? s : 1);
-    }
-    if (f.think <= 0) {
-      f.think = rand(0.12, 0.35);
-      const usable = f.def.moves.filter((m) =>
-        f.cds[m.id] <= 0 &&
-        adx <= m.range * (m.range < 200 ? s : 1) + 10 &&
-        adx >= (m.minRange ?? 0) &&
-        Math.abs(target.y - f.y) < (m.kind === "melee" ? 70 * s : 400) &&
-        (m.kind !== "heal" || f.hp / f.maxHp < (m.below ?? 0.6)),
-      );
-      if (usable.length && f.onGround) startMove(g, f, pick(usable), target);
-      else if (usable.length && Math.random() < 0.4) startMove(g, f, pick(usable), target);
-    }
-    if (!f.act) {
-      if (adx > f.prefRange + 20) f.walkDir = f.facing;
-      else if (adx < Math.max(40 * s, f.prefRange - 90)) f.walkDir = -f.facing;
-      const sp = f.def.speed * 1.5 * (slowed ? 0.55 : 1) * (f.walkDir === -f.facing ? 0.7 : 1);
-      f.x += f.walkDir * sp * dt;
-      if (f.walkDir) f.walk += dt * (sp / 14);
-      // hop now and then, and over incoming shots
-      if (f.onGround) {
-        let jump = Math.random() < dt * 0.25;
-        for (const p of g.projectiles) {
-          if (p.owner === f.key || p.grav > 0) continue;
-          const toward = Math.sign(f.x - p.x) === Math.sign(p.vx);
-          if (toward && Math.abs(p.x - f.x) < 150 && p.y > f.y - 80 * s && Math.random() < dt * 5) { jump = true; break; }
+
+    if (!react(g, f, target, dt)) {
+      // choose a fighting distance: aggressive fighters like it close
+      if (f.prefT <= 0 || (isOpen(g, target) && f.prefRange > 120)) {
+        f.prefT = rand(1.2, 3);
+        const close = isOpen(g, target) || Math.random() < f.aggro;
+        const pool = f.def.moves.filter((m) => m.kind !== "heal" && m.kind !== "mimic" && (close ? reachOf(m, s) < 200 : reachOf(m, s) >= 200));
+        const m = pool.length ? pick(pool) : pick(f.def.moves);
+        f.prefRange = clamp(reachOf(m, s) * rand(0.55, 0.85), 50, 420);
+      }
+      if (f.think <= 0) {
+        f.think = rand(0.08, 0.26) * (1.25 - f.aggro * 0.45);
+        const m = bestMove(g, f, target);
+        if (m && (f.onGround || Math.random() < 0.4)) startMove(g, f, m, target);
+      }
+      if (!f.act && f.dashT <= 0) {
+        const low = f.hp / f.maxHp < 0.3;
+        // dash in from far away, back off when crowded, flee when low
+        if (f.onGround && f.dashCd <= 0 && adx > f.prefRange + 160 && Math.random() < dt * 2.2 * f.aggro) {
+          startDash(g, f, f.facing);
+        } else if (f.onGround && f.dashCd <= 0 && adx < 90 * s && (low || f.prefRange > 200) && Math.random() < dt * 2.5) {
+          const cornered = (f.facing > 0 && f.x < 90) || (f.facing < 0 && f.x > W - 90);
+          startDash(g, f, cornered ? f.facing : -f.facing);
+        } else if (!f.onGround && !f.airDashed && adx > 180 && Math.random() < dt * 2 * f.aggro) {
+          startDash(g, f, f.facing);
         }
-        if (jump) {
-          f.vy = -760;
-          f.vx += f.walkDir * 120;
-          f.onGround = false;
+      }
+      if (!f.act && f.dashT <= 0) {
+        if (f.walkDir === 0) {
+          if (adx > f.prefRange + 20) f.walkDir = f.facing;
+          else if (adx < Math.max(40 * s, f.prefRange - 90)) f.walkDir = -f.facing;
+          else {
+            // footsies: shuffle in and out at the edge of range
+            const sh = Math.sin(g.t * 2.1 + f.key * 1.7);
+            f.walkDir = sh > 0.55 ? f.facing : sh < -0.55 ? -f.facing : 0;
+          }
         }
+        // step out of an enemy field
+        for (const z of g.zones) {
+          if (z.owner !== f.key && Math.abs(z.x - f.x) < (z.move.radius ?? 100)) { f.walkDir = Math.sign(f.x - z.x) || -f.facing; break; }
+        }
+        const sp = f.def.speed * 1.5 * (slowed ? 0.55 : 1) * (f.walkDir === -f.facing ? 0.7 : 1);
+        f.x += f.walkDir * sp * dt;
+        if (f.walkDir) f.walk += dt * (sp / 14);
+        if (f.onGround && Math.random() < dt * 0.15) jump(f, f.walkDir);
       }
     }
   }
 
+  // afterimages while dashing or rushing
+  const rushing = f.dashT > 0 || (f.act?.move.kind === "dash" && f.act.fired && f.act.t < f.act.move.wind + f.act.move.act);
+  if (rushing) {
+    f.ghostT -= dt;
+    if (f.ghostT <= 0) {
+      f.ghostT = 0.028;
+      f.ghosts.push({ x: f.x, y: f.y, pose: { ...f.pose }, face: f.facing, life: 0.22 });
+    }
+  }
+
+  const wasAir = !f.onGround;
   physics(f, dt);
+  if (wasAir && f.onGround) {
+    f.airDashed = false;
+    if (f.clashAir) {
+      // land from the clash and drop to one knee
+      f.clashAir = false;
+      f.kneelT = KNEEL_TIME;
+      f.vx *= 0.2;
+      for (let i = 0; i < 10; i++) {
+        g.particles.push({ x: f.x + rand(-16, 16) * s, y: GROUND - 2, vx: rand(-160, 160), vy: -rand(30, 140), life: 0.45, max: 0.45, size: rand(4, 8) * s, color: "hsl(34 40% 82%)", shape: "dot", grav: 300, add: false, rot: 0 });
+      }
+    }
+  }
 
   // pose
   let target_: Pose;
   let k = 18;
-  if (stunned) {
+  if (f.clashAir) {
+    target_ = CLASHED; k = 26;
+  } else if (f.kneelT > 0) {
+    const br = Math.sin(g.t * 6 + f.key);
+    target_ = { ...KNEEL, t: KNEEL.t + br * 0.06, aF2: KNEEL.aF2 + br * 0.05 };
+    k = 22;
+  } else if (stunned) {
     target_ = { ...DAZED, t: DAZED.t + Math.sin(g.t * 6) * 0.08 };
   } else if (f.hurtT > 0) {
     target_ = HURT; k = 30;
+  } else if (f.dashT > 0) {
+    target_ = f.dashDir === f.facing ? DASH : BACKDASH; k = 45;
   } else if (f.act) {
     const a = f.act;
     const m = a.move;
@@ -663,7 +1033,7 @@ export function step(g: Game, dt: number) {
     }
     if (p.life <= 0) continue;
     for (const f of g.fighters) {
-      if (!f.alive || f.key === p.owner || p.hits.includes(f.key)) continue;
+      if (!f.alive || f.key === p.owner || p.hits.includes(f.key) || invuln(f)) continue;
       const top = f.y - bodyH(f);
       if (Math.abs(p.x - f.x) < 14 * f.scale + p.r && p.y > top - p.r && p.y < f.y + p.r) {
         p.hits.push(f.key);
@@ -672,7 +1042,34 @@ export function step(g: Game, dt: number) {
       }
     }
   }
+  // power clashes: two shots meet, or a shot runs into a beam
+  const shots = g.projectiles.filter((p) => p.life > 0 && p.move.kind === "projectile");
+  for (let i = 0; i < shots.length; i++) {
+    const p = shots[i];
+    if (p.life <= 0) continue;
+    for (let j = i + 1; j < shots.length; j++) {
+      const q = shots[j];
+      if (q.life <= 0 || q.owner === p.owner) continue;
+      if (Math.hypot(p.x - q.x, p.y - q.y) < p.r + q.r + 4) {
+        p.life = 0; q.life = 0;
+        shockwave(g, (p.x + q.x) / 2, (p.y + q.y) / 2, p.power, q.power, 120 + (p.r + q.r) * 2.5);
+        break;
+      }
+    }
+    if (p.life <= 0) continue;
+    for (const b of g.beams) {
+      if (!b.clash || b.owner === p.owner || b.life < 0.05) continue;
+      if (segDist(p.x, p.y, b) < p.r + b.width * 0.6) {
+        p.life = 0;
+        shockwave(g, p.x, p.y, p.power, b.power, 110 + p.r * 2);
+        break;
+      }
+    }
+  }
   g.projectiles = g.projectiles.filter((p) => p.life > 0);
+
+  for (const w of g.waves) w.life -= dt;
+  g.waves = g.waves.filter((w) => w.life > 0);
 
   for (const b of g.beams) b.life -= dt;
   g.beams = g.beams.filter((b) => b.life > 0);
@@ -872,14 +1269,13 @@ function limb(ctx: CanvasRenderingContext2D, pts: { x: number; y: number }[], co
   ctx.stroke();
 }
 
-function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter) {
-  const s = f.scale;
-  const p = f.pose;
-  let face: number = f.facing;
-  if (f.act?.move.anim === "spin" && f.act.fired) face = Math.sin(g.t * 40) > 0 ? 1 : -1;
-  const T = 21, S = 21, TOR = 34, UA = 18, FA = 17, HEAD = 11;
+const HEAD = 11;
+
+/** Joint positions for a pose, standing at (x, y). */
+function rig(x: number, y: number, p: Pose, s: number, face: number) {
+  const T = 21, S = 21, TOR = 34, UA = 18, FA = 17;
   const drop = Math.max(4, Math.cos(p.lF1) * T + Math.cos(p.lF2) * S, Math.cos(p.lB1) * T + Math.cos(p.lB2) * S);
-  const hip = { x: f.x, y: f.y - drop * s };
+  const hip = { x, y: y - drop * s };
   const P = (a: number, len: number, o: { x: number; y: number }) => ({ x: o.x + Math.sin(a) * len * s * face, y: o.y + Math.cos(a) * len * s });
   const neck = { x: hip.x + Math.sin(p.t) * TOR * s * face, y: hip.y - Math.cos(p.t) * TOR * s };
   const shoulder = { x: hip.x + (neck.x - hip.x) * 0.88, y: hip.y + (neck.y - hip.y) * 0.88 };
@@ -888,6 +1284,79 @@ function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter) {
   const kB = P(p.lB1, T, hip), fB = P(p.lB2, S, kB);
   const eF = P(p.aF1, UA, shoulder), hF = P(p.aF2, FA, eF);
   const eB = P(p.aB1, UA, shoulder), hB = P(p.aB2, FA, eB);
+  return { hip, neck, shoulder, head, kF, fF, kB, fB, eF, hF, eB, hB };
+}
+
+/** Fading coloured silhouettes left behind by a dash. */
+function drawGhosts(ctx: CanvasRenderingContext2D, f: Fighter) {
+  if (!f.ghosts.length) return;
+  const s = f.scale;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (const gh of f.ghosts) {
+    const r = rig(gh.x, gh.y, gh.pose, s, gh.face);
+    ctx.globalAlpha = clamp(gh.life / 0.22, 0, 1) * 0.5;
+    ctx.strokeStyle = f.def.glow;
+    ctx.lineWidth = 6 * s;
+    ctx.beginPath();
+    for (const seg of [[r.hip, r.kB, r.fB], [r.shoulder, r.eB, r.hB], [r.hip, r.neck], [r.hip, r.kF, r.fF], [r.shoulder, r.eF, r.hF]]) {
+      ctx.moveTo(seg[0].x, seg[0].y);
+      for (let i = 1; i < seg.length; i++) ctx.lineTo(seg[i].x, seg[i].y);
+    }
+    ctx.stroke();
+    ctx.fillStyle = f.def.color;
+    ctx.beginPath();
+    ctx.arc(r.head.x, r.head.y, HEAD * s, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawWave(ctx: CanvasRenderingContext2D, w: Wave) {
+  const t = 1 - w.life / w.max;
+  const e = 1 - Math.pow(1 - t, 3);
+  const r = 16 + w.r * e;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  // flash at the point of contact
+  if (t < 0.35) glowDot(ctx, w.x, w.y, 30 + w.r * 0.5 * (1 - t), `hsl(0 0% 100% / ${0.9 * (1 - t / 0.35)})`, "hsl(0 0% 100% / 0)");
+  ctx.globalAlpha = 1 - t;
+  ctx.lineWidth = 14 * (1 - t) + 2;
+  ctx.strokeStyle = w.a;
+  ctx.beginPath();
+  ctx.arc(w.x, w.y, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.lineWidth = 6 * (1 - t) + 1;
+  ctx.strokeStyle = w.b;
+  ctx.beginPath();
+  ctx.arc(w.x, w.y, r * 0.78, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = "white";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(w.x, w.y, r * 1.06, 0, Math.PI * 2);
+  ctx.stroke();
+  // dust ring where the blast meets the floor
+  const gy = GROUND + 2;
+  if (Math.abs(gy - w.y) < r) {
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = (1 - t) * 0.6;
+    ctx.strokeStyle = "hsl(34 40% 88%)";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.ellipse(w.x, gy, r * 1.1, 10 + r * 0.06, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter) {
+  const s = f.scale;
+  let face: number = f.facing;
+  if (f.act?.move.anim === "spin" && f.act.fired) face = Math.sin(g.t * 40) > 0 ? 1 : -1;
+  const { hip, neck, shoulder, head, kF, fF, kB, fB, eF, hF, eB, hB } = rig(f.x, f.y, f.pose, s, face);
 
   const flash = f.flash > 0;
   const col = f.def.id === "shift" && f.lastHitBy ? DEF_BY_ID[f.lastHitBy].color : f.def.color;
@@ -1406,10 +1875,12 @@ export function drawScene(ctx: CanvasRenderingContext2D, g: Game, backdrop: HTML
   for (const z of g.zones) drawZone(ctx, g, z);
   for (const e of g.eruptions) if (!e.fired) drawEruption(ctx, e);
   for (const f of g.fighters) if (!f.alive) drawFighter(ctx, g, f);
+  for (const f of g.fighters) if (f.alive) drawGhosts(ctx, f);
   for (const f of g.fighters) if (f.alive) drawFighter(ctx, g, f);
   for (const e of g.eruptions) if (e.fired) drawEruption(ctx, e);
   for (const p of g.projectiles) drawProjectile(ctx, p);
   for (const b of g.beams) drawBeam(ctx, b);
+  for (const w of g.waves) drawWave(ctx, w);
   for (const p of g.particles) drawParticle(ctx, p);
   for (const t of g.pops) {
     ctx.globalAlpha = clamp(t.life / t.max * 2, 0, 1);

@@ -12,7 +12,10 @@ happens, and anything chained after it still runs.
 
 NPC Arena is a single-player game where you watch 16 power-themed NPCs fight. No sign-in, no database.
 - Arena (`/`): side-view fighting-game arena (MUGEN-style) drawn on a canvas, all game state in the browser. Fighters are animated stickmen (pose angles blended per frame: stance, walk, jump, hurt, KO, one pose pair per attack animation). Modes: Duel (pick 2, top lifebars) and Free for all (3 to 16, bars over heads).
-- Engine lives in `app/lib/arena-engine.ts` (newGame, step, drawScene, buildBackdrop): AI picks moves by range and cooldown, gravity and jumps, hitstop, screen shake, particles per element, READY/FIGHT/K.O. callouts.
+- Engine lives in `app/lib/arena-engine.ts` (newGame, step, drawScene, buildBackdrop): gravity and jumps, hitstop, screen shake, particles per element, READY/FIGHT/K.O. callouts.
+- Dashing: every fighter has a quick forward/back dash (ground or once in the air) with brief invulnerability and afterimages; used to close in, escape, dodge through shots and chain combos after a landed hit.
+- Clashes: two shots meeting (or a shot hitting a beam, or two beams crossing) make a shockwave that shoves everyone nearby. Two melee strikes landing at the same moment are an M1 clash: both fly back and kneel to catch their breath for a second.
+- AI: each fighter has an aggression level from its role; it picks targets (close, hurt, open, last attacker), scores moves instead of picking at random, counters wind-ups, shoots down incoming shots, dodges eruptions and steps out of enemy fields.
 - The one fighter list is `app/lib/fighters.ts`, used by both screens. Each move is data: a kind (melee, projectile, beam, burst, dash, eruption, rain, blink, heal, zone, pull, mimic), an animation, range, cooldown, damage and optional effects. New moves are added there, not as new engine code, unless a new kind is needed.
 - Controls: start, pause, restart, speed 1x/2x/4x; side panel with live HP and a kill feed; winner banner.
 - Fighters (`/roster`): the 16 fighters with their powers and move lists.
