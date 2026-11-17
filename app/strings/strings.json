@@ -6,7 +6,9 @@
     "mode": {
       "label": "Mode",
       "duel": "Duel",
-      "ffa": "Free for all"
+      "ffa": "Free for all",
+      "teams": "Teams",
+      "tournament": "Tournament"
     },
     "pick": {
       "title": "Fighters",
@@ -14,7 +16,10 @@
       "ffaHint": "Pick 3 to 16 fighters.",
       "count": "{{count}} picked",
       "all": "Select all",
-      "clear": "Clear"
+      "clear": "Clear",
+      "teamsHint": "Pick at least 2 fighters for each team. Fighters join teams in the order you pick them.",
+      "tournamentHint": "Pick 3 to 16 fighters for the bracket.",
+      "lockedHint": "Picks are locked until this tournament ends."
     },
     "controls": {
       "start": "Start",
@@ -46,9 +51,39 @@
     "winner": {
       "title": "{{name}} wins!",
       "draw": "Nobody is left standing",
-      "again": "Fight again"
+      "again": "Fight again",
+      "team": "{{team}} team wins!",
+      "match": "{{name}} wins the match",
+      "champion": "{{name}} wins the tournament!",
+      "doubleKo": "Double K.O. This match will be replayed.",
+      "nextMatch": "Next match",
+      "rematch": "Replay match",
+      "newTournament": "New tournament"
     },
-    "idle": "Press Start to begin the battle"
+    "idle": "Press Start to begin the battle",
+    "teams": {
+      "countLabel": "Teams",
+      "shuffle": "Shuffle teams",
+      "name0": "Red",
+      "name1": "Blue",
+      "name2": "Gold",
+      "name3": "Green",
+      "tag": "{{team}} team"
+    },
+    "bracket": {
+      "title": "Bracket",
+      "newBracket": "New bracket",
+      "final": "Final",
+      "semis": "Semifinals",
+      "quarters": "Quarterfinals",
+      "round16": "Round of 16",
+      "bye": "Bye",
+      "tbd": "To be decided",
+      "next": "Up next",
+      "champion": "Champion",
+      "matchOf": "Match {{n}} of {{total}}"
+    },
+    "idleTournament": "Press Start for the next match"
   },
   "nav": {},
   "common": {

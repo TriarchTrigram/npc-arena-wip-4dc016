@@ -11,7 +11,7 @@ happens, and anything chained after it still runs.
 ## About this app
 
 NPC Arena is a single-player game where you watch 16 power-themed NPCs fight. No sign-in, no database.
-- Arena (`/`): side-view fighting-game arena (MUGEN-style) drawn on a canvas, all game state in the browser. Fighters are animated stickmen (pose angles blended per frame: stance, walk, jump, hurt, KO, one pose pair per attack animation). Modes: Duel (pick 2, top lifebars) and Free for all (3 to 16, bars over heads).
+- Arena (`/`): side-view fighting-game arena (MUGEN-style) drawn on a canvas, all game state in the browser. Fighters are animated stickmen (pose angles blended per frame: stance, walk, jump, hurt, KO, one pose pair per attack animation). Modes: Duel (pick 2, top lifebars), Free for all (3 to 16, bars over heads), Teams and Tournament.
 - Engine lives in `app/lib/arena-engine.ts` (newGame, step, drawScene, buildBackdrop): gravity and jumps, hitstop, screen shake, particles per element, READY/FIGHT/K.O. callouts.
 - Dashing: every fighter has a quick forward/back dash (ground or once in the air) with brief invulnerability and afterimages; used to close in, escape, dodge through shots and chain combos after a landed hit.
 - Clashes: two shots meeting (or a shot hitting a beam, or two beams crossing) make a shockwave that shoves everyone nearby. Two melee strikes landing at the same moment are an M1 clash: both fly back and kneel to catch their breath for a second.
@@ -19,8 +19,10 @@ NPC Arena is a single-player game where you watch 16 power-themed NPCs fight. No
 - The one fighter list is `app/lib/fighters.ts`, used by both screens. Each move is data: a kind (melee, projectile, beam, burst, dash, eruption, rain, blink, heal, zone, pull, mimic), an animation, range, cooldown, damage and optional effects. New moves are added there, not as new engine code, unless a new kind is needed.
 - Controls: start, pause, restart, speed 1x/2x/4x; side panel with live HP and a kill feed; winner banner.
 - Fighters (`/roster`): the 16 fighters with their powers and move lists.
-- Every fighter has 4 moves so far; the goal is 11 to 14 each.
-- Planned modes not built yet: Teams, Tournament, Double Elimination, Team Tournament.
+- Every fighter has 4 moves; the builder said 4 is enough (no 11 to 14 target).
+- Teams: 2, 3 or 4 teams (Red, Blue, Gold, Green), fighters join in pick order (Shuffle teams reorders). `newGame(ids, preview, teams)` takes a team per fighter; the engine's one `foe()` check stops friendly damage, friendly clashes and targeting teammates. Team rings on the floor and team-coloured names. A team wins when the other teams are out.
+- Tournament: single-elimination bracket (`app/lib/bracket.ts`, drawn by `app/components/bracket-view.tsx`), 3 to 16 entrants shuffled with byes. Each match is a normal 1v1 game; the player presses Start / Next match round by round. A double K.O. is replayed. Picks lock while a tournament is under way.
+- Planned modes not built yet: Juggernaut (5 vs 1 winged juggernaut with 10 moves and double health), Double Elimination, Team Tournament.
 Everything below this section is Stencil's platform documentation.
 
 ## Platform-managed — don't touch

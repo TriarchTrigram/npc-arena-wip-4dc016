@@ -135,6 +135,8 @@ export type Fighter = {
   clashAir: boolean; kneelT: number;
   // brain
   aggro: number; targetKey: number | null; reacted: number; comboT: number;
+  // team fights: -1 means everyone is an opponent
+  team: number;
 };
 
 type Projectile = {
@@ -168,16 +170,32 @@ export type Game = {
   winner: string | null;
   preview: boolean;
   duel: boolean;
+  teamMode: boolean;
+  winnerId: Power | null;
+  winnerTeam: number | null;
 };
 
 let feedId = 0;
 
-export function newGame(ids: Power[], preview = false): Game {
+/** Team colours, in team order. Names live in the screen's copy. */
+export const TEAM_COLORS = ["hsl(0 82% 60%)", "hsl(212 90% 62%)", "hsl(46 100% 58%)", "hsl(138 62% 50%)"] as const;
+
+/** Opponents: everyone in free for all, only the other teams in a team fight. */
+const foe = (a: Fighter | undefined, b: Fighter | undefined) => !!a && !!b && a !== b && (a.team < 0 || a.team !== b.team);
+
+/** `teams` (same length as `ids`) puts fighters on sides; each side spawns together. */
+export function newGame(ids: Power[], preview = false, teams?: number[]): Game {
   const n = ids.length;
   const scale = n <= 2 ? 1.25 : n <= 4 ? 1.1 : n <= 8 ? 0.95 : 0.82;
+  const teamMode = !!teams && teams.length === n;
+  // slot order: grouped by team so teammates line up side by side
+  const order = ids.map((_, i) => i);
+  if (teamMode) order.sort((a, b) => teams![a] - teams![b] || a - b);
+  const slotOf = new Map(order.map((idx, slot) => [idx, slot]));
   const fighters: Fighter[] = ids.map((id, i) => {
     const def = DEF_BY_ID[id];
-    const x = n === 2 ? (i === 0 ? 270 : W - 270) : 70 + ((W - 140) * (i + 0.5)) / n;
+    const slot = slotOf.get(i) ?? i;
+    const x = n === 2 ? (slot === 0 ? 270 : W - 270) : 70 + ((W - 140) * (slot + 0.5)) / n;
     const air = !preview && n > 2;
     return {
       key: i, def,
@@ -199,11 +217,13 @@ export function newGame(ids: Power[], preview = false): Game {
       ghosts: [], ghostT: 0,
       clashAir: false, kneelT: 0,
       aggro: clamp(AGGRO[def.role] + rand(-0.08, 0.08), 0.2, 0.95), targetKey: null, reacted: -1, comboT: 0,
+      team: teamMode ? teams![i] : -1,
     };
   });
   return {
     t: 0, fighters, projectiles: [], beams: [], eruptions: [], zones: [], particles: [], pops: [], waves: [], feed: [],
-    shake: 0, hitstop: 0, ending: 0, over: false, winner: null, preview, duel: n === 2,
+    shake: 0, hitstop: 0, ending: 0, over: false, winner: null, preview, duel: n === 2 && !teamMode,
+    teamMode, winnerId: null, winnerTeam: null,
   };
 }
 
@@ -333,14 +353,14 @@ function knockOut(g: Game, f: Fighter, by: Fighter | null) {
 }
 
 function hurt(g: Game, f: Fighter, amount: number, by: Fighter | null) {
-  if (!f.alive) return;
+  if (!f.alive || (by && by !== f && !foe(by, f))) return;
   f.hp -= amount;
   if (by && by !== f) f.lastAttacker = by.key;
   if (f.hp <= 0) knockOut(g, f, by ?? (f.lastAttacker != null ? g.fighters[f.lastAttacker] : null));
 }
 
 function hit(g: Game, a: Fighter, o: Fighter, move: Move, power: Power, dir: number, mult = 1) {
-  if (!o.alive || o === a) return false;
+  if (!o.alive || !foe(a, o)) return false;
   const c = center(o);
   if (invuln(o)) {
     if (Math.random() < 0.5) pop(g, c.x, c.y - 50 * o.scale, "dodge", o.def.glow, 15, 0.5);
@@ -420,7 +440,7 @@ function fire(g: Game, f: Fighter, act: Action) {
   const target = g.fighters[act.target];
   const h = hand(f);
   const s = f.scale;
-  const enemies = g.fighters.filter((o) => o.alive && o !== f);
+  const enemies = g.fighters.filter((o) => o.alive && foe(f, o));
   switch (m.kind) {
     case "melee": {
       const x1 = f.x + f.facing * (m.range + 14) * s;
@@ -477,7 +497,7 @@ function fire(g: Game, f: Fighter, act: Action) {
       const len = m.range * 1.1;
       const nb: Beam = { owner: f.key, power, x: h.x, y: h.y, ang, len, width: power === "magneto" ? 14 : 22, life: Math.max(m.act, 0.2) + 0.15, max: Math.max(m.act, 0.2) + 0.15, jag: power === "electro", clash: true };
       for (const ob of g.beams) {
-        if (!ob.clash || ob.owner === f.key || ob.life < 0.05) continue;
+        if (!ob.clash || !foe(f, g.fighters[ob.owner]) || ob.life < 0.05) continue;
         const pt = segHit(nb, ob);
         if (!pt) continue;
         nb.len = Math.hypot(pt.x - nb.x, pt.y - nb.y);
@@ -590,7 +610,7 @@ function chooseTarget(g: Game, f: Fighter) {
   let best: Fighter | null = null;
   let bs = Infinity;
   for (const o of g.fighters) {
-    if (!o.alive || o === f) continue;
+    if (!o.alive || !foe(f, o)) continue;
     let sc = Math.abs(o.x - f.x) + Math.abs(o.y - f.y) * 0.5;
     sc -= (1 - o.hp / o.maxHp) * 160 * f.aggro;
     if (f.lastAttacker === o.key) sc -= 110;
@@ -631,7 +651,7 @@ function scoreMove(g: Game, f: Fighter, m: Move, target: Fighter) {
   if (m.kind === "burst") {
     let n = 0;
     const c = center(f);
-    for (const o of g.fighters) if (o.alive && o !== f && Math.hypot(center(o).x - c.x, center(o).y - c.y) < (m.radius ?? 120) * s) n++;
+    for (const o of g.fighters) if (o.alive && foe(f, o) && Math.hypot(center(o).x - c.x, center(o).y - c.y) < (m.radius ?? 120) * s) n++;
     sc += n === 0 ? -20 : 6 * (n - 1);
   }
   if (target.hp <= m.dmg * 1.2) sc += 18;
@@ -680,7 +700,7 @@ function react(g: Game, f: Fighter, target: Fighter, dt: number) {
   // an enemy is winding up a close strike at me
   for (const o of g.fighters) {
     const oa = o.act;
-    if (!o.alive || o === f || !oa || oa.fired || oa.move.kind !== "melee" || oa.id === f.reacted) continue;
+    if (!o.alive || !foe(f, o) || !oa || oa.fired || oa.move.kind !== "melee" || oa.id === f.reacted) continue;
     if (o.facing !== Math.sign(f.x - o.x) || Math.abs(o.x - f.x) > reachOf(oa.move, o.scale) + 40 * s || Math.abs(o.y - f.y) > 60 * s) continue;
     f.reacted = oa.id;
     const r = Math.random();
@@ -699,7 +719,7 @@ function react(g: Game, f: Fighter, target: Fighter, dt: number) {
 
   // incoming shots
   for (const p of g.projectiles) {
-    if (p.owner === f.key || p.move.kind === "rain") continue;
+    if (!foe(f, g.fighters[p.owner]) || p.move.kind === "rain") continue;
     const toward = Math.sign(f.x - p.x) === Math.sign(p.vx);
     if (!toward) continue;
     const d = Math.abs(p.x - f.x);
@@ -719,7 +739,7 @@ function react(g: Game, f: Fighter, target: Fighter, dt: number) {
 
   // the ground is about to erupt under me
   for (const e of g.eruptions) {
-    if (e.fired || e.owner === f.key || Math.abs(e.x - f.x) > (e.move.radius ?? 44) + 24) continue;
+    if (e.fired || !foe(f, g.fighters[e.owner]) || Math.abs(e.x - f.x) > (e.move.radius ?? 44) + 24) continue;
     if (Math.random() < dt * 12) {
       const away = Math.sign(f.x - e.x) || -f.facing;
       if (dashReady) return startDash(g, f, away);
@@ -819,7 +839,7 @@ function updateFighter(g: Game, f: Fighter, dt: number) {
         f.x += f.facing * sp * dt;
         if (Math.random() < dt * 60) emit(g, a.power, f.x - f.facing * 10, f.y - rand(10, 90) * s, 1, 60);
         for (const o of g.fighters) {
-          if (!o.alive || o === f || a.hits.includes(o.key)) continue;
+          if (!o.alive || !foe(f, o) || a.hits.includes(o.key)) continue;
           if (Math.abs(o.x - f.x) < 34 * s && Math.abs(o.y - f.y) < 90 * s) {
             a.hits.push(o.key);
             hit(g, f, o, m, a.power, f.facing);
@@ -885,7 +905,7 @@ function updateFighter(g: Game, f: Fighter, dt: number) {
         }
         // step out of an enemy field
         for (const z of g.zones) {
-          if (z.owner !== f.key && Math.abs(z.x - f.x) < (z.move.radius ?? 100)) { f.walkDir = Math.sign(f.x - z.x) || -f.facing; break; }
+          if (foe(f, g.fighters[z.owner]) && Math.abs(z.x - f.x) < (z.move.radius ?? 100)) { f.walkDir = Math.sign(f.x - z.x) || -f.facing; break; }
         }
         const sp = f.def.speed * 1.5 * (slowed ? 0.55 : 1) * (f.walkDir === -f.facing ? 0.7 : 1);
         f.x += f.walkDir * sp * dt;
@@ -1012,7 +1032,7 @@ export function step(g: Game, dt: number) {
   const magnetos = g.fighters.filter((f) => f.alive && f.def.id === "magneto");
   for (const p of g.projectiles) {
     for (const m of magnetos) {
-      if (m.key === p.owner) continue;
+      if (!foe(m, g.fighters[p.owner])) continue;
       const c = center(m);
       const d = Math.hypot(p.x - c.x, p.y - c.y);
       if (d < 100 && d > 0) { p.vx += ((p.x - c.x) / d) * 1100 * dt; p.vy += ((p.y - c.y) / d) * 1100 * dt; }
@@ -1033,7 +1053,7 @@ export function step(g: Game, dt: number) {
     }
     if (p.life <= 0) continue;
     for (const f of g.fighters) {
-      if (!f.alive || f.key === p.owner || p.hits.includes(f.key) || invuln(f)) continue;
+      if (!f.alive || !foe(g.fighters[p.owner], f) || p.hits.includes(f.key) || invuln(f)) continue;
       const top = f.y - bodyH(f);
       if (Math.abs(p.x - f.x) < 14 * f.scale + p.r && p.y > top - p.r && p.y < f.y + p.r) {
         p.hits.push(f.key);
@@ -1049,7 +1069,7 @@ export function step(g: Game, dt: number) {
     if (p.life <= 0) continue;
     for (let j = i + 1; j < shots.length; j++) {
       const q = shots[j];
-      if (q.life <= 0 || q.owner === p.owner) continue;
+      if (q.life <= 0 || !foe(g.fighters[p.owner], g.fighters[q.owner])) continue;
       if (Math.hypot(p.x - q.x, p.y - q.y) < p.r + q.r + 4) {
         p.life = 0; q.life = 0;
         shockwave(g, (p.x + q.x) / 2, (p.y + q.y) / 2, p.power, q.power, 120 + (p.r + q.r) * 2.5);
@@ -1058,7 +1078,7 @@ export function step(g: Game, dt: number) {
     }
     if (p.life <= 0) continue;
     for (const b of g.beams) {
-      if (!b.clash || b.owner === p.owner || b.life < 0.05) continue;
+      if (!b.clash || !foe(g.fighters[p.owner], g.fighters[b.owner]) || b.life < 0.05) continue;
       if (segDist(p.x, p.y, b) < p.r + b.width * 0.6) {
         p.life = 0;
         shockwave(g, p.x, p.y, p.power, b.power, 110 + p.r * 2);
@@ -1082,7 +1102,7 @@ export function step(g: Game, dt: number) {
       const owner = g.fighters[e.owner];
       const r = e.move.radius ?? 44;
       for (const o of g.fighters) {
-        if (!o.alive || o === owner || Math.abs(o.x - e.x) > r + 10 || o.y < GROUND - 120) continue;
+        if (!o.alive || !foe(owner, o) || Math.abs(o.x - e.x) > r + 10 || o.y < GROUND - 120) continue;
         hit(g, owner, o, e.move, e.power, Math.sign(o.x - e.x) || 1);
       }
       for (let i = 0; i < 22; i++) emit(g, e.power, e.x + rand(-r, r) * 0.6, GROUND - rand(0, 160), 1, 120, { vy: -rand(200, 500) });
@@ -1098,7 +1118,7 @@ export function step(g: Game, dt: number) {
     const r = z.move.radius ?? 100;
     if (Math.random() < dt * 22) emit(g, z.power, z.x + rand(-r, r) * 0.9, GROUND - rand(0, r * 0.5), 1, 30);
     for (const o of g.fighters) {
-      if (!o.alive || o === owner || Math.abs(o.x - z.x) > r || o.y < GROUND - r * 0.9) continue;
+      if (!o.alive || !foe(owner, o) || Math.abs(o.x - z.x) > r || o.y < GROUND - r * 0.9) continue;
       hurt(g, o, z.move.dmg * dt, owner);
       if (z.move.status) o.status[z.move.status] = Math.max(o.status[z.move.status], g.t + (z.move.statusDur ?? 0.5));
       if (z.move.pullIn) o.x += Math.sign(z.x - o.x) * Math.min(Math.abs(z.x - o.x), z.move.pullIn * dt);
@@ -1121,10 +1141,14 @@ export function step(g: Game, dt: number) {
 
   if (g.preview) return;
   const left = g.fighters.filter((f) => f.alive);
-  if (left.length <= 1 && g.ending === 0) g.ending = g.t;
+  const sides = g.teamMode ? new Set(left.map((f) => f.team)).size : left.length;
+  if (sides <= 1 && g.ending === 0) g.ending = g.t;
   if (g.ending > 0 && g.t - g.ending > 1.6) {
     g.over = true;
-    g.winner = left[0]?.def.name ?? null;
+    const top = [...left].sort((a, b) => b.hp - a.hp)[0];
+    g.winner = top?.def.name ?? null;
+    g.winnerId = top?.def.id ?? null;
+    g.winnerTeam = g.teamMode && top ? top.team : null;
   }
 }
 
@@ -1857,15 +1881,31 @@ function drawHud(ctx: CanvasRenderingContext2D, g: Game) {
     for (const f of g.fighters) {
       if (!f.alive) continue;
       const bw = 46 * f.scale, y = f.y - bodyH(f) - 24 * f.scale;
+      const tc = f.team >= 0 ? TEAM_COLORS[f.team % TEAM_COLORS.length] : null;
       ctx.fillStyle = INK;
       ctx.fillRect(f.x - bw / 2 - 2, y - 2, bw + 4, 9);
+      if (tc) { ctx.strokeStyle = tc; ctx.lineWidth = 2; ctx.strokeRect(f.x - bw / 2 - 3, y - 3, bw + 6, 11); }
       ctx.fillStyle = "hsl(0 85% 60%)";
       ctx.fillRect(f.x - bw / 2, y, (bw * f.hpTrail) / f.maxHp, 5);
       ctx.fillStyle = f.def.color;
       ctx.fillRect(f.x - bw / 2, y, (bw * Math.max(0, f.hp)) / f.maxHp, 5);
-      outlinedText(ctx, f.def.name, f.x, y - 12, 15, "white");
+      outlinedText(ctx, f.def.name, f.x, y - 12, 15, tc ?? "white");
     }
   }
+}
+
+/** A team-coloured disc on the floor under a fighter, shrinking as they rise. */
+function drawTeamRing(ctx: CanvasRenderingContext2D, f: Fighter) {
+  const lift = clamp((GROUND - f.y) / 300, 0, 0.7);
+  const rx = 30 * f.scale * (1 - lift), ry = 8 * f.scale * (1 - lift);
+  ctx.save();
+  ctx.globalAlpha = 0.85;
+  ctx.strokeStyle = TEAM_COLORS[f.team % TEAM_COLORS.length];
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.ellipse(f.x, GROUND + 4, rx, ry, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
 }
 
 export function drawScene(ctx: CanvasRenderingContext2D, g: Game, backdrop: HTMLCanvasElement) {
@@ -1874,6 +1914,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, g: Game, backdrop: HTML
   ctx.drawImage(backdrop, -12, -8, W + 24, H + 16);
   for (const z of g.zones) drawZone(ctx, g, z);
   for (const e of g.eruptions) if (!e.fired) drawEruption(ctx, e);
+  for (const f of g.fighters) if (f.alive && f.team >= 0) drawTeamRing(ctx, f);
   for (const f of g.fighters) if (!f.alive) drawFighter(ctx, g, f);
   for (const f of g.fighters) if (f.alive) drawGhosts(ctx, f);
   for (const f of g.fighters) if (f.alive) drawFighter(ctx, g, f);
