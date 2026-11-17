@@ -8,8 +8,7 @@ import { stencilWaitlistRoutes } from "./.stencil/react-router/waitlist/routes";
 
 export default [
   index("routes/home.tsx"),
-  // The signed-in shell. An app nobody signs into drops this line and deletes the file.
-  route("app", "routes/app.tsx"),
+  route("roster", "routes/roster.tsx"),
   // Trusted route the platform calls to run recurring actions (bearer-gated).
   // Keep it registered at this path.
   route("api/internal/scheduled", "routes/api.internal.scheduled.tsx"),

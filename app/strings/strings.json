@@ -1,19 +1,89 @@
 {
-  "home": {
-    "title": "Hello World",
-    "cta": "Go to app"
-  },
-  "app": {
-    "greeting": "Welcome, {{name}}",
-    "signOut": "Sign out"
-  },
-  "platform": {
-    "updateNotice": {
-      "message": "A new version of this app is available.",
-      "action": "Refresh"
+  "arena": {
+    "eyebrow": "Watch the powers clash",
+    "title": "The arena",
+    "subtitle": "Pick your fighters, press Start and watch them battle it out on their own.",
+    "mode": {
+      "label": "Mode",
+      "duel": "Duel",
+      "ffa": "Free for all"
     },
-    "languageSwitcher": {
-      "label": "Language"
+    "pick": {
+      "title": "Fighters",
+      "duelHint": "Pick exactly 2 fighters.",
+      "ffaHint": "Pick 3 to 16 fighters.",
+      "count": "{{count}} picked",
+      "all": "Select all",
+      "clear": "Clear"
+    },
+    "controls": {
+      "start": "Start",
+      "pause": "Pause",
+      "resume": "Resume",
+      "restart": "Restart",
+      "speed": "Speed",
+      "speedAria": "Battle speed"
+    },
+    "status": {
+      "ready": "Ready",
+      "running": "Fighting",
+      "paused": "Paused",
+      "finished": "Finished"
+    },
+    "canvasAria": "Battle arena",
+    "alive": {
+      "title": "Still standing",
+      "empty": "The battle has not started yet.",
+      "kills": "{{count}} KOs"
+    },
+    "feed": {
+      "title": "Kill feed",
+      "emptyTitle": "No knockouts yet",
+      "emptyBody": "Knockouts show up here as they happen.",
+      "ko": "{{killer}} knocked out {{victim}}",
+      "fell": "{{victim}} went down"
+    },
+    "winner": {
+      "title": "{{name}} wins!",
+      "draw": "Nobody is left standing",
+      "again": "Fight again"
+    },
+    "idle": "Press Start to begin the battle"
+  },
+  "nav": {},
+  "common": {
+    "arena": "Arena",
+    "fighters": "Fighters",
+    "appName": "NPC Arena"
+  },
+  "roster": {
+    "eyebrow": "The roster",
+    "title": "Meet the 16 fighters",
+    "subtitle": "Every fighter has one power and one way of using it. Pick your favourites in the arena and see who is left standing.",
+    "cta": "Go to the arena",
+    "navLabel": "Main navigation",
+    "sectionAll": "All fighters",
+    "count": "{{count}} fighters",
+    "card": {
+      "power": "Power",
+      "ability": "In the arena",
+      "number": "No. {{n}}"
+    },
+    "role": {
+      "attacker": "Attacker",
+      "control": "Control",
+      "tank": "Tank",
+      "support": "Support",
+      "trickster": "Trickster"
+    },
+    "filter": {
+      "label": "Show",
+      "all": "All styles"
+    },
+    "empty": {
+      "title": "No fighters with this style",
+      "body": "Pick another style to see more fighters.",
+      "action": "Show all fighters"
     }
   }
 }

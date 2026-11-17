@@ -10,16 +10,11 @@ happens, and anything chained after it still runs.
 
 ## About this app
 
-Not written yet. On this app's first build, replace this paragraph with the app's
-purpose, its main flows, and the mechanism it chose for each big job — how it
-renders, exports, sends, syncs — one plain-English line each. Ten to twenty lines,
-no code: the app builder reads this section too. Write it with your file-editing tool,
-in its own step before the build, never through a shell command. Fixed after a build has
-deployed, it is saved and goes out with the next build — never build for it alone. Keep it
-current — a turn that introduces, replaces or removes a mechanism updates this section in the
-same turn. It is a summary of the app as it is now, not a log of what each turn changed:
-rewrite it when it grows. Anything past about 16,000 characters is moved to `APP-HISTORY.md` before
-the next turn; read that file only when a task needs what an earlier turn did.
+NPC Arena is a single-player game where you watch 16 power-themed NPCs fight. No sign-in, no database.
+- Arena (`/`): top-down 2D fight drawn on a canvas, all game state in the browser. Modes: Duel (pick 2) and Free for all (3 to 16).
+- Controls: start, pause, restart, speed 1x/2x/4x; side panel with live HP and a kill feed; winner banner.
+- Fighters (`/roster`): the 16 fighters with their powers. The fighter list is defined in both screens.
+- Planned modes not built yet: Teams, Tournament, Double Elimination, Team Tournament.
 Everything below this section is Stencil's platform documentation.
 
 ## Platform-managed — don't touch
