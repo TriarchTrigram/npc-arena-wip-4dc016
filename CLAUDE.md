@@ -11,9 +11,12 @@ happens, and anything chained after it still runs.
 ## About this app
 
 NPC Arena is a single-player game where you watch 16 power-themed NPCs fight. No sign-in, no database.
-- Arena (`/`): top-down 2D fight drawn on a canvas, all game state in the browser. Modes: Duel (pick 2) and Free for all (3 to 16).
+- Arena (`/`): side-view fighting-game arena (MUGEN-style) drawn on a canvas, all game state in the browser. Fighters are animated stickmen (pose angles blended per frame: stance, walk, jump, hurt, KO, one pose pair per attack animation). Modes: Duel (pick 2, top lifebars) and Free for all (3 to 16, bars over heads).
+- Engine lives in `app/lib/arena-engine.ts` (newGame, step, drawScene, buildBackdrop): AI picks moves by range and cooldown, gravity and jumps, hitstop, screen shake, particles per element, READY/FIGHT/K.O. callouts.
+- The one fighter list is `app/lib/fighters.ts`, used by both screens. Each move is data: a kind (melee, projectile, beam, burst, dash, eruption, rain, blink, heal, zone, pull, mimic), an animation, range, cooldown, damage and optional effects. New moves are added there, not as new engine code, unless a new kind is needed.
 - Controls: start, pause, restart, speed 1x/2x/4x; side panel with live HP and a kill feed; winner banner.
-- Fighters (`/roster`): the 16 fighters with their powers. The fighter list is defined in both screens.
+- Fighters (`/roster`): the 16 fighters with their powers and move lists.
+- Every fighter has 4 moves so far; the goal is 11 to 14 each.
 - Planned modes not built yet: Teams, Tournament, Double Elimination, Team Tournament.
 Everything below this section is Stencil's platform documentation.
 
@@ -468,6 +471,35 @@ Constraint changes go through `updateEntity` too — never by hand-editing `db-s
 Note: `checkbox` values are `true`/`false` (not `1`/`0`).
 
 **RULE: Lists of any length go through the SDK; never count placeholders by hand.** D1 refuses any statement with more than 100 bound parameters (`too many SQL variables`), and `~stencil/data` handles that cap for you: an `in` filter (`{ id: { op: "in", value: ids } }`), an `expand`, `createMany(rows)` and `createNotifications(env).send({ toUserIds })` all take a list of any length — a thousand ids, a thousand rows — and never chunk, slice or count. So a lookup of every app user's name, a seed or import that saves a list, and a notification to everyone are each one call with the whole list; never a loop of `get`, never a hand-sliced `inArray`, never a chunked insert. The cap still bites a statement you write against Drizzle (`inArray` binds one value per id; a multi-row insert binds rows × columns, so twelve rows of a nine-column table already fails): a Drizzle lookup by a list uses `inList(column, ids)` from `~stencil/db` in place of `inArray`, whatever the list's length; for a write prefer the SDK call, and if it must go through Drizzle, insert in chunks of `Math.floor(90 / columnCount)` rows — sized from the column count, never a fixed row count — and let a rejected statement fail the request: never report success, and never blame the app user's file, over a write the database refused.
+
+### Data SDK (`~stencil/data`)
+
+`~stencil/data` is the server-side data SDK: one call in a loader or action resolves the app user's session and gives you `list / get / create / update / claim / delete` on any table by slug, with camelCase columns in and out. Every table's access rule (the entity's `access` — who may read, create, update and delete its rows, which columns are `hidden` from every app user, which are `hidden_from_public`, stripped for a visitor with no account along with `created_by`, and which are `visible_to` only the callers who meet a condition on that row — the row's owner, or a role from the Users page via `me.role = 'admin'`) is enforced by the SDK: it adds the rule's constraint to each read and fills the scope column (e.g. `created_by`) on create, and the engine verifies the request satisfies the rule before running it — a request that does not is rejected with a `DataAccessError` (`forbidden` / `notFound` / `unknownColumn`), never silently filtered.
+
+```ts
+import { data } from "~stencil/data";
+
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const db = await data(request, context.cloudflare.env);          // redirects to /login when signed out
+  const tasks = await db.from("tasks").list({ where: { status: "open" }, orderBy: [["createdAt", "desc"]], limit: 50, expand: { project: "projectId" } });
+  return { tasks };
+}
+
+export async function action({ request, context }: Route.ActionArgs) {
+  const db = await data(request, context.cloudflare.env);
+  const form = await request.formData();
+  await db.from("tasks").create({ title: String(form.get("title")), projectId: String(form.get("projectId")) });   // created_by is filled from the rule
+  return { ok: true };
+}
+```
+
+Rows are typed from the schema: `db.from()` only accepts a table slug the app has (a typo is a compile error), and every row's fields carry the column's type — `task.title` is a `string`, `task.done` a `boolean`, an optional column `string | null`, a json column `unknown`, an `expand` key the target table's row `| null`. Do not wrap fields in `String()` / `Number()` and do not annotate a row's type by hand; narrow an optional column with `??` where you need a plain value. `create`/`update` take a subset of the row's own columns (camelCase, never `id` / `createdAt` / `updatedAt`), so a wrong column name or value type fails typecheck instead of at runtime. `createMany(rows)` saves a list of any length in one call — split under the database's bound-parameter cap, written all-or-nothing, returned as the new rows in input order — so a wizard or import never loops `create` or hand-chunks an insert. `claim(id, data, { where })` is an `update` that lands only while the row still matches `where` and returns `null` otherwise — the one correct guard for a write that must happen once (spend a balance, finalise a checkout, redeem a code, book a slot, approve something that then pays out, count one use of a per-app-user allowance such as free AI prompts): claim first, act only on a returned row, and never read a row, check it in code, act, then write — two requests arriving together both pass that check. Code already in the app that has that shape is replaced with a claim when a build touches its route (the `data-sdk` skill's "Claim before a side effect"). `moveRow(table, move)` and `nextPosition(table)` from `~stencil/data` keep a drag-to-reorder order in a `position` column (the `drag-to-reorder` skill).
+
+**An action parses what the form sends before it writes.** A browser-side check (`min`, `max`, a `<select>`, a clamp on blur) protects nothing: anyone can edit the request. Every value the form legitimately supplies is parsed on the server with `zod` (already a dependency) against the domain the app designed — `z.coerce.number().int().min(1).max(5)`, `z.enum([...])`, a length cap on text — and a parse failure returns the error to the form and writes nothing. A parse proves the value is well-formed, not that the browser may choose it — a value the server already holds is never read from the form at all (see "A fact the server can look up is never taken from the request"). Check the caller may do the thing before the write, never after — a write that lands first stays landed. See "Parse the form before you write" in the `data-sdk` skill.
+
+`data(request, env, { requireUser: false })` gives an anonymous caller for public pages (only `public` rules admit it); `system(env)` bypasses rules for webhooks and crons — never in a screen. An app built with the SDK keeps using it for all CRUD; `createDb` and Drizzle (below) remain for anything the SDK cannot express (aggregations, joins beyond one `expand`, raw SQL) — and those loaders must scope their own queries.
+
+Declare the column policy on the entity so no loader has to remember it (see "What a loader returns is what the reader receives"): `hidden` (no app user), `hidden_from_public` (no visitor without an account) and `visible_to` (a column only the callers who meet its conditions receive — the owner, a role from the Users page via `me.role`, never the client; for a visitor, a plain column test on the same row such as `share_visible = true`, so the app builder's stored visibility choice is enforced on every read), and still pass `select: [...]` on a public or shared-role read for the columns that page shows. A share link or gallery code is resolved with `system(env)` and `select: ["id"]`, then read as the anonymous client by id, so the page gets what a visitor is declared to get.
 
 ### Data Scoping
 

@@ -14,6 +14,7 @@ import {
   EmptyState,
 } from "~/components/design";
 import { cn } from "~/lib/utils";
+import { FIGHTERS, type FighterDef, type Role } from "~/lib/fighters";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -21,8 +22,6 @@ export function meta({}: Route.MetaArgs) {
     { name: "description", content: "Meet the 16 fighters of NPC Arena and their powers." },
   ];
 }
-
-type Role = "attacker" | "control" | "tank" | "support" | "trickster";
 
 const ROLE_TONE: Record<Role, "neutral" | "info" | "success" | "warning" | "danger"> = {
   attacker: "danger",
@@ -34,33 +33,7 @@ const ROLE_TONE: Record<Role, "neutral" | "info" | "success" | "warning" | "dang
 
 const ROLES: Role[] = ["attacker", "control", "tank", "support", "trickster"];
 
-type Fighter = {
-  id: string;
-  name: string;
-  power: string;
-  color: string;
-  ability: string;
-  role: Role;
-};
-
-const FIGHTERS: Fighter[] = [
-  { id: "pyro", name: "Pyro", power: "Pyrokinesis", color: "oklch(0.66 0.21 35)", ability: "Shoots fireballs that leave a short burn.", role: "attacker" },
-  { id: "cryo", name: "Cryo", power: "Cryokinesis", color: "oklch(0.78 0.11 225)", ability: "Ice shard that slows its target.", role: "control" },
-  { id: "electro", name: "Electro", power: "Electrokinesis", color: "oklch(0.88 0.18 95)", ability: "Lightning that chains to a second nearby enemy.", role: "attacker" },
-  { id: "terra", name: "Terra", power: "Geokinesis", color: "oklch(0.52 0.09 55)", ability: "Ground slam that knocks back everyone close. Very tanky.", role: "tank" },
-  { id: "aero", name: "Aero", power: "Aerokinesis", color: "oklch(0.84 0.08 185)", ability: "Gust that pushes enemies back. The fastest mover.", role: "control" },
-  { id: "hydro", name: "Hydro", power: "Hydrokinesis", color: "oklch(0.6 0.16 250)", ability: "Water wave that hits everything in a line.", role: "attacker" },
-  { id: "umbra", name: "Umbra", power: "Shadow manipulation", color: "oklch(0.42 0.17 300)", ability: "Blinks behind its target for a critical strike.", role: "trickster" },
-  { id: "lux", name: "Lux", power: "Light manipulation", color: "oklch(0.92 0.1 90)", ability: "Light beam that blinds, so the target misses for a moment.", role: "control" },
-  { id: "gravi", name: "Gravi", power: "Gravity control", color: "oklch(0.48 0.18 275)", ability: "Pulls enemies in, then damages them.", role: "control" },
-  { id: "tele", name: "Tele", power: "Teleportation", color: "oklch(0.62 0.25 330)", ability: "Teleports at random to dodge attacks.", role: "trickster" },
-  { id: "vita", name: "Vita", power: "Healing", color: "oklch(0.7 0.18 145)", ability: "Heals itself and allies over time. Weak attack.", role: "support" },
-  { id: "toxi", name: "Toxi", power: "Poison", color: "oklch(0.85 0.2 128)", ability: "Poison cloud that deals damage over time.", role: "attacker" },
-  { id: "chrono", name: "Chrono", power: "Time manipulation", color: "oklch(0.78 0.16 70)", ability: "Slows the cooldowns of every enemy nearby.", role: "control" },
-  { id: "magneto", name: "Magneto", power: "Magnetism", color: "oklch(0.58 0.2 25)", ability: "Pulls projectiles away and fires metal shards.", role: "tank" },
-  { id: "psy", name: "Psy", power: "Telekinesis", color: "oklch(0.76 0.15 350)", ability: "Throws an enemy and stuns it.", role: "control" },
-  { id: "shift", name: "Shift", power: "Shapeshifting", color: "oklch(0.8 0.13 200)", ability: "Copies the last power that hit it.", role: "trickster" },
-];
+type Fighter = FighterDef;
 
 function TopBar() {
   const navLabel = useString("roster.navLabel");
@@ -112,6 +85,17 @@ function FighterCard({ fighter, index }: { fighter: Fighter; index: number }) {
         <div>
           <Text id="roster.card.ability" as="p" className="text-xs uppercase tracking-widest text-muted-foreground" />
           <p className="text-foreground-secondary">{fighter.ability}</p>
+        </div>
+        <div className="mt-auto border-t-2 border-border-subtle pt-4">
+          <Text id="roster.card.moves" vars={{ count: fighter.moves.length }} as="p" className="text-xs uppercase tracking-widest text-muted-foreground tabular-nums" />
+          <ul className="mt-2 flex flex-col gap-2">
+            {fighter.moves.map((m) => (
+              <li key={m.id} className="flex items-baseline justify-between gap-3 text-sm">
+                <span className="font-semibold text-foreground">{m.name}</span>
+                <Text id={`roster.kind.${m.kind}` as StringKey} className="shrink-0 text-muted-foreground" />
+              </li>
+            ))}
+          </ul>
         </div>
       </PanelBody>
     </Panel>

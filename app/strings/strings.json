@@ -59,7 +59,7 @@
   "roster": {
     "eyebrow": "The roster",
     "title": "Meet the 16 fighters",
-    "subtitle": "Every fighter has one power and one way of using it. Pick your favourites in the arena and see who is left standing.",
+    "subtitle": "Every fighter has one power and a set of moves built on it. Pick your favourites in the arena and see who is left standing.",
     "cta": "Go to the arena",
     "navLabel": "Main navigation",
     "sectionAll": "All fighters",
@@ -67,7 +67,8 @@
     "card": {
       "power": "Power",
       "ability": "In the arena",
-      "number": "No. {{n}}"
+      "number": "No. {{n}}",
+      "moves": "Moves ({{count}})"
     },
     "role": {
       "attacker": "Attacker",
@@ -84,6 +85,20 @@
       "title": "No fighters with this style",
       "body": "Pick another style to see more fighters.",
       "action": "Show all fighters"
+    },
+    "kind": {
+      "melee": "Close strike",
+      "projectile": "Shot",
+      "beam": "Beam",
+      "burst": "Blast",
+      "dash": "Rush",
+      "eruption": "From the ground",
+      "rain": "From the sky",
+      "blink": "Teleport strike",
+      "heal": "Heal",
+      "zone": "Field",
+      "pull": "Pull",
+      "mimic": "Copy"
     }
   }
 }
