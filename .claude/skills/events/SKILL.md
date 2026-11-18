@@ -1,6 +1,6 @@
 ---
 name: events
-description: Stencil Events — "when X happens send it to Zapier/Make", "react to a payment/signup/cancellation", "notify my CRM", "lock a feature when a payment fails", "webhook", "connect this to my other tools". Use when the brief asks the app to react to something the platform knows about (payments, signups) or to send what happens in the app to an outside tool. Chat Agent — "open Events settings", "where do I add my Zapier address", "set up a webhook": point the app builder to Project settings → Grow → Events and show the button to it; no build for platform events. Builder Agent — app/events.ts, on(), defineEvents() + emit(), delivery guarantees and dedupe.
+description: Stencil Events — "when X happens send it to Zapier/Make", "react to a payment/signup/cancellation", "notify my CRM", "lock a feature when a payment fails", "webhook", "connect this to my other tools". Use when the brief asks the app to react to something the platform knows about (payments, signups) or to send what happens in the app to an outside tool. Chat Agent — "open Events settings", "where do I add my Zapier address", "set up a webhook": point the app builder to More → Settings → Events and show the button to it; no build for platform events. Builder Agent — app/events.ts, on(), defineEvents() + emit(), delivery guarantees and dedupe.
 allowed-tools: showEventsSettings setEventDestination deleteEventDestination
 metadata:
   agents: [chat, builder]
@@ -13,13 +13,13 @@ An **event** is one thing that happened, as a small JSON envelope: `{ id, type, 
 - **Platform events** — Stencil publishes these about the app (a payment failed, an app user signed up). The app can react to them with `on()`.
 - **App events** — the app publishes these itself with `emit()` ("booking.created"), and the app builder routes them to outside tools.
 
-The app builder manages where events go in **Project settings → Grow → Events**: they press **Add destination**, pick **Zapier**, **Make** or **Another address**, paste the address their tool gave them, tick the events it should receive, and get a signing secret. The page shows every event by a plain label ("Payment failed", "New sign-up"); when you talk to the app builder, use the label, not the type name. **Never write a destination URL, secret or `fetch()` to an outside tool into code** — if the brief says "send it to Zapier", the code's job is to `emit()` the event; the app builder points it at Zapier in Events. Say so in your report, in their words: "Open Project settings → Grow → Events, add your Zapier address and tick `booking.created`."
+The app builder manages where events go in **More → Settings → Events**: they press **Add destination**, pick **Zapier**, **Make** or **Another address**, paste the address their tool gave them, tick the events it should receive, and get a signing secret. The page shows every event by a plain label ("Payment failed", "New sign-up"); when you talk to the app builder, use the label, not the type name. **Never write a destination URL, secret or `fetch()` to an outside tool into code** — if the brief says "send it to Zapier", the code's job is to `emit()` the event; the app builder points it at Zapier in Events. Say so in your report, in their words: "Open More → Settings → Events, add your Zapier address and tick `booking.created`."
 
 Only build on Events when the brief asks for it. A plain in-app effect (write a row, send an email on a form submit) does not need an event.
 
 ## For the Chat Agent
 
-Everything on the Events page is the app builder's to do, with no build. Send them there in one line — **Project settings → Grow → Events** — and call `showEventsSettings`, which puts an "Open Events settings" button in the chat. There they press **Add destination**, pick **Zapier**, **Make** or **Another address**, paste the address, tick the events, and press **Send a test event** to see example data arrive at the tool. Never hand off a build for a platform event (sign-ups, trials, payments, failed payments, cancellations, purchases): the page already lists them. Hand off only when they want an event of the app's own ("send an event when a client books") — the Builder Agent adds `emit()`, and after the build the event appears on the page for them to tick.
+Everything on the Events page is the app builder's to do, with no build. Send them there in one line — **More → Settings → Events** — and call `showEventsSettings`, which puts an "Open Events settings" button in the chat. There they press **Add destination**, pick **Zapier**, **Make** or **Another address**, paste the address, tick the events, and press **Send a test event** to see example data arrive at the tool. Never hand off a build for a platform event (sign-ups, trials, payments, failed payments, cancellations, purchases): the page already lists them. Hand off only when they want an event of the app's own ("send an event when a client books") — the Builder Agent adds `emit()`, and after the build the event appears on the page for them to tick.
 
 ## The one file — `app/events.ts`
 
@@ -187,7 +187,7 @@ A mailing list is not this. Flodesk, Kit, ActiveCampaign and MailerLite have bui
 
 There is nothing to code beyond `emit()` (or nothing at all, for a platform event). The app builder:
 
-1. Opens **Project settings → Grow → Events**.
+1. Opens **More → Settings → Events**.
 2. Presses **Add destination** and picks **Zapier** (Webhooks by Zapier → Catch Hook), **Make** (Webhooks → Custom webhook) or **Another address** (any https address, such as a CRM's inbound webhook URL), then pastes the address.
 3. Ticks the events to send (or **Everything**) and saves.
 4. Presses **Send a test event**, picks one of the destination's events, and the tool receives example `data` with every field a real event has, plus `"test": true`. That sample is what Zapier and Make show when mapping fields.

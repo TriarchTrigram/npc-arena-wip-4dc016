@@ -45,7 +45,7 @@ Two extras worth adding when relevant:
 
 List every image slot you need *before writing components*, then generate them in one pass so the page composes against real assets rather than gray rectangles. A landing page usually means a hero at 16:9, a square brand mark, and a background texture — three calls, all public, named for what they are, before the first component exists.
 
-`logo` is not a name you can use: `/assets/logo.png` is the app icon the app builder sets in Settings → General → Icon, rendered by the platform, and the tool refuses it. A mark you generate is `brand-mark` (or `brand-mark-dark`).
+`logo` is not a name you can use: `/assets/logo.png` is the app icon the app builder sets in More → Settings → General → Icon, rendered by the platform, and the tool refuses it. A mark you generate is `brand-mark` (or `brand-mark-dark`).
 
 Then reference them by the paths you got back:
 

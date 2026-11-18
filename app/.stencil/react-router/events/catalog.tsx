@@ -4,7 +4,7 @@ import type { EventSpec } from "../../events";
 import { verifyPlatformBearer } from "../../internal";
 
 /** `GET /api/internal/events/catalog` — the custom events declared in
- *  `app/events.ts`, read by the Events page in Project settings. */
+ *  `app/events.ts`, read by the Events page in More. */
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const unauthorized = verifyPlatformBearer(request, context.cloudflare.env);
   if (unauthorized) return unauthorized;

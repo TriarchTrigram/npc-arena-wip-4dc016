@@ -109,7 +109,7 @@ import { secret } from "~stencil/secrets";
 const webhookUrl = secret(env, "GOOGLE_SHEETS_WEBHOOK_URL");
 if (!webhookUrl) {
   return Response.json(
-    { error: "The Google Sheet isn't connected yet — add GOOGLE_SHEETS_WEBHOOK_URL in Settings → Build → Secrets." },
+    { error: "The Google Sheet isn't connected yet — add GOOGLE_SHEETS_WEBHOOK_URL in More → Settings → Secrets." },
     { status: 503 },
   );
 }

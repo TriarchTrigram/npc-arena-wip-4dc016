@@ -263,3 +263,47 @@ export const FIGHTERS: FighterDef[] = [
 ];
 
 export const DEF_BY_ID = Object.fromEntries(FIGHTERS.map((f) => [f.id, f])) as Record<Power, FighterDef>;
+
+// ---------- Juggernaut ----------
+// A juggernaut keeps its own 4 moves and gains 6 wing moves in its element, for 10 in all, with double health.
+
+type Wing = { word: string; shape: NonNullable<Move["shape"]>; status?: StatusEffect; statusDur?: number; heal?: number };
+
+const WINGS: Record<Power, Wing> = {
+  pyro: { word: "Blaze", shape: "orb", status: "burn", statusDur: 2 },
+  cryo: { word: "Frost", shape: "shard", status: "slow", statusDur: 1.5 },
+  electro: { word: "Thunder", shape: "orb", status: "stun", statusDur: 0.25 },
+  terra: { word: "Granite", shape: "rock" },
+  aero: { word: "Gale", shape: "blade" },
+  hydro: { word: "Tide", shape: "orb" },
+  umbra: { word: "Shadow", shape: "blade", status: "blind", statusDur: 1.2 },
+  lux: { word: "Radiant", shape: "shard", status: "blind", statusDur: 1.2 },
+  gravi: { word: "Void", shape: "rock", status: "slow", statusDur: 1 },
+  tele: { word: "Warp", shape: "disc" },
+  vita: { word: "Verdant", shape: "orb", status: "poison", statusDur: 2, heal: 10 },
+  toxi: { word: "Venom", shape: "orb", status: "poison", statusDur: 3 },
+  chrono: { word: "Hourglass", shape: "disc", status: "slow", statusDur: 1.5 },
+  magneto: { word: "Iron", shape: "shard", status: "stun", statusDur: 0.2 },
+  psy: { word: "Mind", shape: "disc", status: "stun", statusDur: 0.25 },
+  shift: { word: "Morph", shape: "blade", status: "slow", statusDur: 1 },
+};
+
+export function wingMoves(id: Power): Move[] {
+  const w = WINGS[id];
+  const st = w.status ? { status: w.status, statusDur: w.statusDur } : {};
+  // a lingering field re-applies its effect every frame, so a stun there would never wear off
+  const fieldSt = w.status === "stun" ? { status: "slow" as const, statusDur: 0.6 } : w.status ? { status: w.status, statusDur: 0.6 } : {};
+  return [
+    M({ id: "wing-volley", name: `${w.word} Feather Volley`, kind: "projectile", anim: "cast", range: 560, minRange: 80, cd: 2.4, dmg: 4, speed: 620, size: 9, count: 5, spread: 0.16, shape: w.shape, ...st }),
+    M({ id: "wing-dive", name: `${w.word} Dive`, kind: "dash", anim: "lunge", range: 320, cd: 4.5, dmg: 12, dist: 320, act: 0.35, kb: 360, ...st }),
+    M({ id: "wing-skyfall", name: `${w.word} Skyfall`, kind: "rain", anim: "raise", range: 520, cd: 6, dmg: 7, count: 6, radius: 150, wind: 0.35, ...st }),
+    M({ id: "wing-beat", name: `${w.word} Wingbeat`, kind: "burst", anim: "spin", range: 150, cd: 6.5, dmg: 12, radius: 175, kb: 480, lift: -300, heal: w.heal, wind: 0.3, rec: 0.35 }),
+    M({ id: "wing-lance", name: `${w.word} Sky Lance`, kind: "beam", anim: "thrust", range: 600, minRange: 80, cd: 5.5, dmg: 15, act: 0.4, wind: 0.35, ...st }),
+    M({ id: "wing-storm", name: `${w.word} Storm`, kind: "zone", anim: "raise", range: 440, cd: 9, dmg: 5, radius: 130, dur: 3.5, pullIn: 120, wind: 0.35, ...fieldSt }),
+  ];
+}
+
+/** The fighter as a juggernaut: double health and 10 moves. */
+export function juggernautOf(def: FighterDef): FighterDef {
+  return { ...def, hp: def.hp * 2, moves: [...def.moves, ...wingMoves(def.id)] };
+}

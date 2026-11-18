@@ -67,7 +67,7 @@ A result is a **snapshot** of that moment. Before telling the builder anything a
 service's status in a later turn, call the tool again.
 
 Do not send the app builder to Settings for this. The card is the flow; the only other
-place it lives is the app's **Users page** (Grow → Users), which you can mention as where
+place it lives is the app's **Users page** (More → Users), which you can mention as where
 to manage it later. Connecting needs a workspace owner or admin; the card tells anyone
 else so.
 
@@ -113,8 +113,8 @@ described for Kit. What differs:
   sent campaigns in ActiveCampaign, so suggest a list when they pick tags only. Lists and
   tags are created in ActiveCampaign; the picker shows what the account has.
 - Someone who unsubscribed from a list in ActiveCampaign is never put back on it.
-- **A tag per plan:** the "ActiveCampaign tag" field on each subscription plan in Project
-  settings → Grow → Payments and plans, once ActiveCampaign is connected.
+- **A tag per plan:** the "ActiveCampaign tag" field on each subscription plan in More →
+  Settings → Payments, once ActiveCampaign is connected.
 - When it is `unavailable`, say ActiveCampaign is not available for their workspace yet
   and offer Flodesk or Kit. **Nothing stands in for the connection**: not a key or a secret
   box, not a build that calls ActiveCampaign's API, and not Events, a webhook, Zapier or
@@ -168,8 +168,8 @@ promises a field: you do not know the result yet. The card, its states, `unavail
   do not report it as a failed sync.
 - **Double opt-in follows the MailerLite account's own setting.** Stencil does not turn it
   on or off.
-- **A group per plan:** the "MailerLite group" field on each subscription plan in Project
-  settings → Grow → Payments and plans, once MailerLite is connected.
+- **A group per plan:** the "MailerLite group" field on each subscription plan in More →
+  Settings → Payments, once MailerLite is connected.
 - When it is `unavailable`, say MailerLite is not available for their workspace yet and
   offer Flodesk, Kit or ActiveCampaign. **Nothing stands in for the connection**: not a
   key or a secret box, not a build that calls MailerLite's API, and not Events, a webhook,
@@ -258,7 +258,7 @@ list. Server side only — never from the browser.
 - An app on both Flodesk and Kit makes both calls, `addToFlodesk` first.
 
 **A Kit tag per plan needs no code.** The app builder picks a "Kit tag" on each
-subscription plan in Project settings → Grow → Payments and plans (the field appears once
+subscription plan in More → Settings → Payments (the field appears once
 Kit is connected), and the platform tags every app user whose subscription to that plan
 becomes active, on top of the tags saved on the Users page. Point the builder at that
 setting instead of writing a call in a `subscription.activated` handler.

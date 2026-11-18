@@ -10,7 +10,7 @@ metadata:
 
 Every Stencil app can **send** and **receive** email as a product feature — no email service to sign up for, no API keys, nothing for the app builder to configure. You both answer questions about it and build it in the same turn.
 
-Use `createEmail` from `~stencil/email` — **server-side only** (loaders, actions, the webhook route, scheduled handlers), never from the browser. Everything is proxied through the platform; the sender address is built for you, and the display name is the app's **sender name** unless the app passes `fromName`. The app builder sets the sender name in **Project settings → General** (it is the app's title until they change it), so never build a sender-name setting into the app.
+Use `createEmail` from `~stencil/email` — **server-side only** (loaders, actions, the webhook route, scheduled handlers), never from the browser. Everything is proxied through the platform; the sender address is built for you, and the display name is the app's **sender name** unless the app passes `fromName`. The app builder sets the sender name in **More → Settings → General** (it is the app's title until they change it), so never build a sender-name setting into the app.
 
 ## Check the live email identity first
 
@@ -123,7 +123,7 @@ Take the recipients from a row the app owns — an app user in the users table, 
 - **No blast loops.** Don't build a "send to everyone" that iterates an arbitrary table. A digest or newsletter filters on an explicit opt-in column and every message carries an unsubscribe link that flips that column off. Importing a CSV as CRM data the app displays is fine — just don't feed those imported rows into `email.send`.
 - **One send, one recipient** (or the small set the app user picked). `to` is not a mailing list; don't use `bcc` to fan a single call out to many addresses.
 - **The form's reply never says whether the address was already there.** A subscribe, waitlist or sign-up action a signed-out visitor can reach shows one message for every address and puts the real outcome — welcome, already subscribed, confirm — in the email it sends. A "you're already on the list" notice tells any visitor who has joined.
-- **Don't impersonate.** `senderName` names the mailbox the mail comes from (`noreply`, `support`, `billing`) — never a brand or person the app doesn't represent, and don't build a subject or body dressed up as another company. `fromName` is for an app user the app really sends for, and it always arrives as `<fromName> via the app's sender name` (its title until the app builder sets one in Project settings → General), so it cannot pose as an outside brand either.
+- **Don't impersonate.** `senderName` names the mailbox the mail comes from (`noreply`, `support`, `billing`) — never a brand or person the app doesn't represent, and don't build a subject or body dressed up as another company. `fromName` is for an app user the app really sends for, and it always arrives as `<fromName> via the app's sender name` (its title until the app builder sets one in More → Settings → General), so it cannot pose as an outside brand either.
 - **Surface limits, don't route around them.** If a send throws a rate-limit or cap error, let it surface — never add retry, queue, or spread-over-time logic whose purpose is to slip under the cap.
 
 ## Receiving — how it works

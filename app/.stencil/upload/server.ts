@@ -47,6 +47,7 @@ type CompleteBody = {
   parts?: R2UploadedPart[];
 };
 type AbortBody = { action: "abort"; uploadId?: string; key?: string };
+type StatusBody = { action: "status"; key?: string };
 
 const reply = (body: unknown, status = 200) => Response.json(body, { status });
 const refuse = (error: string, status: number) => reply({ error }, status);
@@ -122,6 +123,8 @@ function formatBytes(bytes: number): string {
  * stores one part of at most `UPLOAD_PART_BYTES`. `complete` (JSON) joins the
  * parts, measures the object, deletes it over `maxBytes`, then runs
  * `onComplete`. `abort` drops a failed upload so no half file stays in storage.
+ * `status` (JSON: key) answers the stored size of a finished file, or null, so
+ * a browser continuing a batch after a reload asks instead of remembering.
  * Every refusal is `{ error }` in words an app user can read, with a 4xx status.
  */
 export async function handleUpload(
@@ -153,7 +156,7 @@ export async function handleUpload(
     return reply({ etag: part.etag, partNumber });
   }
 
-  let body: CreateBody | CompleteBody | AbortBody;
+  let body: CreateBody | CompleteBody | AbortBody | StatusBody;
   try {
     body = await request.json();
   } catch {
@@ -209,6 +212,11 @@ export async function handleUpload(
       if (!body.uploadId || !body.key) return refuse("This upload request is incomplete.", 400);
       await storage.resumeMultipartUpload(body.key, body.uploadId).abort();
       return reply({ ok: true });
+    }
+    case "status": {
+      if (!body.key) return refuse("This upload request is incomplete.", 400);
+      const stored = await storage.head(body.key);
+      return reply({ size: stored?.size ?? null, url: `/api/files/${body.key}` });
     }
     default:
       return refuse("This upload request is incomplete.", 400);

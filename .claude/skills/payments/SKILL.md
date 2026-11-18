@@ -65,7 +65,7 @@ Then **wait for the answer** — a real conversation turn, not a step to skip. F
   onboarding once *per app* — it is NOT shared across the other apps in the workspace. Adding
   subscriptions to a second app means onboarding that app separately. The account is created
   without Stripe dashboard access, so the app builder cannot log into it; the **Payments panel**
-  (Project settings → Grow → Payments and plans → Open panel) is the only place they see it.
+  (More → Settings → Payments → Open panel) is the only place they see it.
 - **The country is the one the business is registered in, and it is forever.** Never suggest
   setting the account up under a different country than the one the business is registered in, and
   never describe the country choice as temporary or changeable. Stripe fixes it forever at creation;
@@ -113,7 +113,7 @@ It returns:
 - `payoutIssues` — `currentlyDue` in plain words, one `{ item, whereToFix }` per item. Relay these
   verbatim when the account is restricted or onboarding is stuck: most items are finished in
   Stripe's hosted form (`getPayoutSetupLink`), but **Country** cannot be changed on an existing
-  account — the only fix is **Remove payments account** at the bottom of Project settings → Grow →
+  account — the only fix is **Remove payments account** at the bottom of More → Settings →
   Payments (possible only before any payment was taken), then setting up again with the right
   country. Say so plainly instead of re-sending the onboarding link, which loops.
 - `tiers` — the app's plans in gating order (low→high), or an empty list if none is configured yet.
@@ -249,7 +249,7 @@ When to suggest one: a launch, a first cohort of app users, winning back someone
 
 ## Receipts are automatic
 
-If the app builder asks *"do my customers get a receipt?"* (or a variant), the answer is **yes, automatically** — you don't set anything up and app code doesn't send it. Stencil emails the payer a receipt on every subscription charge (signup and each renewal) and on every one-time sale, the moment Stripe confirms the payment. It's sent from the app's own email domain when the builder has connected one (otherwise Stencil's shared sender), and links Stripe's own receipt. Its From name is the app's **Sender name** (Project settings → General; the app title until the builder sets one), so *"can the receipt come from my business name instead of the app's?"* is answered with that setting — no build, and the app must never build a sender-name setting of its own. Nothing else to configure, and the app should not build its own receipt email on top of it.
+If the app builder asks *"do my customers get a receipt?"* (or a variant), the answer is **yes, automatically** — you don't set anything up and app code doesn't send it. Stencil emails the payer a receipt on every subscription charge (signup and each renewal) and on every one-time sale, the moment Stripe confirms the payment. It's sent from the app's own email domain when the builder has connected one (otherwise Stencil's shared sender), and links Stripe's own receipt. Its From name is the app's **Sender name** (More → Settings → General; the app title until the builder sets one), so *"can the receipt come from my business name instead of the app's?"* is answered with that setting — no build, and the app must never build a sender-name setting of its own. Nothing else to configure, and the app should not build its own receipt email on top of it.
 
 ## The business name buyers see at checkout
 
@@ -259,7 +259,7 @@ after the next publish — a rename alone changes nothing at checkout until then
 on the buyer's card statement.
 
 If the app builder wants a different name there (a company name, say), they set it in the
-**Payments panel → Account tab** (Project settings → Grow → Payments and plans → Open panel). Once
+**Payments panel → Account tab** (More → Settings → Payments → Open panel). Once
 they have changed it by hand, publishing leaves it alone from then on. Never send them to Stripe for
 this — they have no Stripe login.
 
@@ -391,7 +391,7 @@ const openEnded = sub ? new Date(sub.currentPeriodEnd).getFullYear() >= 2099 : f
 
 The status pill follows the same split: "Free trial" for `"trialing"`, "Active" for `"active"`, and a cancelling state whenever `cancelAt` is set.
 
-**Free access** is a plan the app builder gave in Settings → Users without a purchase. The loader reads it with `isComplimentary(sub)` from `~stencil/payments/server` (the `subscription` row alone — never `getBilling` in a loader, §11) and passes it as `free`. On the billing page it shows a "Free access" pill and "Free access — until <date>" when the grant has an end date, nothing about renewing or a price, and **no Manage billing, Change plan, Subscribe or Start my plan button**: there is no Stripe subscription behind it, so every one of those helpers sends the app user straight back to `returnUrl` (`checkout` to `successUrl`) and nothing happens. `hasPlan` already returns `true` for it, so gating needs no change. The pricing page already says "N days free, then $X/mo" (Part 1, Free trial); the billing page is where the app user checks back later, so it must tell the same story.
+**Free access** is a plan the app builder gave in More → Users without a purchase. The loader reads it with `isComplimentary(sub)` from `~stencil/payments/server` (the `subscription` row alone — never `getBilling` in a loader, §11) and passes it as `free`. On the billing page it shows a "Free access" pill and "Free access — until <date>" when the grant has an end date, nothing about renewing or a price, and **no Manage billing, Change plan, Subscribe or Start my plan button**: there is no Stripe subscription behind it, so every one of those helpers sends the app user straight back to `returnUrl` (`checkout` to `successUrl`) and nothing happens. `hasPlan` already returns `true` for it, so gating needs no change. The pricing page already says "N days free, then $X/mo" (Part 1, Free trial); the billing page is where the app user checks back later, so it must tell the same story.
 
 ### `checkout` — start a Stripe checkout session
 
@@ -505,7 +505,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 }
 ```
 
-Only render the "Manage billing" button when `isPro` is `true` **and** `isComplimentary(sub)` is `false`: an app user with no subscription is redirected to `/upgrade`, and one on free access (Settings → Users) has no Stripe subscription to manage, so the helper sends them back to `returnUrl` with nothing to show — render the "Free access" line from "Showing subscription status" instead of the button. The billing page that hosts this button is also where the plan's status and next date are shown; render those per "Showing subscription status" above, so a trialing app user sees "Free trial — first charge of $X on <date>" there and not "Active — Renews".
+Only render the "Manage billing" button when `isPro` is `true` **and** `isComplimentary(sub)` is `false`: an app user with no subscription is redirected to `/upgrade`, and one on free access (More → Users) has no Stripe subscription to manage, so the helper sends them back to `returnUrl` with nothing to show — render the "Free access" line from "Showing subscription status" instead of the button. The billing page that hosts this button is also where the plan's status and next date are shown; render those per "Showing subscription status" above, so a trialing app user sees "Free trial — first charge of $X on <date>" there and not "Active — Renews".
 
 ### A cancel flow with a stay offer — `applyStayOffer` and `pauseSubscription`
 
@@ -777,9 +777,9 @@ Most apps have one plan — for those, always use the `tier` shorthand and pass 
 
 ## 8. Payment receipts are automatic — do not send your own
 
-The platform sends the payment receipt email itself, on Stripe's settled-payment webhook: a new receipt on every subscription charge (signup and each renewal) and one on every one-time sale. It goes to the payer, from the app's own email domain when the builder has connected one (otherwise the shared sender), under the app's **Sender name** (Project settings → General; the app title until set — a builder who wants their business name on receipts changes it there, not in code), and links Stripe's own receipt. **No wiring is required and app code must not send its own receipt** — adding one via the `email` skill (`~stencil/email`) just double-sends. Only add a *different* transactional email (e.g. an order-shipped notice) through that skill.
+The platform sends the payment receipt email itself, on Stripe's settled-payment webhook: a new receipt on every subscription charge (signup and each renewal) and one on every one-time sale. It goes to the payer, from the app's own email domain when the builder has connected one (otherwise the shared sender), under the app's **Sender name** (More → Settings → General; the app title until set — a builder who wants their business name on receipts changes it there, not in code), and links Stripe's own receipt. **No wiring is required and app code must not send its own receipt** — adding one via the `email` skill (`~stencil/email`) just double-sends. Only add a *different* transactional email (e.g. an order-shipped notice) through that skill.
 
-One exception, for sales by the app's sellers only (app users charging their own customers, the `selling` skill): an app that sends its own receipt for those should have the app builder turn **Send payment receipts** off in Project settings → Payments and plans. The app builder's own plans and products keep the platform receipt whatever that switch says.
+One exception, for sales by the app's sellers only (app users charging their own customers, the `selling` skill): an app that sends its own receipt for those should have the app builder turn **Send payment receipts** off in More → Settings → Payments. The app builder's own plans and products keep the platform receipt whatever that switch says.
 
 ## 9. Platform-owned tables are read-only
 
@@ -787,7 +787,7 @@ The tables `subscription`, `user`, `session`, `account`, `verification`, and eve
 
 If a platform gate blocks something the builder wants — most commonly "let these app users in without paying" — the answer is a Stencil-side path, never a row and never switching the gate off:
 
-- **Never disable or bypass a paywall as a workaround.** Free, beta or comped access for chosen app users is a dashboard action, not app code: in **Settings → Users**, the builder opens a person and clicks **Give free access** (choosing the plan and an optional end date), or uses **Add person** on an invite-only or pay-first app to create the account with a plan and get a sign-in link. The grant writes the platform's own `subscription` row, so `requireSubscription` and `getSubscription` honour it with no app changes. Send the builder there — do not invent a "beta mode", a comp flag, an allowlist, or comment the gate out. **Add person** also takes a pasted list of addresses or a CSV, up to 100 at a time, and puts everyone on one plan; point the app builder to it before building an importer. An app builder who wants past their **own** paywall in the App preview simply buys the plan there as the preview user: the platform discounts that checkout to $0 (Stripe's page still asks for a card, no code appears, and the purchase never shows in the Payments panel or counts as a sale), and the preview user is entitled afterwards like any subscriber. That works for app plans only; one-time products still charge the real price in the preview.
+- **Never disable or bypass a paywall as a workaround.** Free, beta or comped access for chosen app users is a dashboard action, not app code: in **More → Users**, the builder opens a person and clicks **Give free access** (choosing the plan and an optional end date), or uses **Add person** on an invite-only or pay-first app to create the account with a plan and get a sign-in link. The grant writes the platform's own `subscription` row, so `requireSubscription` and `getSubscription` honour it with no app changes. Send the builder there — do not invent a "beta mode", a comp flag, an allowlist, or comment the gate out. **Add person** also takes a pasted list of addresses or a CSV, up to 100 at a time, and puts everyone on one plan; point the app builder to it before building an importer. An app builder who wants past their **own** paywall in the App preview simply buys the plan there as the preview user: the platform discounts that checkout to $0 (Stripe's page still asks for a card, no code appears, and the purchase never shows in the Payments panel or counts as a sale), and the preview user is entitled afterwards like any subscriber. That works for app plans only; one-time products still charge the real price in the preview.
 - **Wiring real checkout retires every earlier self-grant path in the same build.** An app that had a beta unlock, an "approved" grant table, a test-pay intent, a hard-coded "remove before launch" account or a comp flag before payments existed keeps none of it once `requireSubscription` is in: delete the route and the button, and make the gate read the `subscription` row alone. A branch that "still honours the older grant for anyone unlocked before payments existed" is a paywall any signed-in app user can walk through, and the Security scan reports it as one. App users who were let in during the beta get **Give free access** from the app builder, not a legacy branch in code.
 - **Never claim Stencil is working on or restoring something.** State what the platform does today; if you don't know, say you don't know.
 
@@ -884,7 +884,7 @@ export const schedules: ScheduleManifestEntry[] = [
 
 **Store the result, then compute from the store.** Commission and referral math reads the app's own table that holds `invoiceId` + `amountPaidCents`; it does not call Stripe on every page. The success page and the daily job are the only two places that write that table.
 
-**Complimentary subscribers** (access the app builder gave in Settings → Users) come back with `complimentary: true`, `listPriceCents: 0` and an empty `payments` array. Handle it — an empty `payments` array is not a bug, and there is nothing to log or pay commission on.
+**Complimentary subscribers** (access the app builder gave in More → Users) come back with `complimentary: true`, `listPriceCents: 0` and an empty `payments` array. Handle it — an empty `payments` array is not a bug, and there is nothing to log or pay commission on.
 
 ### Counts and totals across every app user — `getSubscriberSummary`
 
@@ -933,7 +933,7 @@ Everything the platform charges is already safe to repeat: `checkout`, `buy` and
 
 In conversation:
 
-- **App builders have no Stripe login and no Stripe dashboard. Never send an app builder to Stripe.** Their money surface is the **Payments panel** (Project settings → Grow → Payments and plans → Open panel). Where things happen:
+- **App builders have no Stripe login and no Stripe dashboard. Never send an app builder to Stripe.** Their money surface is the **Payments panel** (More → Settings → Payments → Open panel). Where things happen:
   - Plans, one-time products, free trial and discount codes: from chat — `setSubscriptionPrice`, `setOneTimePrice`, `setFreeTrial`, `createCoupon`, `listCoupons`, `removeCoupon`.
   - Subscriber list, cancel a subscriber, refund their latest payment, transactions, disputes, payouts, account status: the Payments panel.
   - Earnings, Stripe fees, net, payouts and tax forms: the Payments panel's **Overview** (gross, refunds, Stripe fees, net), **Payouts** (available and pending balance, payout schedule) and **Account → Tax documents** (the tax forms Stripe files for the account). The **Transactions** tab lists single payments and refunds and carries no fee or net figure, so never answer a fees, net or earnings question with it, whatever an older docs page says. A managed app has no Payouts or Account tab, so its figures are on Overview alone. App code cannot read the app builder's own fees, net or payouts: say so, name those tabs, and offer a gross-only section in the app (see "In app code"). Saying where Stripe's fees are shown is not volunteering Stencil's fees.
@@ -959,14 +959,14 @@ In conversation:
 In app code:
 
 - **No custom Stripe code until the app builder has confirmed it** (see "In conversation"). Until then: no `stripe.js`, no `loadStripe()`, no Stripe secret key — sell and gate with the SDK in this skill.
-- **A route another payment service posts to (PayPal, a checkout or affiliate tool) is a webhook — load the `webhooks` skill and build it there.** It refuses every delivery until its verification secret is saved in Settings → Build → Secrets: never verify "only if the secret is set", never fall back to a value written in the code. A forged delivery to a route that creates a paid account, cancels a buyer or marks a payout paid is money lost.
+- **A route another payment service posts to (PayPal, a checkout or affiliate tool) is a webhook — load the `webhooks` skill and build it there.** It refuses every delivery until its verification secret is saved in More → Settings → Secrets: never verify "only if the secret is set", never fall back to a value written in the code. A forged delivery to a route that creates a paid account, cancels a buyer or marks a payout paid is money lost.
 - **Never store purchase state yourself** — sell with `buy()` and gate with `requirePurchase()` / `hasPurchased()` (§10).
 - **Never store subscription state yourself.** Use `getSubscription()` / `requireSubscription()` — they read from the platform's D1 table.
 - **Never log, report or pay out money from the `subscription` row or `~/generated/tiers`.** What a person paid comes from `getBilling()` / `getBillingFor()` (§11): on the success page, in actions and in a daily `schedules.ts` job, never in an ordinary loader.
 - **An earnings, revenue or "tax statement" section in the app shows gross only.** It reads `getSubscriberSummary()` / `getBillingFor()` (§11), is titled as gross ("Gross sales, before Stripe fees"), and says the full figures (fees, net, deposits, tax forms) are in Stencil's Payments panel. Neither read returns a fee, a net or a payout: never estimate fees or tax in app code.
 - **Never count the `subscription` table for a dashboard.** Subscriber counts, MRR and sales totals come from `getSubscriberSummary()` (§11), behind `requireRole(request, env, "admin")`.
 - **Platform tables are read-only** (see §9). Never INSERT/UPDATE/DELETE `subscription`, `user`, `session`, `account`, `verification`, or `oauth_*`.
-- **Never disable or bypass a paywall, and never claim Stencil is working on something** (see §9) — free access for a chosen app user is given in Settings → Users.
+- **Never disable or bypass a paywall, and never claim Stencil is working on something** (see §9) — free access for a chosen app user is given in More → Users.
 - **Always use `!paymentsEnabled || ...` in your active check.** Never gate on `sub?.status === "active"` alone.
 - **`sub` is always nullable** — it's `null` any time the user hasn't subscribed. Don't use `sub === null` as a signal that payments are disabled; use `paymentsEnabled` directly.
 - **`checkout()` and `manageSubscription()` must be called from server actions**, not loaders or client code. Both throw a redirect.

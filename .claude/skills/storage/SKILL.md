@@ -90,7 +90,9 @@ import { uploadFile, uploadFiles, UploadError } from "~stencil/upload/client";
 const { key, url } = await uploadFile(file, { onProgress: setPercent });
 
 // Many files — a multi-select or a dropped folder — three at a time; every file is tried.
+// `batch` names the record the files attach to (see below).
 const { uploaded, failed } = await uploadFiles(input.files, {
+  batch: `gallery:${gallery.id}`,
   onProgress: setPercent,
   onFile: ({ file, error }) => error && toast.error(`${file.name}: ${error.message}`),
 });
@@ -98,7 +100,23 @@ const { uploaded, failed } = await uploadFiles(input.files, {
 
 A refusal or a failure is an `UploadError`: show `error.message` as it is — "That file is over 500 MB.", "That file type isn't accepted here (images, videos or PDF).", "That file isn't the type its name says it is." or "The upload didn't finish. Check your connection and try again." — never a message of your own. Pass `signal` from an `AbortController` for a Cancel button. Tell app users what the field takes before they pick: the formats and the size cap go in the field's help text and in `<input accept>`, from the same values the route uses.
 
-What the uploader owns, so the app does not: 10 MB parts, up to three files in flight, four attempts per part with a growing pause, byte-level progress, an abort that leaves no half file in storage, and the type decision — the server reads it from the file's first bytes, so an iPhone photo with no declared type is stored as `image/heic` and a web page renamed `.png` is not stored as an image.
+**An interrupted batch continues.** `uploadFiles` remembers its batch in the browser until it returns, so a reload, a closed laptop or a crashed tab loses nothing that already landed. Every screen that calls `uploadFiles` names the record it uploads into as `batch`, checks for that record's batch on load and offers to continue it:
+
+```tsx
+import { interruptedUploads, forgetInterruptedUploads } from "~stencil/upload/client";
+
+const batch = `gallery:${gallery.id}`; // the same value in all three calls
+await uploadFiles(input.files, { batch, onProgress: setPercent });
+
+// In an effect on the upload screen, keyed on `batch`: [] when nothing was cut short here.
+const waiting = await interruptedUploads({ batch });
+const stored = waiting.filter((f) => f.stored).length;
+// → "212 of 300 photos were uploaded before the page closed. Pick the same folder to send the rest."
+```
+
+A browser cannot keep the files themselves across a reload, so the offer asks the app user to pick the same files or folder again, and the screen passes them to `uploadFiles` as usual. Files already in storage are not sent again and come back in `uploaded` with `resumed: true` and their original `key`; a half-sent file continues from its last finished part; the rest upload normally. Save rows by `key` (insert only when no row has it), because a file whose row was saved before the reload comes back a second time. A "Start over" or "Dismiss" button calls `forgetInterruptedUploads({ batch })`. Never build a "retry failed" list or keep batch state in component state or `localStorage` yourself. `batch` keeps one record's offer off another's: a batch cut short in gallery 1 is offered in gallery 1 only, and the same files picked in gallery 2 upload fresh instead of coming back `resumed` with gallery 1's keys. Build it from the row the files attach to (`gallery:<id>`, `order:<id>:receipts`); a screen with no row yet uses a fixed name of its own (`new-listing`). Never call any of the three without it on a screen that uploads into a record. Add the same `route` (`{ route, batch }`) to all three when the screen uses one other than `/api/upload`. `uploadFile` (one file) does not continue after a reload.
+
+What the uploader owns, so the app does not: 10 MB parts, up to three files in flight, four attempts per part with a growing pause, byte-level progress, a batch that continues after a reload, an abort that leaves no half file in storage (a batch file cut off by a lost connection is kept for up to 6 days so it can continue), and the type decision — the server reads it from the file's first bytes, so an iPhone photo with no declared type is stored as `image/heic` and a web page renamed `.png` is not stored as an image.
 
 **What is inside the upload** — the text of a PDF or text file, the words in a photo or scan, fields out of an invoice or form — is `createAI(env).readDocument({ file: { key } })` from `~stencil/ai`, read once after the upload and stored on the row: the `document-reading` skill. Never a PDF, Word or OCR library; Word files and spreadsheets are not read yet, so say so.
 
@@ -281,6 +299,9 @@ screens, lightboxes:
 - `fit=cover`, `fit=crop` and `object-cover` are for avatars, icons, thumbnails of a
   known shape, and galleries the app builder explicitly asked to be uniform. Make that
   crop visible in the code (`aspect-square`) so it reads as a choice, not an accident.
+  When the app user should choose what the frame keeps (a profile photo, a cover),
+  show the ready crop control after they pick the file: "An app user frames the
+  photo" in the `image-transform` skill.
 - Save the photo's pixel size next to its key so `<img width height>` reserves the
   right box and the page doesn't shift as photos load. Read it in the browser before
   the upload and send it with the file:

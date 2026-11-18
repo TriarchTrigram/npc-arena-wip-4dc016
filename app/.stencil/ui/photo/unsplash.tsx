@@ -6,10 +6,15 @@ const UNSPLASH_HOME = "https://unsplash.com/";
 
 const SRCSET_WIDTHS = [480, 768, 1080, 1440, 1920];
 
+export type PhotoSource = "unsplash" | "pexels" | "public-domain";
+
 export interface UnsplashCredit {
   photographer: string;
-  photographerUrl: string;
+  /** Absent for a photo from Stencil's library, whose credit links the photo's own page. */
+  photographerUrl?: string;
   photoUrl: string;
+  /** Where the photo is from; absent means Unsplash. */
+  source?: PhotoSource;
 }
 
 /** One placed photo as placeStockPhoto returned it. `credit` is null only for a slot that fell
@@ -45,6 +50,46 @@ export function withReferral(url: string): string {
   u.searchParams.set("utm_source", UTM_SOURCE);
   u.searchParams.set("utm_medium", "referral");
   return u.toString();
+}
+
+const SOURCE_HOME: Record<PhotoSource, string> = {
+  unsplash: UNSPLASH_HOME,
+  pexels: "https://www.pexels.com/",
+  "public-domain": "",
+};
+const SOURCE_NAME: Record<PhotoSource, string> = { unsplash: "Unsplash", pexels: "Pexels", "public-domain": "the public domain" };
+
+function sourceOf(credit: UnsplashCredit): PhotoSource {
+  return credit.source ?? "unsplash";
+}
+
+/** Where the photographer's name links: their page when known, else the photo's; Unsplash links carry the referral. */
+function photographerHref(credit: UnsplashCredit): string {
+  const url = credit.photographerUrl ?? credit.photoUrl;
+  return sourceOf(credit) === "unsplash" ? withReferral(url) : url;
+}
+
+/** "on Unsplash" / "on Pexels" / "from the public domain", the source linked where it has a home page. */
+function SourceLink({ credit }: { credit: UnsplashCredit }) {
+  const source = sourceOf(credit);
+  if (source === "public-domain")
+    return (
+      <>
+        from{" "}
+        <a href={credit.photoUrl} target="_blank" rel="noopener noreferrer">
+          the public domain
+        </a>
+      </>
+    );
+  const home = source === "unsplash" ? withReferral(SOURCE_HOME.unsplash) : SOURCE_HOME[source];
+  return (
+    <>
+      on{" "}
+      <a href={home} target="_blank" rel="noopener noreferrer">
+        {SOURCE_NAME[source]}
+      </a>
+    </>
+  );
 }
 
 /** One sized rendition of a raw Unsplash URL; keeps its `ixid` and every other parameter it came with. */
@@ -127,7 +172,7 @@ export function UnsplashPhoto({
     if (!registry || !credit) return;
     return registry.addPhoto(credit);
     // Keyed on the credit's fields: callers often build the credit object inline, every render.
-  }, [registry?.addPhoto, credit?.photographer, credit?.photographerUrl, credit?.photoUrl]);
+  }, [registry?.addPhoto, credit?.photographer, credit?.photographerUrl, credit?.photoUrl, credit?.source]);
   const srcSet = hosted ? SRCSET_WIDTHS.map((w) => `${unsplashSrc(src, w, ratio, quality)} ${w}w`).join(", ") : undefined;
   return (
     <figure className={join("group relative m-0 overflow-hidden", className)} style={ratio ? { aspectRatio: ratio } : undefined}>
@@ -151,13 +196,10 @@ export function UnsplashPhoto({
           )}
         >
           Photo by{" "}
-          <a href={withReferral(credit.photographerUrl)} target="_blank" rel="noopener noreferrer">
+          <a href={photographerHref(credit)} target="_blank" rel="noopener noreferrer">
             {credit.photographer}
           </a>{" "}
-          on{" "}
-          <a href={withReferral(UNSPLASH_HOME)} target="_blank" rel="noopener noreferrer">
-            Unsplash
-          </a>
+          <SourceLink credit={credit} />
         </figcaption>
       )}
     </figure>
@@ -176,25 +218,43 @@ export function UnsplashCredits({ credits, className }: { credits?: Array<Unspla
 }
 
 function CreditsLine({ credits, className }: { credits: Array<UnsplashCredit | null>; className?: string }) {
+  const groups = new Map<PhotoSource, UnsplashCredit[]>();
   const seen = new Set<string>();
-  const photographers = credits.filter((c): c is UnsplashCredit => c !== null && !seen.has(c.photographerUrl) && !!seen.add(c.photographerUrl));
-  if (photographers.length === 0) return null;
+  for (const c of credits) {
+    if (!c) continue;
+    const key = `${sourceOf(c)}|${c.photographer}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    groups.set(sourceOf(c), [...(groups.get(sourceOf(c)) ?? []), c]);
+  }
+  if (groups.size === 0) return null;
   return (
     <p className={join("text-xs text-muted-foreground [&_a]:underline [&_a]:underline-offset-2", className)}>
-      Photos from{" "}
-      <a href={withReferral(UNSPLASH_HOME)} target="_blank" rel="noopener noreferrer">
-        Unsplash
-      </a>{" "}
-      by{" "}
-      {photographers.map((c, i) => (
-        <span key={c.photographerUrl}>
-          {i > 0 && (i === photographers.length - 1 ? " and " : ", ")}
-          <a href={withReferral(c.photographerUrl)} target="_blank" rel="noopener noreferrer">
-            {c.photographer}
-          </a>
+      {[...groups].map(([source, photographers], g) => (
+        <span key={source}>
+          {g > 0 && " "}
+          Photos{" "}
+          {source === "public-domain" ? "from the public domain" : <>from <SourceHome source={source} /></>} by{" "}
+          {photographers.map((c, i) => (
+            <span key={c.photographer}>
+              {i > 0 && (i === photographers.length - 1 ? " and " : ", ")}
+              <a href={photographerHref(c)} target="_blank" rel="noopener noreferrer">
+                {c.photographer}
+              </a>
+            </span>
+          ))}
+          .
         </span>
       ))}
-      .
     </p>
+  );
+}
+
+function SourceHome({ source }: { source: Exclude<PhotoSource, "public-domain"> }) {
+  const home = source === "unsplash" ? withReferral(SOURCE_HOME.unsplash) : SOURCE_HOME[source];
+  return (
+    <a href={home} target="_blank" rel="noopener noreferrer">
+      {SOURCE_NAME[source]}
+    </a>
   );
 }

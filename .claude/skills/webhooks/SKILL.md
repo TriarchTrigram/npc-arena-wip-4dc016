@@ -134,7 +134,7 @@ Never ask for the value in the conversation and never stub it. Write the route a
 exact name and say in your report who makes the value:
 
 - **The sender issues it** (GitHub, Stripe, Mux, Framer and most services): the app builder
-  copies it from the sender's webhook settings and saves it in Settings → Build → Secrets.
+  copies it from the sender's webhook settings and saves it in More → Settings → Secrets.
 - **The sender issues nothing** (Zapier, the app builder's own Worker or script): the app
   builder makes it in Stencil — the Chat Agent opens the secure box with `generate`, they
   copy the value before saving, then paste it into the sender. The value travels from
@@ -150,7 +150,7 @@ old one (**Replace value** on the box or the Secrets page) and pasted into the s
    settings page needs a complete `https://` URL, not a path. Nothing in the product shows
    it to them, so state it.
 2. **The secret's name**, and which way it travels. When the sender issues it, it is shown
-   once as the webhook is created and they save it in **Settings → Build → Secrets**. When
+   once as the webhook is created and they save it in **More → Settings → Secrets**. When
    the sender issues nothing, they generate it in the secure box, copy it before saving, and
    paste it into the sender. Either way they **redeploy** — a secret changes nothing until
    the app is published again — and the saved value cannot be seen again afterwards.

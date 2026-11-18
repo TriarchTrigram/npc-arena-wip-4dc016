@@ -22,7 +22,8 @@ NPC Arena is a single-player game where you watch 16 power-themed NPCs fight. No
 - Every fighter has 4 moves; the builder said 4 is enough (no 11 to 14 target).
 - Teams: 2, 3 or 4 teams (Red, Blue, Gold, Green), fighters join in pick order (Shuffle teams reorders). `newGame(ids, preview, teams)` takes a team per fighter; the engine's one `foe()` check stops friendly damage, friendly clashes and targeting teammates. Team rings on the floor and team-coloured names. A team wins when the other teams are out.
 - Tournament: single-elimination bracket (`app/lib/bracket.ts`, drawn by `app/components/bracket-view.tsx`), 3 to 16 entrants shuffled with byes. Each match is a normal 1v1 game; the player presses Start / Next match round by round. A double K.O. is replayed. Picks lock while a tournament is under way.
-- Planned modes not built yet: Juggernaut (5 vs 1 winged juggernaut with 10 moves and double health), Double Elimination, Team Tournament.
+- Juggernaut: 5 challengers (team 0) vs 1 juggernaut (team 1) picked from a dropdown. `newGame(ids, preview, teams, juggIndex)` turns that fighter into `juggernautOf(def)` from `fighters.ts` (double health, its 4 moves plus 6 element wing moves from `wingMoves`). In the engine the `jugg` flag means: always flying at `hoverY` (swoops low to melee), drawn with element wings, boss bar at the top, super armour, half knockback, effects last a third as long, and for balance 3x damage and 0.4x cooldowns (simulated win rate about 25 to 50%).
+- Planned modes not built yet: Double Elimination, Team Tournament. Hybrids, Story mode, title screen, sound and music, spawn intros and unique move effects are on the to-do list.
 Everything below this section is Stencil's platform documentation.
 
 ## Platform-managed — don't touch
@@ -682,6 +683,12 @@ The platform ships a notification store: a fixed-shape `notification` table in t
 
 An app that speaks more than one language gets `<LanguageSwitcher />` from `~stencil/ui/language-switcher` in its header, next to the account menu. It lists the app's languages, remembers the app user's pick for this browser and on their account, and renders nothing while the app speaks one language, so it is safe in every app. Never hand-build a language picker, a language column on app users, or a locale cookie. `useLocale()` from `~stencil/react-router/root` gives a screen the current language.
 
+An app with no `app/strings/strings.<language>.json` file speaks one language, and it cannot gain a second one yet: there is no setting for it that the app builder can open, and you cannot add one. When the app builder asks for a second language, a translation beside the original, or a language switcher:
+
+- Say plainly in your reply, the first time, that a second language is not available on Stencil yet. Never name a settings page for it, never tell them to add a language, and never end a turn waiting for one to appear.
+- Build every other part of the request, and never build your own way round this one: the rule above holds however they ask.
+- Offer what works today: the whole app in one other language instead, by rewriting the values in `strings.json`, or staying in the current language until Stencil supports a second.
+
 ## App agents
 
 An app user can start a long-running AI worker from inside the app — minutes of work over several files, with progress on screen, one question at a time when it is unsure, and an output the app user accepts before anything lands in the app's storage. A definition is `app/agents/<name>/index.ts` (`defineAgent` from `~stencil/agents`, with an optional zod `output` whose validated `result` reaches `onDone`), its knowledge is `skills/<topic>/SKILL.md` beside it, `createAgents(env).run(name, { message, files, input, onBehalfOf })` starts it from a route that has checked ownership, `send(runId, message)` and `answer(runId, questionId, value)` steer it, and `<AgentRunView>` from `~stencil/ui/agents/run` shows the run and lets the app user send a note or a photo mid-run. `stencilAgentRoutes` stays registered in `app/routes.ts`.
@@ -983,7 +990,7 @@ import { Text } from "~stencil/ui/strings";
 - TypeScript will error on any key not present in `strings/strings.json`
 - When you rename or remove a key in `strings.json`, grep `app/` for the old key and fix every `<Text id>` that references it before running the typecheck — a wholesale rewrite is a rename across every route that used the old keys
 - Only exception: `meta()` returns plain objects, not JSX — page title/description strings there are hardcoded
-- An app that speaks more than one language also has `app/strings/strings.<language>.json` (`strings.es.json`) for each extra language: the same keys as `strings.json`, holding that language's text. A key it lacks shows the `strings.json` text, so the file may cover only part of the app. Edit it when the app builder asks for a translation or for wording in that language, and never add a key `strings.json` does not have. Never create one of these files: the platform writes one per language the app builder added under Project settings → Launch → Languages, and a file for any other language is never shown.
+- An app that speaks more than one language also has `app/strings/strings.<language>.json` (`strings.es.json`) for each extra language: the same keys as `strings.json`, holding that language's text. A key it lacks shows the `strings.json` text, so the file may cover only part of the app. Edit it when the app builder asks for a translation or for wording in that language, and never add a key `strings.json` does not have. Never create one of these files: the platform writes one per language the app speaks, and a file for any other language is never shown.
 - `platform.updateNotice.message` and `platform.updateNotice.action` are read by the platform itself: the small bar app users see when a publish lands while they have the app open, and the error screen when a page from the old version fails. Edit their values to change that copy; the keys may also be left out, and the default copy shows. Never reference them with `<Text>`. `platform.languageSwitcher.label` is the same kind of key: the platform reads it as the language control's accessible name, so a translated copy of `strings.json` carries it in that language.
 
 ### Copy behind a gate: `strings.json` and page code are public

@@ -21,7 +21,7 @@ A recurring action is always **two edits that agree on a `name`**.
 
 This manifest lists every recurring action. On each production deploy the platform reconciles it into its registry: new entries register, changed entries update in place keyed by `name`, removed entries stop firing.
 
-**Schedules run only on the Published app.** A build deploys the App preview, which never registers schedules. `app/schedules.ts` is reconciled only when the app builder publishes. Until then the job does not run and Project settings → Automations shows nothing. Whenever you add or change a schedule, say so in your report in plain words: "This runs on its own once you publish. Until then it does nothing, and it won't appear in Automations." Never describe a scheduled action as already running, or a problem as "now handled automatically", while it exists only in the App preview.
+**Schedules run only on the Published app.** A build deploys the App preview, which never registers schedules. `app/schedules.ts` is reconciled only when the app builder publishes. Until then the job does not run and More → Automations shows nothing. Whenever you add or change a schedule, say so in your report in plain words: "This runs on its own once you publish. Until then it does nothing, and it won't appear in Automations." Never describe a scheduled action as already running, or a problem as "now handled automatically", while it exists only in the App preview.
 
 ```ts
 export const schedules: ScheduleManifestEntry[] = [

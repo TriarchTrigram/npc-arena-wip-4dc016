@@ -113,6 +113,37 @@ different stored asset — a watermarked copy that must exist so the clean sourc
 is never served (see the `watermark` skill), or a permanent conversion of the
 stored file itself.
 
+## An app user frames the photo: the ready crop control
+
+"Drag your photo into place" for an avatar, a cover or a banner is a ready control on an
+app built from the component library: install `image-cropper` with `components_get` and
+show it right after the app user picks the photo, before the upload is saved. Never write
+a crop frame, a zoom slider or drag maths there, and never crop with a canvas in the
+browser. It offers a circle, square or 16:9 frame (no rotate, flip or tilt) and reports
+the chosen frame and a rectangle: `onChange({ shape, area })`, `shape` being `"circle"`,
+`"square"` or `"landscape"` (16:9) and `area` being `{ x, y, width, height }` as
+fractions (0–1) of the original. Post both with the file, turn `area` into `trim`, and
+give the output the frame's own shape:
+
+```ts
+// width and height: the source's pixel size (see "Photos keep their shape" in `storage`)
+const left = Math.round(area.x * width);
+const top = Math.round(area.y * height);
+const trim = {
+  left,
+  top,
+  right: Math.max(0, width - left - Math.round(area.width * width)),
+  bottom: Math.max(0, height - top - Math.round(area.height * height)),
+};
+// A box in any other shape makes `cover` cut into the area the app user framed.
+const size = shape === "landscape" ? { width: 1600, height: 900 } : { width: 512, height: 512 };
+const { body } = await createImage(env).transform(file, { trim, ...size, fit: "cover" });
+```
+
+A circle is stored as its square and shown with `rounded-full`. A phone photo saved
+sideways needs nothing extra: the browser's pixel size, `area` and `trim` all measure
+the photo as it is displayed, so never swap the axes or add `rotate` for it.
+
 ## Downscale before an AI vision call
 
 A full-size photo wastes tokens and can exceed model input limits. When stored

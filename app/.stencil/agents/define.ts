@@ -38,7 +38,7 @@ export interface AgentDefinitionInput<O extends OutputSchema = OutputSchema> {
   /** Folder name under `app/agents/`; the id a trigger route passes to `run()`. */
   name: string;
   description: string;
-  /** The recommended model; the app builder can pick another in Project settings → Build → Agents. */
+  /** The recommended model; the app builder can pick another in More → Agents. */
   model?: string;
   /** One short line on why that model is the recommendation. */
   modelReason?: string;

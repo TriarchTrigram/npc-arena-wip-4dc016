@@ -8,7 +8,8 @@
       "duel": "Duel",
       "ffa": "Free for all",
       "teams": "Teams",
-      "tournament": "Tournament"
+      "tournament": "Tournament",
+      "juggernaut": "Juggernaut"
     },
     "pick": {
       "title": "Fighters",
@@ -19,7 +20,8 @@
       "clear": "Clear",
       "teamsHint": "Pick at least 2 fighters for each team. Fighters join teams in the order you pick them.",
       "tournamentHint": "Pick 3 to 16 fighters for the bracket.",
-      "lockedHint": "Picks are locked until this tournament ends."
+      "lockedHint": "Picks are locked until this tournament ends.",
+      "juggHint": "Pick five challengers to face the juggernaut."
     },
     "controls": {
       "start": "Start",
@@ -58,7 +60,9 @@
       "doubleKo": "Double K.O. This match will be replayed.",
       "nextMatch": "Next match",
       "rematch": "Replay match",
-      "newTournament": "New tournament"
+      "newTournament": "New tournament",
+      "juggernaut": "{{name}} the juggernaut wins!",
+      "challengers": "The challengers win!"
     },
     "idle": "Press Start to begin the battle",
     "teams": {
@@ -83,7 +87,12 @@
       "champion": "Champion",
       "matchOf": "Match {{n}} of {{total}}"
     },
-    "idleTournament": "Press Start for the next match"
+    "idleTournament": "Press Start for the next match",
+    "jugg": {
+      "label": "Juggernaut",
+      "perks": "Flies on wings, has 10 moves and double health.",
+      "badge": "Boss"
+    }
   },
   "nav": {},
   "common": {

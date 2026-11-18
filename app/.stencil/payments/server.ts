@@ -83,7 +83,7 @@ export function hasPlan(
 }
 
 /**
- * Whether a subscription row is free access the app builder gave in Settings → Users.
+ * Whether a subscription row is free access the app builder gave in More → Users.
  * Such a row has no Stripe customer or subscription behind it: nothing to manage in
  * the billing portal, nothing to pay for.
  */

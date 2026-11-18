@@ -1469,7 +1469,8 @@ export async function getSubscriptions(
  * The "Manage billing" button: throws a redirect to Stripe's billing portal for
  * the signed-in user's subscription to `productId`, returning to `returnUrl`. The
  * portal is where subscribers update their card, see invoices and cancel — do
- * not build any of those in the app. Every change there flows back to
+ * not build any of those in the app (a seller ending a subscriber's billing is
+ * `cancelSubscriber`). Every change there flows back to
  * `hasActiveSubscription` on its own. Without a subscription it redirects to
  * `returnUrl` with `?billing_error=not_subscribed`.
  */
@@ -1501,4 +1502,35 @@ export async function manageSellerSubscription(
     throw redirect(back.toString());
   }
   throw new Error(data.error ?? "Could not open billing");
+}
+
+export type CancelSubscriberResult =
+  /** Billing is stopped. `alreadyEnded`: nothing was left to cancel. */
+  | { canceled: true; alreadyEnded: boolean }
+  /** This person never subscribed to the seller, so there was nothing to stop. */
+  | { canceled: false; reason: "not_subscribed" };
+
+/**
+ * Stop billing one of a seller's subscribers, in the same action that removes them. `period_end`
+ * keeps access to the paid date, `immediate` ends it now; neither refunds. The seller is the signed-in
+ * user, or `sellerUserId` read from your own stored record, never from the request.
+ */
+export async function cancelSubscriber(
+  request: Request,
+  context: AppContext,
+  opts: { subscriberUserId: string; mode: "period_end" | "immediate"; sellerUserId?: string },
+): Promise<CancelSubscriberResult> {
+  const env = context.cloudflare.env;
+  const sellerUserId = opts.sellerUserId ?? (await requireAuth(request, env)).user.id;
+  const res = await paymentsFetch(
+    env,
+    `/v1/apps/${await resolveAppId(env)}/sellers/${encodeURIComponent(sellerUserId)}/subscriptions/cancel`,
+    { method: "POST", body: JSON.stringify({ buyerUserId: opts.subscriberUserId, mode: opts.mode }) },
+  );
+  const data = await res
+    .json<{ alreadyCanceled?: boolean; error?: string; code?: string }>()
+    .catch(() => ({}) as { alreadyCanceled?: boolean; error?: string; code?: string });
+  if (res.ok) return { canceled: true, alreadyEnded: data.alreadyCanceled === true };
+  if (res.status === 404 && data.code === "not_subscribed") return { canceled: false, reason: "not_subscribed" };
+  throw new Error(`${data.code ?? "cancel_failed"}: ${data.error ?? "Could not cancel the subscription"}`);
 }

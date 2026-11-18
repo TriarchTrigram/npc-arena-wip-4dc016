@@ -59,7 +59,7 @@ interface Window {
     declare?(names: string[]): void;
     /**
      * The support widget's panel. Present only on the published app with
-     * "Support in-app button" on in Project settings → Support → Setup.
+     * "Support in-app button" on in Support → Setup.
      * `window` also gets a `stencil:support-unread` event with `detail: { count }`
      * whenever the unread count changes.
      */

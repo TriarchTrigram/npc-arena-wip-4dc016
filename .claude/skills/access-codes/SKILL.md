@@ -63,14 +63,14 @@ Call it in **both** places, before anything else looks at the code or the pass:
 
 ```ts
 // loader
-if ((await syncPartyCode(env)) === "no code yet") return { noCode: true }; // set in Settings → Build → Secrets
+if ((await syncPartyCode(env)) === "no code yet") return { noCode: true }; // set in More → Settings → Secrets
 const pass = await getAccessPass(request, env, { purpose: "party-page", subject: "party" });
 // action
 if ((await syncPartyCode(env)) === "no code yet") return { error: "This page has no code yet." };
 const result = await verifyAccessCode(env, request, { purpose: "party-page", subject: "party", code: typed });
 ```
 
-Tell the app builder to save the code from the prompt as `PARTY_CODE` in **Settings → Build →
+Tell the app builder to save the code from the prompt as `PARTY_CODE` in **More → Settings →
 Secrets**; until then the page says it has no code yet and stays locked. Changing the secret
 changes the code and ends every old pass, so the loader must sync too: a visitor who unlocked
 under the old code is sent back to the code box on their next visit, even if they never type

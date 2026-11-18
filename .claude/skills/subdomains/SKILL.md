@@ -16,7 +16,7 @@ metadata:
 # App-user subdomains
 
 An app builder can switch on app-user subdomains for a domain in Stencil
-(Settings → Domains → "Subdomains for your app users"). From then on every
+(More → Settings → Domains → "Subdomains for your app users"). From then on every
 `<word>.<domain>` is served by this app, and the platform tells the app which app
 user the request is for.
 
@@ -98,8 +98,8 @@ import { SubdomainField } from "~stencil/ui/tenant/subdomain-field";
 <SubdomainField value={user.subdomain} onSaved={(word) => setAddress(word)} />
 ```
 
-The app builder can also set someone's address from Stencil (Settings → Audience →
-App users), so an app user with no field in front of them can still have one.
+The app builder can also set someone's address from Stencil (More →
+Users), so an app user with no field in front of them can still have one.
 
 ### A screen that serves one app user's content
 

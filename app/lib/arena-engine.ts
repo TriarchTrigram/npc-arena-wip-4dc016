@@ -1,5 +1,5 @@
 // Side-view stickman fight engine for the arena canvas. Runs entirely in the browser.
-import { DEF_BY_ID, type Anim, type FighterDef, type Move, type Power, type StatusEffect } from "./fighters";
+import { DEF_BY_ID, juggernautOf, type Anim, type FighterDef, type Move, type Power, type StatusEffect } from "./fighters";
 
 export const W = 960;
 export const H = 600;
@@ -37,9 +37,17 @@ const BACKDASH: Pose = { t: -0.28, aF1: 0.95, aF2: 2.0, aB1: 0.55, aB2: 1.7, lF1
 // thrown back by a clash, arms crossed in guard
 const CLASHED: Pose = { t: -0.38, aF1: 1.25, aF2: 2.65, aB1: 1.0, aB2: 2.45, lF1: 0.75, lF2: 0.0, lB1: -0.2, lB2: -0.55 };
 // down on one knee, catching breath
+/** Hovering on wings: legs trailing, guard up. */
+const FLY: Pose = { t: 0.24, aF1: 0.75, aF2: 2.3, aB1: 0.4, aB2: 1.9, lF1: 0.2, lF2: -0.25, lB1: -0.2, lB2: -0.6 };
 const KNEEL: Pose = { t: 0.38, aF1: 0.95, aF2: 0.3, aB1: 0.15, aB2: 0.05, lF1: 1.4, lF2: 0.02, lB1: 0.1, lB2: -1.5 };
 
 const DASH_TIME = 0.17;
+/** Juggernaut cruising height (feet above the floor) and swooping height for close fighting. */
+const HOVER_HIGH = 120;
+const HOVER_LOW = 26;
+/** One fighter against five: the juggernaut hits harder and recharges faster. */
+const JUGG_DMG = 3;
+const JUGG_CD = 0.4;
 const DASH_DIST = 150;
 const DASH_CD = 0.85;
 const IFRAMES = 0.13;
@@ -137,6 +145,8 @@ export type Fighter = {
   aggro: number; targetKey: number | null; reacted: number; comboT: number;
   // team fights: -1 means everyone is an opponent
   team: number;
+  // juggernaut: always flying on wings, holding at hoverY
+  jugg: boolean; hoverY: number;
 };
 
 type Projectile = {
@@ -183,8 +193,8 @@ export const TEAM_COLORS = ["hsl(0 82% 60%)", "hsl(212 90% 62%)", "hsl(46 100% 5
 /** Opponents: everyone in free for all, only the other teams in a team fight. */
 const foe = (a: Fighter | undefined, b: Fighter | undefined) => !!a && !!b && a !== b && (a.team < 0 || a.team !== b.team);
 
-/** `teams` (same length as `ids`) puts fighters on sides; each side spawns together. */
-export function newGame(ids: Power[], preview = false, teams?: number[]): Game {
+/** `teams` (same length as `ids`) puts fighters on sides; each side spawns together. `jugg` is the index of the juggernaut, if any. */
+export function newGame(ids: Power[], preview = false, teams?: number[], jugg = -1): Game {
   const n = ids.length;
   const scale = n <= 2 ? 1.25 : n <= 4 ? 1.1 : n <= 8 ? 0.95 : 0.82;
   const teamMode = !!teams && teams.length === n;
@@ -193,16 +203,19 @@ export function newGame(ids: Power[], preview = false, teams?: number[]): Game {
   if (teamMode) order.sort((a, b) => teams![a] - teams![b] || a - b);
   const slotOf = new Map(order.map((idx, slot) => [idx, slot]));
   const fighters: Fighter[] = ids.map((id, i) => {
-    const def = DEF_BY_ID[id];
+    const isJugg = i === jugg;
+    const def = isJugg ? juggernautOf(DEF_BY_ID[id]) : DEF_BY_ID[id];
     const slot = slotOf.get(i) ?? i;
     const x = n === 2 ? (slot === 0 ? 270 : W - 270) : 70 + ((W - 140) * (slot + 0.5)) / n;
     const air = !preview && n > 2;
+    const sc = isJugg ? scale * 1.25 : scale;
+    const hoverY = GROUND - HOVER_HIGH * sc;
     return {
       key: i, def,
-      x, y: air ? -rand(40, 260) : GROUND, vx: 0, vy: 0,
+      x, y: isJugg ? hoverY : air ? -rand(40, 260) : GROUND, vx: 0, vy: 0,
       facing: x < W / 2 ? 1 : -1,
-      onGround: !air,
-      scale,
+      onGround: !air && !isJugg,
+      scale: sc,
       hp: def.hp, maxHp: def.hp, hpTrail: def.hp,
       alive: true, kills: 0, koT: 0,
       cds: Object.fromEntries(def.moves.map((m) => [m.id, rand(0.2, m.cd * 0.6)])),
@@ -218,6 +231,7 @@ export function newGame(ids: Power[], preview = false, teams?: number[]): Game {
       clashAir: false, kneelT: 0,
       aggro: clamp(AGGRO[def.role] + rand(-0.08, 0.08), 0.2, 0.95), targetKey: null, reacted: -1, comboT: 0,
       team: teamMode ? teams![i] : -1,
+      jugg: isJugg, hoverY,
     };
   });
   return {
@@ -313,7 +327,7 @@ function m1Clash(g: Game, a: Fighter, b: Fighter) {
 
 function startDash(g: Game, f: Fighter, dir: number) {
   if (f.dashCd > 0 || f.dashT > 0 || f.kneelT > 0 || f.clashAir) return false;
-  if (!f.onGround) {
+  if (!f.onGround && !f.jugg) {
     if (f.airDashed) return false;
     f.airDashed = true;
   }
@@ -334,6 +348,7 @@ function startDash(g: Game, f: Fighter, dir: number) {
 }
 
 const invuln = (f: Fighter) => f.iframeT > 0;
+const steady = (f: Fighter) => f.onGround || (f.jugg && f.alive);
 
 // ---------- combat ----------
 function knockOut(g: Game, f: Fighter, by: Fighter | null) {
@@ -375,20 +390,24 @@ function hit(g: Game, a: Fighter, o: Fighter, move: Move, power: Power, dir: num
     pop(g, c.x, c.y - 50 * o.scale, "miss", DEF_BY_ID.lux.color, 16);
     return false;
   }
-  let dmg = move.dmg * mult;
+  let dmg = move.dmg * mult * (a.jugg ? JUGG_DMG : 1);
   const crit = move.crit != null && Math.random() < move.crit;
   if (crit) dmg *= 1.8;
   dmg = Math.round(dmg * 10) / 10;
   o.flash = 0.1;
   if (power !== "shift") o.lastHitBy = power;
-  if (move.kb) o.vx = dir * move.kb;
-  if (move.lift) { o.vy = move.lift; o.onGround = false; }
-  if (move.status) o.status[move.status] = Math.max(o.status[move.status], g.t + (move.statusDur ?? 1));
+  const weight = o.jugg ? 0.5 : 1;
+  if (move.kb) o.vx = dir * move.kb * weight;
+  if (move.lift) { o.vy = move.lift * weight; o.onGround = false; }
+  // a juggernaut shakes off effects in a third of the time
+  if (move.status) o.status[move.status] = Math.max(o.status[move.status], g.t + (move.statusDur ?? 1) * (o.jugg ? 0.33 : 1));
   const heavy = dmg >= 9 || move.lift != null || move.status === "stun" || move.status === "freeze";
-  if (heavy && o.act) o.act = null;
+  // a juggernaut shrugs off flinches: only a stun or freeze breaks its attack
+  const breaks = o.jugg ? move.status === "stun" || move.status === "freeze" : heavy;
+  if (breaks && o.act) o.act = null;
   o.kneelT = 0;
-  if (heavy) o.dashT = 0;
-  o.hurtT = Math.max(o.hurtT, heavy ? 0.32 : 0.16);
+  if (breaks) o.dashT = 0;
+  o.hurtT = Math.max(o.hurtT, o.jugg ? 0.06 : heavy ? 0.32 : 0.16);
   emit(g, power, c.x - dir * 8, c.y, crit ? 18 : 10, crit ? 380 : 260);
   // white impact star
   g.particles.push({ x: c.x - dir * 6, y: c.y, vx: 0, vy: 0, life: 0.14, max: 0.14, size: 18 + dmg, color: "white", shape: "ring", grav: 0, add: true, rot: 0 });
@@ -480,7 +499,8 @@ function fire(g: Game, f: Fighter, act: Action) {
           const base = f.facing > 0 ? 0 : Math.PI;
           let d = raw - base;
           d = Math.atan2(Math.sin(d), Math.cos(d));
-          const ang = base + clamp(d, -0.45, 0.45) + spread;
+          const lim = f.jugg || target?.jugg ? 0.85 : 0.45;
+          const ang = base + clamp(d, -lim, lim) + spread;
           vx = Math.cos(ang) * sp; vy = Math.sin(ang) * sp;
         }
         g.projectiles.push({ x: h.x, y: h.y, vx, vy, r: (m.size ?? 10) * s, grav, rot: 0, owner: f.key, power, move: m, life: 3, hits: [], shape: m.shape ?? "orb" });
@@ -493,7 +513,8 @@ function fire(g: Game, f: Fighter, act: Action) {
       const base = f.facing > 0 ? 0 : Math.PI;
       let d = Math.atan2(tc.y - h.y, tc.x - h.x) - base;
       d = Math.atan2(Math.sin(d), Math.cos(d));
-      const ang = base + clamp(d, -0.35, 0.35);
+      const lim = f.jugg || target?.jugg ? 0.8 : 0.35;
+      const ang = base + clamp(d, -lim, lim);
       const len = m.range * 1.1;
       const nb: Beam = { owner: f.key, power, x: h.x, y: h.y, ang, len, width: power === "magneto" ? 14 : 22, life: Math.max(m.act, 0.2) + 0.15, max: Math.max(m.act, 0.2) + 0.15, jag: power === "electro", clash: true };
       for (const ob of g.beams) {
@@ -656,7 +677,7 @@ function scoreMove(g: Game, f: Fighter, m: Move, target: Fighter) {
   }
   if (target.hp <= m.dmg * 1.2) sc += 18;
   if (isOpen(g, target) && (m.kind === "melee" || m.kind === "blink" || m.kind === "dash")) sc += 10;
-  if (!target.onGround && (m.kind === "eruption" || m.kind === "zone")) sc -= 8;
+  if (!target.onGround && (m.kind === "eruption" || m.kind === "zone")) sc -= target.jugg ? 14 : 8;
   if (m.kind === "heal") sc = 34 * (1 - f.hp / f.maxHp);
   if (m.kind === "mimic") sc = f.lastHitBy ? 12 : 5;
   if (f.comboT > 0 && m.kind === "melee") sc += 14;
@@ -685,7 +706,7 @@ function startMove(g: Game, f: Fighter, move: Move, target: Fighter) {
     power = src;
     label = `${move.name}: ${m.name}`;
   }
-  f.cds[move.id] = move.cd;
+  f.cds[move.id] = move.cd * (f.jugg ? JUGG_CD : 1);
   f.act = { id: ++actId, move: m, power, t: 0, fired: false, target: target.key, hits: [], label, landed: false };
   f.facing = target.x >= f.x ? 1 : -1;
   const showCall = g.duel || move.cd >= 3;
@@ -705,7 +726,7 @@ function react(g: Game, f: Fighter, target: Fighter, dt: number) {
     f.reacted = oa.id;
     const r = Math.random();
     const counter = bestMove(g, f, o, (m) => m.kind === "melee");
-    if (counter && f.onGround && r < 0.3 + 0.45 * f.aggro) {
+    if (counter && steady(f) && r < 0.3 + 0.45 * f.aggro) {
       startMove(g, f, counter, o); // meet it head on: a clash if the timing lines up
       return true;
     }
@@ -725,7 +746,7 @@ function react(g: Game, f: Fighter, target: Fighter, dt: number) {
     const d = Math.abs(p.x - f.x);
     const inBand = p.y > f.y - bodyH(f) - 20 && p.y < f.y + 10;
     // shoot it down from range for a power clash
-    if (d > 170 && d < 480 && f.onGround && Math.random() < dt * 3.2 * f.aggro) {
+    if (d > 170 && d < 480 && steady(f) && Math.random() < dt * 3.2 * f.aggro) {
       const owner = g.fighters[p.owner];
       const tgt = owner?.alive ? owner : target;
       const shot = bestMove(g, f, tgt, (m) => m.kind === "projectile" || m.kind === "beam");
@@ -750,7 +771,7 @@ function react(g: Game, f: Fighter, target: Fighter, dt: number) {
 }
 
 function jump(f: Fighter, dir: number) {
-  f.vy = -760;
+  f.vy = f.jugg ? -420 : -760;
   f.vx += dir * 120;
   f.onGround = false;
 }
@@ -879,14 +900,14 @@ function updateFighter(g: Game, f: Fighter, dt: number) {
       if (f.think <= 0) {
         f.think = rand(0.08, 0.26) * (1.25 - f.aggro * 0.45);
         const m = bestMove(g, f, target);
-        if (m && (f.onGround || Math.random() < 0.4)) startMove(g, f, m, target);
+        if (m && (steady(f) || Math.random() < 0.4)) startMove(g, f, m, target);
       }
       if (!f.act && f.dashT <= 0) {
         const low = f.hp / f.maxHp < 0.3;
         // dash in from far away, back off when crowded, flee when low
-        if (f.onGround && f.dashCd <= 0 && adx > f.prefRange + 160 && Math.random() < dt * 2.2 * f.aggro) {
+        if (steady(f) && f.dashCd <= 0 && adx > f.prefRange + 160 && Math.random() < dt * 2.2 * f.aggro) {
           startDash(g, f, f.facing);
-        } else if (f.onGround && f.dashCd <= 0 && adx < 90 * s && (low || f.prefRange > 200) && Math.random() < dt * 2.5) {
+        } else if (steady(f) && f.dashCd <= 0 && adx < 90 * s && (low || f.prefRange > 200) && Math.random() < dt * 2.5) {
           const cornered = (f.facing > 0 && f.x < 90) || (f.facing < 0 && f.x > W - 90);
           startDash(g, f, cornered ? f.facing : -f.facing);
         } else if (!f.onGround && !f.airDashed && adx > 180 && Math.random() < dt * 2 * f.aggro) {
@@ -925,6 +946,21 @@ function updateFighter(g: Game, f: Fighter, dt: number) {
     }
   }
 
+  if (f.jugg) {
+    const k = f.act?.move.kind;
+    const close = !!target && Math.abs(target.x - f.x) < 150 * s;
+    const meleeReady = f.def.moves.some((m) => m.kind === "melee" && f.cds[m.id] <= 0);
+    const low = k === "melee" || k === "dash" || k === "blink" || (close && !f.act && meleeReady);
+    f.hoverY = GROUND - (low ? HOVER_LOW : HOVER_HIGH) * s + Math.sin(g.t * 3 + f.key) * 7 * s;
+    // knocked into the air by an M1 clash: no floor to land on, so catch breath on the wing
+    if (f.clashAir && f.vy > -40) {
+      f.clashAir = false;
+      f.kneelT = KNEEL_TIME * 0.6;
+      f.vx *= 0.3;
+    }
+    if (Math.random() < dt * 14) emit(g, f.def.id, f.x - f.facing * rand(20, 60) * s, f.y - rand(70, 120) * s, 1, 40);
+  }
+
   const wasAir = !f.onGround;
   physics(f, dt);
   if (wasAir && f.onGround) {
@@ -959,10 +995,13 @@ function updateFighter(g: Game, f: Fighter, dt: number) {
     const a = f.act;
     const m = a.move;
     const anim = ANIMS[m.anim];
-    const base = f.onGround ? STANCE : AIR;
+    const base = f.jugg ? FLY : f.onGround ? STANCE : AIR;
     if (a.t < m.wind) target_ = { ...base, ...anim.wind };
     else if (a.t < m.wind + m.act + m.rec * 0.5) { target_ = { ...base, ...anim.strike }; k = 40; }
     else target_ = base;
+  } else if (f.jugg) {
+    const sw = Math.sin(g.t * 5 + f.key);
+    target_ = { ...FLY, t: FLY.t + (f.walkDir === f.facing ? 0.15 : 0), lF1: FLY.lF1 + sw * 0.12, lB1: FLY.lB1 - sw * 0.12, lF2: FLY.lF2 + sw * 0.1 };
   } else if (!f.onGround) {
     target_ = AIR;
   } else if (f.walkDir) {
@@ -986,7 +1025,10 @@ function updateFighter(g: Game, f: Fighter, dt: number) {
 }
 
 function physics(f: Fighter, dt: number) {
-  if (!f.onGround) f.vy += GRAV * dt;
+  if (f.jugg && f.alive) {
+    f.onGround = false;
+    f.vy += ((f.hoverY - f.y) * 5 - f.vy) * Math.min(1, dt * 6);
+  } else if (!f.onGround) f.vy += GRAV * dt;
   f.x += f.vx * dt;
   f.y += f.vy * dt;
   if (f.y >= GROUND) {
@@ -994,7 +1036,7 @@ function physics(f: Fighter, dt: number) {
     if (!f.onGround && f.vy > 600 && !f.alive) f.vy = -f.vy * 0.25;
     else { f.vy = 0; f.onGround = true; }
   }
-  f.vx *= Math.pow(f.onGround ? 0.004 : 0.4, dt);
+  f.vx *= Math.pow(f.onGround ? 0.004 : f.jugg && f.alive ? 0.03 : 0.4, dt);
   if (f.x < 24) { f.x = 24; f.vx = Math.abs(f.vx) * 0.4; }
   if (f.x > W - 24) { f.x = W - 24; f.vx = -Math.abs(f.vx) * 0.4; }
 }
@@ -1102,7 +1144,7 @@ export function step(g: Game, dt: number) {
       const owner = g.fighters[e.owner];
       const r = e.move.radius ?? 44;
       for (const o of g.fighters) {
-        if (!o.alive || !foe(owner, o) || Math.abs(o.x - e.x) > r + 10 || o.y < GROUND - 120) continue;
+        if (!o.alive || !foe(owner, o) || Math.abs(o.x - e.x) > r + 10 || o.y < GROUND - (o.jugg ? 200 : 120)) continue;
         hit(g, owner, o, e.move, e.power, Math.sign(o.x - e.x) || 1);
       }
       for (let i = 0; i < 22; i++) emit(g, e.power, e.x + rand(-r, r) * 0.6, GROUND - rand(0, 160), 1, 120, { vy: -rand(200, 500) });
@@ -1399,6 +1441,8 @@ function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter) {
   ctx.lineJoin = "round";
   const lw = 6 * s;
 
+  if (f.jugg) drawWings(ctx, g, f, shoulder, face);
+
   // scarf trailing from the neck
   const wave = Math.sin(g.t * 12 + f.key) * 4 * s;
   const sx = -face * (16 + Math.abs(f.vx) * 0.03) * s;
@@ -1496,6 +1540,62 @@ function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter) {
     for (let i = 0; i < 3; i++) {
       const a = g.t * 6 + (i * Math.PI * 2) / 3;
       star(ctx, head.x + Math.cos(a) * 16 * s, head.y - 16 * s + Math.sin(a) * 5 * s, 5 * s, "hsl(50 100% 65%)");
+    }
+  }
+}
+
+/** A pair of feathered wings in the fighter's element colours, flapping from the shoulders. */
+function drawWings(ctx: CanvasRenderingContext2D, g: Game, f: Fighter, shoulder: { x: number; y: number }, face: number) {
+  const s = f.scale;
+  const dir = -face;
+  const flap = f.alive ? Math.sin(g.t * 8 + f.key * 1.3) : -0.6;
+  const col = f.def.color, glow = f.def.glow;
+  for (const far of [true, false]) {
+    const L = (far ? 56 : 68) * s;
+    const phi = (far ? 0.85 : 0.6) + flap * 0.5;
+    const bx = shoulder.x + dir * 2 * s, by = shoulder.y + 3 * s;
+    const tx = bx + dir * Math.cos(phi) * L, ty = by - Math.sin(phi) * L;
+    const rx = bx + dir * 8 * s, ry = by + 12 * s;
+    const pts: { x: number; y: number }[] = [];
+    const n = 5;
+    for (let i = 1; i <= n; i++) {
+      const k = i / n;
+      pts.push({ x: tx + (rx - tx) * k, y: ty + (ry - ty) * k + Math.sin(k * Math.PI) * 30 * s });
+    }
+    const fill = ctx.createLinearGradient(bx, by, tx, ty);
+    fill.addColorStop(0, shade(col, far ? -18 : -6));
+    fill.addColorStop(1, shade(glow, far ? -14 : 0));
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.quadraticCurveTo(bx + dir * L * 0.3, ty - 4 * s, tx, ty);
+    let px = tx, py = ty;
+    for (const p of pts) {
+      ctx.quadraticCurveTo((px + p.x) / 2 + dir * 3 * s, Math.max(py, p.y) + 11 * s, p.x, p.y);
+      px = p.x; py = p.y;
+    }
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 3 * s;
+    ctx.stroke();
+    // feather veins
+    ctx.strokeStyle = shade(col, -26, 0.7);
+    ctx.lineWidth = 1.6 * s;
+    ctx.beginPath();
+    for (const p of pts.slice(0, -1)) { ctx.moveTo(bx + (tx - bx) * 0.25, by + (ty - by) * 0.25); ctx.lineTo(p.x, p.y); }
+    ctx.stroke();
+    if (!far && f.alive) {
+      // glowing leading edge
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = shade(glow, 0, 0.55);
+      ctx.lineWidth = 3 * s;
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.quadraticCurveTo(bx + dir * L * 0.3, ty - 4 * s, tx, ty);
+      ctx.stroke();
+      ctx.restore();
     }
   }
 }
@@ -1878,8 +1978,10 @@ function drawHud(ctx: CanvasRenderingContext2D, g: Game) {
     ctx.stroke();
     outlinedText(ctx, "VS", W / 2, top + 12, 20, "white");
   } else {
+    const boss = g.fighters.find((f) => f.jugg);
+    if (boss) drawBossBar(ctx, boss);
     for (const f of g.fighters) {
-      if (!f.alive) continue;
+      if (!f.alive || f.jugg) continue;
       const bw = 46 * f.scale, y = f.y - bodyH(f) - 24 * f.scale;
       const tc = f.team >= 0 ? TEAM_COLORS[f.team % TEAM_COLORS.length] : null;
       ctx.fillStyle = INK;
@@ -1892,6 +1994,31 @@ function drawHud(ctx: CanvasRenderingContext2D, g: Game) {
       outlinedText(ctx, f.def.name, f.x, y - 12, 15, tc ?? "white");
     }
   }
+}
+
+/** The juggernaut's long health bar across the top of the arena. */
+function drawBossBar(ctx: CanvasRenderingContext2D, f: Fighter) {
+  const bw = 520, bh = 22, x0 = (W - bw) / 2, top = 22;
+  ctx.fillStyle = INK;
+  ctx.beginPath();
+  ctx.roundRect(x0 - 5, top - 5, bw + 10, bh + 10, 9);
+  ctx.fill();
+  ctx.fillStyle = "hsl(250 20% 30%)";
+  ctx.fillRect(x0, top, bw, bh);
+  ctx.fillStyle = "hsl(0 85% 60%)";
+  ctx.fillRect(x0, top, (bw * Math.max(0, f.hpTrail)) / f.maxHp, bh);
+  const grd = ctx.createLinearGradient(0, top, 0, top + bh);
+  grd.addColorStop(0, shade(f.def.glow, 4));
+  grd.addColorStop(1, f.def.color);
+  ctx.fillStyle = grd;
+  ctx.fillRect(x0, top, (bw * Math.max(0, f.hp)) / f.maxHp, bh);
+  ctx.fillStyle = "hsl(0 0% 100% / 0.35)";
+  ctx.fillRect(x0, top + 3, bw, 4);
+  // a notch at half: the health it would have without the juggernaut bonus
+  ctx.fillStyle = INK;
+  ctx.fillRect(x0 + bw / 2 - 1.5, top, 3, bh);
+  outlinedText(ctx, `JUGGERNAUT  ${f.def.name.toUpperCase()}`, x0, top + bh + 20, 18, f.def.glow, "left");
+  outlinedText(ctx, `${Math.ceil(Math.max(0, f.hp))} / ${f.maxHp}`, x0 + bw, top + bh + 20, 16, "white", "right");
 }
 
 /** A team-coloured disc on the floor under a fighter, shrinking as they rise. */

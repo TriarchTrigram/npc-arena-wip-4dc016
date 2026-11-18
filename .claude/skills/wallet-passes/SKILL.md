@@ -52,7 +52,7 @@ the app builder sets it. Never cast `env` or redeclare `Env` to get at them.
 
 ## What to tell the app builder
 
-Secrets live in **Settings → Build → Secrets**. They bake in at deploy time, so setting
+Secrets live in **More → Settings → Secrets**. They bake in at deploy time, so setting
 one changes nothing until the app is published again. Say this explicitly — a
 correctly-set secret that hasn't been redeployed is the most common way this looks
 broken.
@@ -90,7 +90,7 @@ const cert = secret(env, "APPLE_PASS_CERT_B64");
 const key = secret(env, "APPLE_PASS_KEY_B64");
 if (!cert || !key) {
   return Response.json(
-    { error: "Apple Wallet isn't set up yet — add the pass certificate secrets in Settings → Build → Secrets, then publish a new build." },
+    { error: "Apple Wallet isn't set up yet — add the pass certificate secrets in More → Settings → Secrets, then publish a new build." },
     { status: 503 },
   );
 }

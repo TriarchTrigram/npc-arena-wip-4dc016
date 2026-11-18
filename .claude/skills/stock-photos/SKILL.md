@@ -1,6 +1,6 @@
 ---
 name: stock-photos
-description: When a real photograph beats a generated image and how to find, place and credit one with `searchStockPhotos` and `placeStockPhoto` (Unsplash). Load before filling any photo slot — people, places, food, products in use, nature.
+description: When a real photograph beats a generated image and how to find, place and credit one with `searchStockPhotos` and `placeStockPhoto` (Unsplash; Stencil's photo library first for sample data). Load before filling any photo slot — people, places, food, products in use, nature.
 allowed-tools: searchStockPhotos placeStockPhoto
 metadata:
   agents: [builder]
@@ -10,10 +10,12 @@ metadata:
 
 Real-world subjects get real photographs. Generated photography of people, places and products is the most recognisable "AI-made" look a page can have; a well-chosen editorial photo is not. Two tools, both server-side (the app never talks to Unsplash):
 
-- `searchStockPhotos` — one query, up to 10 candidates, each with a thumbnail you can look at.
-- `placeStockPhoto` — the photo you chose, by id. It records the use with Unsplash and in the app's files (`unsplash/photos.json`), and returns the `src`, `alt` and `credit` to pass to the component below.
+- `searchStockPhotos` — one query, up to 10 candidates, each with a thumbnail you can look at. With `sampleData: true`, for seeded sample rows only, Stencil's own photo library comes first (`from: "library"`, ids `library:<subject>/<NN>`, a curated `alt` and `tone`, no thumbnail) and Unsplash fills the rest.
+- `placeStockPhoto` — the photo you chose, by id. It records the use in the app's files (`unsplash/photos.json`), and with Unsplash for an Unsplash photo, and returns the `src`, `alt`, `credit`, `width` and `height` to pass to the component below.
 
-**The only way an Unsplash picture enters an app is `placeStockPhoto` → `<UnsplashPhoto>`.** Never hand-type an `unsplash.com` or `images.unsplash.com` URL, never download a photo into `/assets/`, never paste a URL from a search result into code without placing it first: the placement call is what Unsplash's terms require.
+For sample rows, **prefer a library photo when it fits the row as well as an Unsplash one would**: it costs none of the platform's hourly Unsplash allowance. The app's own pages (heroes, sections, cards) never pass `sampleData`.
+
+**The only way a stock photo enters an app is `placeStockPhoto` → `<UnsplashPhoto>`.** Never hand-type an `unsplash.com` or `images.unsplash.com` URL, never download a photo into `/assets/`, never paste a URL from a search result into code without placing it first: the placement call is what Unsplash's terms require.
 
 ## Photo or generated?
 
@@ -65,7 +67,7 @@ import { UnsplashPhoto, UnsplashCredits } from "~stencil/ui/photo/unsplash";
 />
 ```
 
-- `src` and `credit` are the tool's values, verbatim. Keep them in a `const` near the top of the file (`const HERO = { src: "…", credit: { photographer: "…", photographerUrl: "…", photoUrl: "…" } }`).
+- `src` and `credit` are the tool's values, verbatim. Keep them in a `const` near the top of the file (`const HERO = { src: "…", credit: { … } }`). A library photo's credit has no `photographerUrl` and names its `source` (`unsplash`, `pexels` or `public-domain`); the component credits each source in its own words.
 - `ratio` crops to the slot (`16/9`, `4/3`, `1/1`, `3/4`); omit it to keep the photo's own shape. The component builds the `srcset`, `auto=format`, quality and crop for you — never add image parameters yourself.
 - `priority` on the hero and anything visible on load; everything below the fold stays lazy (the default).
 - `sizes` when the photo is not full-width: `"(min-width: 768px) 50vw, 100vw"` for a half-width card, `"(min-width: 1024px) 33vw, 100vw"` for a third.
@@ -81,4 +83,4 @@ Every displayed photo is credited both ways. The design rule that never hides a 
 
 ## When the tool says no
 
-Any error from `searchStockPhotos` or `placeStockPhoto` — a `rate limit` (the platform's hourly Unsplash allowance is spent), a refused key, or a call that simply failed — means stock photos are unavailable right now. Do **not** retry and do **not** wait: call `generateImage` for that slot with the `generate-image` skill's craft rules, and say in your reply that the slot got a generated image because stock photos were unavailable. The build still succeeds, and the slot is never left empty.
+Any error — a `rate limit` (the platform's hourly Unsplash allowance is spent), a refused key, or a call that simply failed — or no candidate that fits, means that slot has no stock photo right now. Sample-data searches are the exception: the library still answers them, so keep searching the next rows with `sampleData: true`. Do **not** retry and do **not** wait: call `generateImage` for that slot with the `generate-image` skill's craft rules, and say in your reply that the slot got a generated image because stock photos were unavailable. The build still succeeds, and the slot is never left empty.

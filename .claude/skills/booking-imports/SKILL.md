@@ -83,7 +83,7 @@ upcoming bookings where the tool has a list call (Calendly `GET /scheduled_event
   then fetch the booking: `GET https://acuityscheduling.com/api/v1/appointments/<id>` with
   HTTP Basic auth, `ACUITY_USER_ID` as the user and `ACUITY_API_KEY` as the password.
 - **App builder:** Acuity → Integrations → Webhooks: paste the route's full address.
-  Integrations → API shows the User ID and API key; save both in Settings → Build → Secrets.
+  Integrations → API shows the User ID and API key; save both in More → Settings → Secrets.
 - `id` is the booking id and **stays the same** through a reschedule.
 - `scheduled`, `rescheduled`, `changed` → fetch, then find-or-create by `id` with
   `firstName`, `lastName`, `email`, `type`, `datetime` (ISO with offset) and `duration`

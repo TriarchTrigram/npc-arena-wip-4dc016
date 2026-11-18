@@ -45,12 +45,12 @@ export interface SignedSignInLinkInput {
 
 /** Mint a signed sign-in link: Continue signs the person in, creating the account first if needed
  *  (also on an invite-only app), no welcome email. Ten minutes, single use. Throws until the app
- *  builder has saved `SIGNED_SIGN_IN_SECRET` in Settings → Build → Secrets. */
+ *  builder has saved `SIGNED_SIGN_IN_SECRET` in More → Settings → Secrets. */
 export async function signedSignInLink(env: Env, input: SignedSignInLinkInput): Promise<string> {
   const key = secret(env, SIGNED_SIGN_IN_SECRET);
   if (!key) {
     throw new Error(
-      `signedSignInLink: ${SIGNED_SIGN_IN_SECRET} is not set (Settings → Build → Secrets)`,
+      `signedSignInLink: ${SIGNED_SIGN_IN_SECRET} is not set (More → Settings → Secrets)`,
     );
   }
   const email = input.email.trim().toLowerCase();

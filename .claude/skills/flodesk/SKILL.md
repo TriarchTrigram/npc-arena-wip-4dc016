@@ -47,7 +47,7 @@ A `connectFlodesk` result is a **snapshot** of that moment. Before telling the b
 anything about Flodesk's status in a later turn, call it again.
 
 Do not send the app builder to Settings for this. The card is the flow; the only other
-place it lives is the app's **Users page** (Grow → Users), which you can mention as
+place it lives is the app's **Users page** (More → Users), which you can mention as
 where to manage it later.
 
 Connecting needs a workspace owner or admin. The card tells anyone else so — suggest they
@@ -121,7 +121,7 @@ already covers it, and a hand-wired call skips the queue, so leads vanish when F
 blips.
 
 **A segment per plan needs no code.** The app builder picks a "Flodesk segment" on each
-subscription plan in Project settings → Grow → Payments and plans (the field appears once Flodesk is
+subscription plan in More → Settings → Payments (the field appears once Flodesk is
 connected), and the platform adds every app user whose subscription to that plan becomes
 active to it, on top of the segments saved on the Users page. "Paid members in their own
 segment" or "one segment per plan" is that setting — point the builder at it instead of

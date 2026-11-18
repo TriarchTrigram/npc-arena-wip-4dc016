@@ -1,5 +1,5 @@
 {
-  "hash": "d2eef08258ec2f1f0bd7f2e0f39d5331cc7adf06",
+  "hash": "e7aa36904afa3b863c2277a02a6d1a451aacd3c1",
   "files": [
     "app/entry.server.tsx",
     "app/entry.client.tsx",
@@ -2447,6 +2447,45 @@
       "notes": [
         "payments/selling.ts: listPanelViewers, invitePanelViewer({ email }) and revokePanelViewer({ viewerId }) let a seller share a view-only page of their hosted dashboard (payouts, balance, transactions) with up to 5 people by email.",
         "Non-breaking; an app that wants it adds a \"Share with your bookkeeper\" block to the seller's page."
+      ],
+      "breaking": []
+    },
+    {
+      "hash": "3e2981748bb74f5c339326116dc18f1ef7782d24",
+      "date": "2026-11-17",
+      "notes": [
+        "ui/connections/connect-button: the not-switched-on notice sends the app builder to More, then Connectors.",
+        "auth/signed-sign-in: the missing-secret error names More → Settings → Secrets.",
+        "Comments in secrets, env.d.ts, payments/server, types/agents, agents/define and react-router/events/catalog name the More tab instead of Project settings."
+      ],
+      "breaking": []
+    },
+    {
+      "hash": "0ad5df95a10dd5ee88f86d5e4e88846dcfa3cd37",
+      "date": "2026-11-17",
+      "notes": [
+        "ui/photo/unsplash: a credit may name its source (unsplash, pexels, public-domain) and leave out photographerUrl; captions and the footer line credit each source in its own words."
+      ],
+      "breaking": []
+    },
+    {
+      "hash": "bfcce292dd63a749daf07129f202fdb99e32a910",
+      "date": "2026-11-17",
+      "notes": [
+        "payments/selling.ts: cancelSubscriber({ subscriberUserId, mode, sellerUserId? }) stops billing one of a seller's subscribers, at period end or immediately.",
+        "Non-breaking; an app that removes people from what they pay a seller for calls it in that same action."
+      ],
+      "breaking": []
+    },
+    {
+      "hash": "e7aa36904afa3b863c2277a02a6d1a451aacd3c1",
+      "date": "2026-11-17",
+      "notes": [
+        "upload/client.ts: uploadFiles saves its batch in the browser (IndexedDB) and, called again with the same files after a reload, skips stored files (resumed: true), continues a half-sent file from its last finished part and sends the rest.",
+        "upload/client.ts: new interruptedUploads({ route?, batch? }) lists a batch that never returned, and forgetInterruptedUploads({ route?, batch? }) drops it.",
+        "upload/client.ts: batch, also an uploadFiles option, names the record the files belong to, so one record's batch is never offered or resumed on another.",
+        "upload/server.ts: handleUpload gains a status action that answers a finished file's stored size, or null.",
+        "Non-breaking; a screen that calls uploadFiles offers to continue an interrupted batch (see the storage skill)."
       ],
       "breaking": []
     }

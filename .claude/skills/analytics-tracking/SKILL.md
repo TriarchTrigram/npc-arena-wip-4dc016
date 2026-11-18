@@ -81,7 +81,7 @@ If the app builder says they don't want tracking, remove the calls and the `decl
 ## Where events fire (set expectations)
 
 - Events are only sent from the **published** app served on its real domain. They do **not** fire in the App preview (previews are intentionally excluded from analytics), so the app builder won't see a new event while testing in the preview — that's expected. Tell them to publish, then use the published app.
-- Counts appear in the app's **Project settings → Grow → Analytics** page: the **Custom events** card on the Traffic tab, and the **Features used** card and per-app-user list on the **App users** tab. Declared names appear on App users once someone has opened the published app after the change. Counts may take a short while to show up, and — like all the analytics — high-volume counts are privacy-first estimates.
+- Counts appear in the app's **More → Analytics** page: the **Custom events** card on the Traffic tab, and the **Features used** card and per-app-user list on the **App users** tab. Declared names appear on App users once someone has opened the published app after the change. Counts may take a short while to show up, and — like all the analytics — high-volume counts are privacy-first estimates.
 
 ## Rules
 

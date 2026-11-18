@@ -18,8 +18,8 @@ Two different things get described with the same words.
 
 | They mean | Feature | Where it lives |
 |---|---|---|
-| Every app user connects their own account | **App user connections** | App settings, Build, App user connections |
-| One business account everyone shares | App secrets | App settings, Build, Secrets |
+| Every app user connects their own account | **App user connections** | More, Connectors |
+| One business account everyone shares | App secrets | More, Settings, Secrets |
 
 "Connect Stripe so we can take payments" is the second, and so is a company
 inbox or a single API key. If you are unsure, ask whose account it is: theirs, or
@@ -493,8 +493,8 @@ on their account, which the service's own status sentence already says. Say that
 plainly and name the settings screen — never that a field is empty or null:
 
 > No Google Calendar client of yours is saved on this app or on your account, so
-> the connection is off. Add one under Project settings → Build → App user
-> connections → Set up → Use my own credentials.
+> the connection is off. Add one under More → Connectors → Set up → Use my own
+> credentials.
 
 The screen belongs in every such reply, however briefly the question was asked:
 where one would be saved is the other half of "where is it saved", so a reply
@@ -520,7 +520,7 @@ identifier beside it in the result.
 
 > Your own client has been removed — nothing of yours is saved for Google
 > Calendar now. Stencil has no credentials of its own for Google Calendar, so the
-> connection is off until you add a client again in App user connections.
+> connection is off until you add a client again in Connectors.
 
 Say what changed and leave your earlier answer standing. It was right when you
 gave it, and a client ID you read from this tool is never something you made up.
@@ -529,7 +529,7 @@ gave it, and a client ID you read from this tool is never something you made up.
 
 Nothing here is chat-only. Switching whose credentials are used, replacing them,
 running the connection check, copying from another app, and removing the
-integration are all in **App settings, Build, App user connections**.
+integration are all in **More, Connectors**.
 
 Say so when you set something up, so they know where it lives.
 

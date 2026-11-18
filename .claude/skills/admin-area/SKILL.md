@@ -7,7 +7,7 @@ description: >
   fixed shape every time: an Admin nav entry, a list per managed table, a detail page per
   record with every field editable, and relations shown as links in both directions. Load
   BEFORE planning or writing any admin screen, together with `app-roles` (which owns the
-  gate and who may enter). Not for Stencil's own records browser in Project settings.
+  gate and who may enter). Not for Stencil's own records browser in More.
 metadata:
   agents: [chat, builder]
 ---
@@ -32,8 +32,8 @@ builder could not find. `app-roles` owns who may enter (`requireRole`, the Users
 skill owns what is behind the door.
 
 **Waitlist and email sign-ups are not a managed table.** They live on the platform waitlist,
-which app code can add to but cannot read, and the app builder sees them in Project settings
-→ Grow → Users. Never create a sign-ups table to give them an admin list; say where they are.
+which app code can add to but cannot read, and the app builder sees them in More → Users.
+Never create a sign-ups table to give them an admin list; say where they are.
 
 ## Routes and files
 
@@ -149,7 +149,7 @@ The build summary says, in plain words, where the admin area is and what is in i
 - **Where:** "Admin" in the app's navigation, at `/app/admin`, with a list for each of
   the named tables and a page for every record where it can be edited.
 - **Who:** the App preview opens it as admin already; on the Published app, they sign in
-  with their own account, open **Project settings → Grow → Users**, pick that account and
+  with their own account, open **More → Users**, pick that account and
   set its **Role** to Admin (see `app-roles`, section 4). Nobody else can open it.
 
 Never report an admin area that has lists but no detail pages, or detail pages that show a

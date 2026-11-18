@@ -42,7 +42,7 @@ const marked = await createImage(env).transform(photoBytes, {
   (the same keys `createStorage()` uses). The mark is uploaded once and named on every
   transform; `transform` reads it from storage and sends it with the picture. Use the
   builder's own logo — never a hardcoded Stencil asset. `assets/logo.png`, the icon the
-  builder uploaded under Settings → General → Icon, is a valid key. A transparent PNG
+  builder uploaded under More → Settings → General → Icon, is a valid key. A transparent PNG
   composites cleanly.
 
   A mark that doesn't exist yet — a text mark you render, say — is stored first, then

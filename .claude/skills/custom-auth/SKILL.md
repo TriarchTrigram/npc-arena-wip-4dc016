@@ -17,7 +17,7 @@ already ships, enabled and wired to the app's email sender:
 
 A request for "magic link login", "sign in with a code", "add Google sign-in" or "turn
 off passwords" is a **settings change, not app code**: the `login-settings` skill sets it
-from chat (the app builder can also do it in Project settings → Launch → Login). The
+from chat (the app builder can also do it in More → Users → Sign-in options). The
 hosted sign-in page reads that setting live and renders exactly those methods, with no
 rebuild. Do not build a login form for it.
 
@@ -47,15 +47,15 @@ it dark" is not a reason to build a page either. The hosted page inherits the ap
   resets to the stock wording). Use this for "say *Welcome to Studio X*", a tagline, or a
   line that explains the app.
 - **Logo on the card**: `loginPage.showLogo: true` shows a logo above the heading: the
-  card logo the app builder uploaded in Project settings → Launch → Login → Sign-in page
+  card logo the app builder uploaded in More → Users → Sign-in options → Sign-in page
   (a wide wordmark fits; it renders 48px tall at its own shape), or the app's icon when
   none is uploaded.
 - **Colour scheme**: `loginPage.colorScheme` — `light` (default), `dark`, or `auto` to
   follow the visitor's device. `dark` and `auto` only take effect when the theme has a
   `.dark` palette; an app without one keeps the light page, so add the palette first
   (`editTheme`) if the builder wants a dark sign-in.
-- **Background image and card logo file**: uploaded by the app builder in Project
-  settings → Launch → Login → Sign-in page. Tell them where; do not build a page to get a
+- **Background image and card logo file**: uploaded by the app builder in More →
+  Users → Sign-in options → Sign-in page. Tell them where; do not build a page to get a
   photo behind the card.
 
 A Sign in link that lands on the upgrade page, the home page or a 404 is a routing
@@ -152,8 +152,8 @@ the end of this skill).
   passwordless methods accept unknown addresses — don't rebuild it.
 - **Requiring a verified email**: "make people verify their email", "block unverified
   accounts", "confirm the address before they can log in" is the app's **Require email
-  verification** login setting (the `login-settings` skill from chat, or Project settings →
-  Launch → Login), not app code. With it on, the platform sends the
+  verification** login setting (the `login-settings` skill from chat, or More →
+  Users → Sign-in options), not app code. With it on, the platform sends the
   verification email at password sign-up, refuses sign-in until the link is opened, and
   the hosted login page shows a resend button. Magic link, one-time code and Google
   already prove the address. Never build a verification table, a verify screen or a
@@ -280,7 +280,7 @@ silently ship a change-email form into an app whose admin gate is an email allow
 
 "Add these people as beta testers", "let my testers in", "create accounts for my test group", "only
 these emails can sign in": every one of these is a **Users-page action, not a build**. The app
-builder adds each person from **Project settings → Grow → Users → Add person**, which creates a
+builder adds each person from **More → Users → Add person**, which creates a
 real account in the app's own auth table and emails a sign-in link (on a pay-first app it also puts
 them on a plan without paying, with an optional end date). The same page takes a tester out again
 later with **Delete user** or **End free access**, with no build. Closing signups to everyone but
@@ -304,8 +304,8 @@ staff or affiliate on an app that already gates on that role is a Users-page act
 a **signed sign-in link**, and the platform already ships it. Never build a login token,
 an order-token endpoint or an onboarding page for it, and never call `grantAccess`.
 
-1. The app builder saves a secret named `SIGNED_SIGN_IN_SECRET` in Project settings →
-   Build → Secrets. Without it every signed link is refused. Tell them in the build summary.
+1. The app builder saves a secret named `SIGNED_SIGN_IN_SECRET` in More →
+   Settings → Secrets. Without it every signed link is refused. Tell them in the build summary.
 2. App code mints a link with the layer helper:
 
    ```ts
@@ -372,7 +372,7 @@ to `/auth/two-factor?returnTo=…` itself.
 not challenged — the identity provider already applied its own account security. Do not
 try to wire a challenge onto it.
 
-**Lost device.** The app builder resets an app user's second factor from Project settings →
+**Lost device.** The app builder resets an app user's second factor from More →
 their app users list (open the person, "Two-factor authentication" → Reset). The app user
 then signs in with the first factor alone and can enrol again. There is no in-app "turn off"
 for the app user in this version; do not build one on top of the plugin's disable endpoint,

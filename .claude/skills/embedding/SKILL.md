@@ -21,7 +21,7 @@ Stencil team steps in.
 ## What the Stencil team can do
 
 On request, a Stencil team member allows specific websites to frame one app. There is no
-switch for it in Project settings and nothing either agent can set; the app builder asks
+switch for it in More and nothing either agent can set; the app builder asks
 through **Stencil Support** at the bottom of the sidebar. The request needs the full
 address of each site that will show the page, with `https://`, and both forms when a site
 answers to both: `https://acme.com` and `https://www.acme.com` are two separate entries, and

@@ -18,7 +18,7 @@ app/agents/<name>/
 
 The platform hands every `SKILL.md` to the agent at the start of each run, after the prompt. The prompt says *what to do*; a skill says *what to know* — the house style, the glossary, the rules of the domain, the examples of a good result. Keep them apart: a prompt that embeds a style guide is hard to change, a skill folder is one file.
 
-**Two authors.** You write skills from chat, and an app builder can edit one themselves in Project settings → Build → Agents (Edit on the skill; saving writes the file into the app's source and redeploys the App preview, no build). The page labels each skill "Written by Stencil's Builder Agent" or "Edited by you". An app builder's save stamps `edited-by-app-builder: <time>` into the file's frontmatter. **Before you change a file that carries that stamp, ask the app builder** ("you edited house-style yourself on 12 May — may I change it, or would you rather add the rule?") and only edit it once they say yes; keep the stamp when you do. A file without the stamp is yours to change when chat asks for it ("the agent should also flag late fees"): edit the file and rebuild.
+**Two authors.** You write skills from chat, and an app builder can edit one themselves in More → Agents (Edit on the skill; saving writes the file into the app's source and redeploys the App preview, no build). The page labels each skill "Written by Stencil's Builder Agent" or "Edited by you". An app builder's save stamps `edited-by-app-builder: <time>` into the file's frontmatter. **Before you change a file that carries that stamp, ask the app builder** ("you edited house-style yourself on 12 May — may I change it, or would you rather add the rule?") and only edit it once they say yes; keep the stamp when you do. A file without the stamp is yours to change when chat asks for it ("the agent should also flag late fees"): edit the file and rebuild.
 
 Every skill loads on every run, so size costs credits each time; the Agents page shows the total and warns when it grows large. Keep each file short and split topics rather than growing one.
 
@@ -73,6 +73,6 @@ Keep a short "What changed" note in the chat per round so the app builder sees t
 
 ## What a skill is not
 
-- Not credentials, keys or anything secret — those go in Settings → Build → Secrets and reach the app through `env`.
+- Not credentials, keys or anything secret — those go in More → Settings → Secrets and reach the app through `env`.
 - Not the app user's data; a skill is the same for every run. Per-run input is the files the trigger hands over.
 - Not a place for instructions about tools or the output folder — those belong in the prompt.

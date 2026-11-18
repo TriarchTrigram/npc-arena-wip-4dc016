@@ -20,7 +20,7 @@ skill), usually alongside the push.
 
 ## Requirements
 
-- **Mobile app must be enabled** by the app builder (Project settings → Launch → Mobile app → Enable mobile app) —
+- **Mobile app must be enabled** by the app builder (More → Settings → Mobile app → Enable mobile app) —
   not something you toggle from code. If off, `subscribe()` returns
   `reason: "not-configured"`. Remind the app builder to enable it.
 - Works on the **live published app only** (not the editor preview).

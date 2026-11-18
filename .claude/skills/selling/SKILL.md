@@ -85,7 +85,7 @@ Then **wait for the answer** — like the "anything that spends money needs a ye
 - Sellers do their own Stripe onboarding: real KYC and a real bank account, and it takes a minute or two to flip ready after they finish.
 - Buyers pay as guests by default — their email is their identity, and the app decides how they get back to what they bought (a link the app emails, an access code, a sign-in). Or the builder can require buyers to register, and then roles and gating are theirs to build.
 - Sellers see their money **only** in the hosted seller dashboard inside the app, never in a Stripe login of their own; refunds happen there too. Stencil sends the receipt, Stripe does not — and it goes out as the seller's business name from their Stripe KYC (their personal name if there is none), shown as `<seller> via <app sender name>`, as do the seller's add-a-card reminder, failed-payment and account notices. Nothing for the app to build.
-- What the builder does themselves (set up the app's payout account from Project settings → Grow → Payments and plans — there is no Stripe login for it, the Payments panel is where they see it) and what each seller does (their own KYC).
+- What the builder does themselves (set up the app's payout account from More → Settings → Payments — there is no Stripe login for it, the Payments panel is where they see it) and what each seller does (their own KYC).
 
 End with "ready to build?" and build on yes.
 
@@ -335,7 +335,7 @@ for (const inst of due) {
 - **Eligibility: only an app user with an active plan can become a seller.** Selling requires the
   app to have a subscription plan (set up with the `payments` skill) and the seller to be on it —
   paid, **or granted at no charge** by the app builder with **Give free access** on
-  Project settings → Grow → Users, which writes the same `subscription` row every gate honours.
+  More → Users, which writes the same `subscription` row every gate honours.
   So chosen people can sell without paying: send the app builder to Give free access for that,
   never to a paid plan first and never to a hand-written row. `onboardSeller` enforces the plan
   check and redirects to `/upgrade` if the app user has no active plan. If the app has no plan
@@ -444,6 +444,7 @@ above all still apply. These functions, also in `~stencil/payments/selling`:
 | `hasActiveSubscription(request, context, { productId })` | The gate → `boolean`. One read of the app's own database; `false` when signed out; never redirects. |
 | `getSubscription(request, context, { productId })` / `getSubscriptions(request, context)` | The signed-in buyer's subscription(s): `productId`, `sellerUserId`, `status`, `currentPeriodEnd`, `cancelAt`, `active`. For status lines and "anything from this seller" gates. |
 | `manageSellerSubscription(request, context, { productId, returnUrl? })` | The "Manage billing" button — throws a redirect to Stripe's billing portal. |
+| `cancelSubscriber(request, context, { subscriberUserId, mode, sellerUserId? })` | The seller's side: stop billing one of their subscribers → `{ canceled: true, alreadyEnded }`, or `{ canceled: false, reason: "not_subscribed" }` for someone who never subscribed. `mode` is `"period_end"` or `"immediate"`. **Server-only.** See "Removing a paying subscriber". |
 
 The rules:
 
@@ -456,13 +457,45 @@ The rules:
   after the buyer returns, so the page the buyer lands on shows a "confirming your subscription" state
   that re-checks — never "not subscribed" the moment they arrive. To gate on *any* product from one seller,
   use `getSubscriptions()` and match `sellerUserId` with `active`.
-- **Access follows Stripe on its own.** A past-due subscriber keeps access while Stripe retries the card,
-  and a cancelled one keeps it until the paid period ends. Never write expiry or revocation logic, and
-  never write to the `seller_subscription` table — it is platform-owned like `subscription`.
-- **"Manage billing" is the only billing UI.** Updating the card, invoices and cancelling all happen in
-  Stripe's portal through `manageSellerSubscription`. The portal has no plan switcher, so never promise
-  one. Never build a cancel button or flow, or an invoice list. Show the subscriber their product, its status and the next date
+- **Access follows Stripe on its own.** A past-due subscriber keeps access while Stripe retries the card.
+  A cancelled one keeps it until the paid period ends when the cancel was at period end (the portal, or
+  `cancelSubscriber` with `"period_end"`), and loses it at once when it was `"immediate"`. Never write
+  expiry or revocation logic, and never write to the `seller_subscription` table — it is
+  platform-owned like `subscription`.
+- **"Manage billing" is the subscriber's only billing UI.** Updating the card, invoices and cancelling
+  their own subscription all happen in Stripe's portal through `manageSellerSubscription`. The portal has
+  no plan switcher, so never promise one. Never build the subscriber their own cancel button, or an
+  invoice list. Show the subscriber their product, its status and the next date
   (`currentPeriodEnd`, or "ends on" `cancelAt`) next to that button.
+- **Removing a paying subscriber stops their billing in the same action.** Whenever the app takes
+  someone out of what they pay a seller for (a seller removes a member, bans them, deletes the
+  community or class, or the person leaves through the app's own "leave" button), that action calls
+  `cancelSubscriber` before it changes the app's own record. Taking the access away without it leaves
+  Stripe charging the person every month. Two rules go with it:
+  - **Pick the mode on purpose.** `"period_end"` stops the renewal and keeps their access until the
+    date they already paid for: the default for an ordinary removal or a "leave". `"immediate"` ends
+    billing and access now and **does not refund**: use it when the person must be out today (a ban),
+    and tell the seller that any money back is a refund they issue in the seller dashboard.
+  - **Gate on the app's own record as well as the subscription.** After a `"period_end"` cancel
+    `hasActiveSubscription` stays true until the paid date, so a removed person's access is decided by
+    the app's membership row *and* the subscription, never by the subscription alone.
+
+  The seller is the signed-in app user by default, which is right for a seller's own "remove" button.
+  When someone else acts for the seller (the app's admin, an automation, the subscriber's own
+  "leave"), pass `sellerUserId` read from the stored membership or product row, never from the form.
+  It reaches only that seller's own subscribers and never an app plan.
+
+  **With `sellerUserId` passed, the action itself decides who may cancel.** `cancelSubscriber` then
+  checks nothing about the signed-in app user, so before the call the action confirms one of two
+  things: the app's own admin or owner check passes for the signed-in app user (`requireRole`, or
+  the stored row shows they own that community or class), or `subscriberUserId` is the signed-in
+  app user's own id, taken from the session (the "leave" case). `subscriberUserId` never goes from
+  the form to the call unchecked: when it names someone else, load that person's membership row
+  and confirm the signed-in app user may remove them. Without this check any signed-in app user
+  could cancel someone else's subscription.
+
+  A seller can also cancel a subscriber by hand in the seller dashboard's Subscribers tab; the app
+  still needs the call, so its own remove action never leaves billing running.
 - **One subscription per buyer per seller.** A second `subscribeToProduct` to the same seller bounces with
   `?checkout_error=already_subscribed`. Show a current subscriber "Manage billing" instead of Subscribe
   buttons. To change product the buyer cancels in the portal, then subscribes to the other one; a
@@ -475,8 +508,9 @@ The rules:
   from `listProducts`.
 - **Sellers see subscribers and MRR in the hosted dashboard.** The Subscribers tab of the seller dashboard
   (`sellerPanelLink`) lists each subscriber with the product they subscribe to, their status, monthly
-  recurring revenue, and recent cancellations. Don't rebuild a subscriber list or revenue report in the
-  app. Products are managed only in the app's own catalog page, never in the dashboard.
+  recurring revenue, and recent cancellations, and lets the seller cancel a subscriber (now or at
+  period end) or refund a payment. Don't rebuild a subscriber list, a revenue report or a refund flow
+  in the app. Products are managed only in the app's own catalog page, never in the dashboard.
 
 ## Managing the catalog — the seller's products page
 
@@ -589,7 +623,7 @@ the app's design. Follow the JSDoc examples in `~stencil/payments/selling` for t
 Every selling build must **end with a message** that includes all of these:
 
 - **Sellers see their money only in the hosted seller dashboard inside the app** (`sellerPanelLink`) — never in a Stripe login of their own. Refunds happen there too.
-- **Stencil emails each seller's buyers for them.** The receipt, add-a-card reminder, failed-payment and account notices go out as the seller's business name from their Stripe KYC (their personal name if there is none), shown as `<seller> via <app sender name>`; the app builds none of these. An app that does send its own receipt for sellers' sales should have the app builder turn **Send payment receipts** off in Project settings → Payments and plans, or buyers get two.
+- **Stencil emails each seller's buyers for them.** The receipt, add-a-card reminder, failed-payment and account notices go out as the seller's business name from their Stripe KYC (their personal name if there is none), shown as `<seller> via <app sender name>`; the app builds none of these. An app that does send its own receipt for sellers' sales should have the app builder turn **Send payment receipts** off in More → Settings → Payments, or buyers get two.
 - **Payments are LIVE — real money moves.** There is no test mode and no test card: every checkout is
   a real card charge, really billed to the buyer and really paid out to the seller's own Stripe
   account. To try it end to end, the app builder should make **one small real charge they can
@@ -608,7 +642,8 @@ Every selling build must **end with a message** that includes all of these:
   products page, then sign in as a **different** app user (subscribing needs an account), subscribe on
   the seller's storefront, land in the subscriber area once "confirming" clears, and open **Manage billing** to see
   the portal. Cancel there afterwards and refund the charge from the seller dashboard, whose Subscribers
-  tab shows the new subscriber.
+  tab shows the new subscriber with Refund and Cancel under Manage. If the app has a "remove" action,
+  try it on a second test subscriber and check the Subscribers tab shows them ending.
 - **Buy links go live only after step 2.** A buy link opened before its seller finishes Stripe
   onboarding shows buyers a "not accepting payments yet" notice — that's the built-in guard, not a
   bug. It starts selling the moment onboarding completes.

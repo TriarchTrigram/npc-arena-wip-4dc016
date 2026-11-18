@@ -30,7 +30,7 @@ export type AgentBrowserAccess = { hosts: string[]; allow?: string[] };
 export type AgentDefinitionManifest = {
   name: string;
   description: string;
-  /** The model the definition recommends; the app builder may override it in Project settings. */
+  /** The model the definition recommends; the app builder may override it in More. */
   model: string;
   /** One short line on why that model, shown beside the "Recommended" tag. */
   modelReason?: string | null;

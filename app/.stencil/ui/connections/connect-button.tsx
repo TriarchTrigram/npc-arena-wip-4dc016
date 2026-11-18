@@ -76,8 +76,8 @@ export function ConnectButton({
         className="inline-flex items-center gap-2 rounded-md border border-dashed border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-900"
         data-connection-status="unavailable"
       >
-        {titleFor(provider)} is not switched on for this app yet. Turn it on in App
-        settings, then Build, then App user connections. Only you can see this.
+        {titleFor(provider)} is not switched on for this app yet. Turn it on in More,
+        then Connectors. Only you can see this.
       </span>
     );
   }

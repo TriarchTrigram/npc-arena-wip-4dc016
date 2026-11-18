@@ -1,5 +1,5 @@
 /**
- * App secrets, set by the app builder in Settings → Build → Secrets and injected
+ * App secrets, set by the app builder in More → Settings → Secrets and injected
  * as worker bindings at deploy. They are not declared on `Env`, so read them here.
  */
 import { authSecret } from "./auth/utils";
