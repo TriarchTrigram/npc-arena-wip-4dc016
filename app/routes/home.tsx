@@ -342,7 +342,7 @@ export default function Home() {
               }
             />
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              <div className="flex gap-2" role="group">
+              <div className="flex flex-wrap gap-2" role="group">
                 <Text id="arena.mode.label" className="sr-only" />
                 {MODES.map((m) => (
                   <Button key={m} size="sm" variant={mode === m ? "default" : "outline"} disabled={fighting} onClick={() => switchMode(m)}>
