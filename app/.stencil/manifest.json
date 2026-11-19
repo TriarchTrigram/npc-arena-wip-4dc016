@@ -1,5 +1,5 @@
 {
-  "hash": "e7aa36904afa3b863c2277a02a6d1a451aacd3c1",
+  "hash": "7d807dedd478f90d44efbb700c234ddf250bd422",
   "files": [
     "app/entry.server.tsx",
     "app/entry.client.tsx",
@@ -2486,6 +2486,91 @@
         "upload/client.ts: batch, also an uploadFiles option, names the record the files belong to, so one record's batch is never offered or resumed on another.",
         "upload/server.ts: handleUpload gains a status action that answers a finished file's stored size, or null.",
         "Non-breaking; a screen that calls uploadFiles offers to continue an interrupted batch (see the storage skill)."
+      ],
+      "breaking": []
+    },
+    {
+      "hash": "07c59a38d332f78402ef2ce188ae9ff0e39d442c",
+      "date": "2026-11-18",
+      "notes": [
+        "react-router/auth/account: a Billing section with a Manage billing button shows whenever the signed-in app user has a Stripe-billed subscription, not only after a refused account close.",
+        "Non-breaking; an app's own billing page keeps working beside it."
+      ],
+      "breaking": []
+    },
+    {
+      "hash": "5720d9ea35ff63e56b30be3970c0860abf9f5f3f",
+      "date": "2026-11-18",
+      "notes": [
+        "ai.ts: the Anthropic model no longer retries a refused generateObject or streamObject schema in json-tool mode and no longer sends the x-stencil-schema-fallback header; the gateway does that retry for every app and returns the answer.",
+        "Non-breaking: createAI and every call through it are unchanged."
+      ],
+      "breaking": []
+    },
+    {
+      "hash": "810ecae629063a4d0fc5887a4c7ae22e5662f006",
+      "date": "2026-11-18",
+      "notes": [
+        "payments/selling.ts: SellerStatus carries an informational taxReady flag — true once Stencil has set sales tax up on the seller's account from their Stripe details; selling is never gated on it.",
+        "payments/selling.ts: sellerCheckout, buyProduct, subscribeToProduct and createProduct document that prices are before tax, that Checkout collects the buyer's billing address and adds sales tax on top where the seller is registered, and that sellerPanelLink({ panelPath: \"/?tab=tax\" }) opens the seller's Sales tax settings."
+      ],
+      "breaking": [
+        "Nothing to change. Optionally read taxReady from getSellerStatus and show \"plus applicable tax\" next to seller prices."
+      ]
+    },
+    {
+      "hash": "003c65b2cc18ecd6ab56f382196f2ff7210dc348",
+      "date": "2026-11-18",
+      "notes": [
+        "payments/server.ts: checkout gains link (false hides Stripe's Link wallet) and termsUrl (a required terms checkbox on the payment page).",
+        "payments/server.ts: payFirstCheckout gains the same link and termsUrl options.",
+        "payments/server.ts: buy gains the same link and termsUrl options.",
+        "Non-breaking; both are off unless passed (see the payments skill)."
+      ],
+      "breaking": []
+    },
+    {
+      "hash": "f33fe90eba5fbe6bb2632ea87d5abcc8648524b5",
+      "date": "2026-11-18",
+      "notes": [
+        "image.ts: createImage(env).generate() throws ImageRefusedError when an image model's safety filter turns the prompt down, instead of a plain Error that reads like an outage.",
+        "Non-breaking; an app that catches a failed generate() can catch ImageRefusedError first (see the runtime-image-generation skill)."
+      ],
+      "breaking": []
+    },
+    {
+      "hash": "8baa4d276cc83c5ece6cf118273811541a74126b",
+      "date": "2026-11-18",
+      "notes": [
+        "ui/error-boundary.tsx: a 403 page load draws a no-access screen (Back to home, Use a different account) instead of the crash screen, and is no longer reported as an app error.",
+        "Non-breaking: requireRole and every other status are unchanged."
+      ],
+      "breaking": []
+    },
+    {
+      "hash": "f7e24145676337355198614e5323ea93442b1600",
+      "date": "2026-11-18",
+      "notes": [
+        "ui/photo/stored.tsx: new <StoredPhoto> draws a picture the app serves (/assets/ or a file route) with a srcset of ?width= renditions sized by the browser, lazy unless priority, and an optional crop ratio.",
+        "Non-breaking; a plain <img> keeps working, and a screen moves onto <StoredPhoto> when it is next touched (see Assets in CLAUDE.md)."
+      ],
+      "breaking": []
+    },
+    {
+      "hash": "21caf41e1738fbf8ce20066802122d0bbb57aec9",
+      "date": "2026-11-18",
+      "notes": [
+        "storage.ts: new zipResponse(storage, files, filename, limits?) serves many stored files as one zip download. Files stream through uncompressed so memory stays flat, names are made unique and safe to unpack, a file no longer in storage is left out, and over 400 files or 2 GB (both adjustable) the answer is a 413 before any byte is sent.",
+        "Non-breaking; an app with a hand-written zip route keeps working (see the file-export skill for the Download all route)."
+      ],
+      "breaking": []
+    },
+    {
+      "hash": "7d807dedd478f90d44efbb700c234ddf250bd422",
+      "date": "2026-11-18",
+      "notes": [
+        "react-router/auth/account.tsx: the account page draws the app user's photo through <StoredPhoto> at its 64px slot instead of downloading the full upload.",
+        "Non-breaking; nothing in app code changes."
       ],
       "breaking": []
     }

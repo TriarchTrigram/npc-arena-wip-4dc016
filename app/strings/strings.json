@@ -94,6 +94,19 @@
       "badge": "Boss"
     }
   },
+  "title": {
+    "eyebrow": "Sixteen powers. One arena.",
+    "tagline": "Elemental fighters clash until only one is left standing.",
+    "cta": "Choose how to fight",
+    "backAria": "Back to the title screen",
+    "modes": {
+      "duel": "One on one, no distractions.",
+      "ffa": "Everyone in, free for all.",
+      "teams": "Pick sides and fight together.",
+      "tournament": "A bracket, round by round.",
+      "juggernaut": "Five challengers against one boss."
+    }
+  },
   "nav": {},
   "common": {
     "arena": "Arena",

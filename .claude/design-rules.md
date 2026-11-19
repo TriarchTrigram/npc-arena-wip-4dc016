@@ -150,8 +150,8 @@ The app's look already belongs to someone. Highest first:
   hand-typed or hotlinked URL.
 - `generateImage` only for what a camera cannot shoot (brand marks, illustration, abstract
   art, empty-state art); load `generate-image` before writing prompts.
-- Every `<img>` has `alt`, `width`, `height`; `/assets/` and `/api/files/` images get
-  `?width=` and `loading="lazy"` (see "Assets" in CLAUDE.md).
+- Every `<img>` has `alt`, `width`, `height`; `/assets/` and `/api/files/` pictures are
+  drawn with `<StoredPhoto>`, which sizes and lazy-loads them (see "Assets" in CLAUDE.md).
 - Icons: `react-icons`, one family for the whole app, never mixed. By kind of app: `hi2`
   (Heroicons v2: SaaS, dashboards), `fa6` (Font Awesome 6: marketing), `tb` (Tabler: dense
   tools), `pi` (Phosphor: consumer, editorial), `md` (Material Design). 16px inline / 20px in

@@ -208,6 +208,7 @@ When the app builder says they've finished but `getPaymentStatus` is still not r
 - To turn it on, the app builder finishes tax setup and adds a registration in the **Sales tax** card, right under Enable payments on the payments settings page (registrations in the Payments panel), then switches **Charge sales tax** on. You can't do any of that from chat — send the builder there.
 - When it is on, Stripe adds the tax for the app user's address **on top of the plan price** at checkout and on every renewal, in the places the builder is registered. New checkouts only; existing subscribers are never changed. Like a trial, it is live the moment it is switched on — no rebuild.
 - **Pricing-page wording:** when `getPaymentSettings` returns `taxEnabled: true`, show prices as "$X/mo plus applicable sales tax" (Part 2 §6). The app must **never compute tax itself** — no rates, no estimates, no tax line; Stripe shows the exact amount at checkout.
+- **Sellers (app users selling to their own end users) are different: sales tax is always on for them, with no toggle.** Stencil sets it up on each seller's account at onboarding; the seller manages registrations in the Sales tax tab of their seller dashboard. See the `selling` skill.
 
 ## Managing plans
 
@@ -438,6 +439,8 @@ export function SubscribeButton() {
   );
 }
 ```
+
+**Card only, and a required terms checkbox.** Only when the app builder asks: `link: false` hides Stripe's Link wallet (the Bank and Klarna rows it brings) so the card form is the only way to pay, and `termsUrl: "https://…"` adds a required "I agree to the Terms" checkbox linking to that address. Both are options on `checkout`, `payFirstCheckout` and `buy`, off unless passed, and not available on seller checkouts. The address must start with `https://`; on an account where Stripe cannot show the checkbox, the payment page shows "By paying you agree to the Terms: <address>" by the pay button instead, so never promise a checkbox was ticked.
 
 **Pre-applying a discount code.** Pass `promoCode` to open checkout with one of the app's discount codes already applied: the app user sees the reduced price on the payment page with nothing to type. **The cost: the payment page then hides its own promo-code field** (it allows one or the other, never both), so a buyer who arrived holding a *different* code has nowhere to type it and no way to drop the applied one — they pay without their code or leave. So:
 

@@ -32,11 +32,11 @@ their own account there, like any app user. It runs on the same connection and
 the same credentials, so read `memberConnectionStatus` and never send them to
 create an integration, a client ID or a redirect address for it.
 
-**There is one third answer, and it is Flodesk — nothing else.** Flodesk is the
-native email-marketing integration: a workspace-level connection the app builder
-makes once, after which new signups sync to the Flodesk segments they pick. It is
-handled by the `flodesk` skill (in chat, the `connectFlodesk` tool does the whole
-flow inline) — load that skill rather than forcing Flodesk into either row above.
+**There is one third answer, and it is the four built-in mailing list services — nothing
+else.** Flodesk, Kit, ActiveCampaign and MailerLite are workspace-level connections the app
+builder makes once, after which new signups sync to where they pick. They are handled by
+the `mailing-list` skill (in chat, the `connectMailingList` tool does the whole flow
+inline) — load that skill rather than forcing one of them into either row above.
 For everything else the two rows are the whole list. Stencil used to have an
 account-level `Settings → Connectors` tab where an app builder connected their
 own account for the chat agent to use, and it was retired in September 2026
@@ -270,6 +270,34 @@ attempt is a refused call before the real one. If the provider has no tools
 either, it offers neither path; say so to the app builder rather than working
 around it.
 
+### An app user's Instagram profile, posts and stats
+
+Instagram is a platform connection: declare `instagram` in the manifest, switch
+it on, and place `<ConnectButton provider="instagram">`. Never write a Meta or
+Instagram sign-in by hand, and never ask the builder for a Meta app id or secret
+to do it. It is read-only and passthrough:
+
+```ts
+const posts = await member.request("instagram", {
+  method: "GET",
+  path: "/me/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp&limit=25",
+});
+```
+
+- **Only professional accounts can connect.** Instagram refuses a personal
+  account on its own screen. Beside the connect button, tell app users it needs
+  a business or creator account and that switching is free in Instagram's
+  settings; a person who bounces back unconnected otherwise has no idea why.
+- **Copy images into app storage.** `media_url` and `thumbnail_url` are links
+  that expire. Save the file when you sync and render the stored copy; link out
+  with `permalink`.
+- **A feed of several app users' posts** is one opt-in connection per app user,
+  synced by a recurring action that calls `createConnections(env).as(userId)`
+  for each connected app user and stores the posts. A `needs_reauth` for one
+  app user skips that app user; it does not fail the sync.
+- **No publishing, no hashtags, nobody else's posts.** If the builder asks for
+  those, say this connection cannot do it rather than building a workaround.
+
 ### Ask before you write, not after it fails
 
 **`memberConnectionStatus` tells you what each switched-on provider can do** — its
@@ -371,9 +399,9 @@ app users of the same app must never see each other's events.
 
 ## The service is not in the catalog
 
-**Flodesk is not this case.** It is native. Load the `flodesk` skill; in chat use
-`connectFlodesk`. Never `addCustomProvider` for it, unless the brief is each app user
-connecting their own Flodesk account.
+**Flodesk, Kit, ActiveCampaign and MailerLite are not this case.** They are built in. Load
+the `mailing-list` skill; in chat use `connectMailingList`. Never `addCustomProvider` for
+one of them, unless the brief is each app user connecting their own account on it.
 
 **A booking tool is not this case either.** Bookings from Cal.com, Calendly or Acuity
 Scheduling reach the app without a connection: load the `booking-imports` skill and

@@ -22,7 +22,7 @@ generation.
 ## API
 
 ```ts
-const { bytes, contentType } = await createImage(env).generate({ prompt, model });
+const { body, contentType } = await createImage(env).generate({ prompt, model });
 ```
 
 - `prompt` (required) — what to draw.
@@ -37,6 +37,38 @@ const { bytes, contentType } = await createImage(env).generate({ prompt, model }
 
 Returns the image as a byte **stream** (`body`) plus the `contentType` the model
 produced — pipe it straight into R2, never buffered in the worker.
+
+### When the model refuses a prompt
+
+Every image model runs prompts through a safety filter, and it refuses some
+ordinary prompts — in practice, scenes that describe people, children's storybook
+scenes included. A refusal is not an outage: the same prompt is refused every time, so a retry changes
+nothing. `generate()` throws `ImageRefusedError` (from `~stencil/image`) for it, and
+a plain `Error` for everything else. Catch them apart:
+
+```ts
+import { createImage, ImageRefusedError } from "~stencil/image";
+
+try {
+  const { body, contentType } = await createImage(env).generate({ prompt });
+  // ...store it
+} catch (error) {
+  if (error instanceof ImageRefusedError) {
+    console.warn("illustration refused", error.message);
+    return { ok: false as const, error: "That description couldn't be drawn — try describing the scene differently." };
+  }
+  console.error("illustration failed", error);
+  return { ok: false as const, error: "Couldn't draw this right now — please try again." };
+}
+```
+
+- Show the refusal message next to the control, and let the person reword the
+  prompt. Keep the provider's wording out of the UI.
+- Log a refusal with `console.warn`, never `console.error`: it is not a bug in the
+  app, and nothing in the code fixes it.
+- Do not retry a refused prompt on another model or with a reshuffled prompt on
+  your own. Routing around the filter is the app builder's call, not the app's —
+  if they ask for it, pass `model` on the retry so the choice is visible in code.
 
 ### Recommended models
 
@@ -144,3 +176,5 @@ Then reference it as `/img/<key>` in an `<img>` (always with `alt`, `width`, `he
   generated images need to persist and list per user.
 - Generate on an explicit user action; a diffusion call takes a few seconds, so
   show a pending state and don't block a page's initial render on it.
+- Catch `ImageRefusedError` apart from other failures and show the person a
+  message they can act on (see "When the model refuses a prompt").

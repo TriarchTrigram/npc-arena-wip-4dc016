@@ -91,6 +91,18 @@ export interface PdfPreview extends GeneratedImage {
 }
 
 /**
+ * Thrown by `generate()` when the image model's safety filter turned the prompt down.
+ * The same prompt is refused every time, so a retry is pointless: tell the person and
+ * let them describe the scene differently. Not an outage, so log it as a warning.
+ */
+export class ImageRefusedError extends Error {
+  constructor(detail?: string) {
+    super(`Image generation refused: the model's safety filter turned this prompt down${detail ? ` (${detail})` : ""}`);
+    this.name = "ImageRefusedError";
+  }
+}
+
+/**
  * Generate an image from a text prompt at runtime, proxied through the Stencil
  * backend service (Workers AI). No keys required. Server-side only (loaders /
  * actions / scheduled handlers). Pass the returned `body` straight to
@@ -108,7 +120,19 @@ export function createImage(env: Env) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error(`Image generation failed: ${await res.text()}`);
+      if (!res.ok) {
+        const text = await res.text();
+        if (res.status === 422) {
+          let refusal: { code?: string; detail?: string } = {};
+          try {
+            refusal = JSON.parse(text) as { code?: string; detail?: string };
+          } catch {
+            // Not JSON — reported as a plain failure below.
+          }
+          if (refusal.code === "content_refused") throw new ImageRefusedError(refusal.detail);
+        }
+        throw new Error(`Image generation failed: ${text}`);
+      }
       if (!res.body) throw new Error("Image generation returned an empty response");
       const contentType = res.headers.get("Content-Type") ?? "image/png";
       return { body: res.body as ReadableStream<Uint8Array>, contentType };

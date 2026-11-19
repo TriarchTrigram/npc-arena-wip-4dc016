@@ -277,7 +277,7 @@ const PartiesSchema = z.object({ partyA: z.string(), partyB: z.string() });
 const MoneySchema = z.object({ total: z.number(), currency: z.string().optional() });
 ```
 
-When a schema is refused anyway, `~stencil/ai` retries the call once in tool mode (the schema
+When a schema is refused anyway, Stencil retries the call once in tool mode (the schema
 goes in as a tool the prompt tells the model to call, with no grammar compiled), so the app still
 gets its answer at the cost of a second round trip; the app builder sees it under Monitoring as a
 warning that names the schema as too complex. Treat that warning as a bug in the schema and shrink it.

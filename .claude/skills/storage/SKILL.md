@@ -206,7 +206,7 @@ route("api/files/*", "routes/api.files.$.tsx"),
 
 Reference in components:
 ```tsx
-<img src="/api/files/avatars/user.jpg" alt="Avatar" width={64} height={64} />
+<StoredPhoto src="/api/files/avatars/user.jpg" alt="Avatar" width={64} height={64} />
 <video src="/api/files/uploads/lesson.mp4" controls preload="metadata" />
 ```
 
@@ -269,20 +269,26 @@ without being asked; the **`media-processing`** skill has the job shape.
 
 ## Serve an image at the size you show it
 
-With `imageTransformFromRequest` wired into the file route (above), any screen asks
-for the size it needs in the URL — **never store a second, smaller copy of an
-image**. The stored file stays untouched; the resized variant is computed through
-the platform's image engine and cached at the edge per URL, so it works for every
-image already in storage, not just new uploads:
+With `imageTransformFromRequest` wired into the file route (above), the route serves
+any size a URL asks for — **never store a second, smaller copy of an image**, and never
+write a resizing route. The stored file stays untouched; the resized variant is computed
+through the platform's image engine and cached at the edge per URL, so it works for every
+image already in storage, not just new uploads. Draw every stored picture with
+`<StoredPhoto>` from `~stencil/ui/photo/stored`: it takes `<img>`'s props, asks for a
+copy sized for its slot and the screen, and loads only when scrolled into view:
 
 ```tsx
-{/* small and fast in a list — width only, so the height follows the photo's own shape */}
-<img src={`/api/files/${photo.key}?width=600`} alt="…" width={photo.width} height={photo.height} className="w-full h-auto" />
-{/* sharp on a dense screen — same stored file */}
-<img src={`/api/files/${photo.key}?width=1600&format=webp`} alt="…" width={photo.width} height={photo.height} className="w-full h-auto" />
+{/* its own shape, sized for wherever it is shown: a list tile and a full-width view alike */}
+<StoredPhoto src={`/api/files/${photo.key}`} alt="…" width={photo.width} height={photo.height} className="w-full h-auto" />
+{/* visible on load (a cover, a header logo): fetched first, not lazily */}
+<StoredPhoto priority src={`/api/files/${cover.key}`} alt="…" width={cover.width} height={cover.height} className="w-full h-auto" />
 {/* a fixed square is a deliberate choice: avatars, icons, or uniform tiles the app builder asked for */}
-<img src={`/api/files/${avatarKey}?width=128&height=128&fit=cover`} alt="…" width={128} height={128} className="rounded-full" />
+<StoredPhoto ratio="1/1" src={`/api/files/${avatarKey}`} alt="…" width={128} height={128} className="size-16 rounded-full" />
 ```
+
+A hand-written size (`/api/files/<key>?width=800`, about twice the displayed width) is
+only for a place that takes an address and no element: a CSS background, an `og:image`,
+a video poster.
 
 ### Photos keep their shape
 
@@ -328,12 +334,11 @@ the photos, each at its own shape, and a dialog shows the clicked one whole:
 <div className="columns-2 gap-4 md:columns-3">
   {photos.map((photo) => (
     <button key={photo.id} type="button" onClick={() => setOpen(photo)} className="mb-4 block w-full break-inside-avoid">
-      <img
-        src={`/api/files/${photo.key}?width=800`}
+      <StoredPhoto
+        src={`/api/files/${photo.key}`}
         alt={photo.caption}
         width={photo.width}
         height={photo.height}
-        loading="lazy"
         className="w-full h-auto rounded-lg"
       />
     </button>
@@ -343,8 +348,9 @@ the photos, each at its own shape, and a dialog shows the clicked one whole:
 <Dialog open={!!open} onOpenChange={(o) => !o && setOpen(null)}>
   <DialogContent className="sm:max-w-5xl p-2">
     {open && (
-      <img
-        src={`/api/files/${open.key}?width=1600`}
+      <StoredPhoto
+        priority
+        src={`/api/files/${open.key}`}
         alt={open.caption}
         width={open.width}
         height={open.height}

@@ -91,6 +91,14 @@ export type SellerStatus = {
   /** Requirement keys Stripe is still waiting on (drives a "finish setup" nudge). */
   currentlyDue: string[];
   disabledReason: string | null;
+  /**
+   * Informational only: Stencil set sales tax up on the seller's account from their
+   * Stripe details, and Stripe can now calculate it at checkout. Selling is never
+   * gated on it — a seller sells with or without it, and `false` only means a detail
+   * (usually the business address) is still missing in the Sales tax tab of their
+   * dashboard (`sellerPanelLink(..., { panelPath: "/?tab=tax" })`).
+   */
+  taxReady?: boolean;
 };
 
 export type Purchase = {
@@ -296,6 +304,7 @@ export async function getSellerStatus(
     detailsSubmitted: data.detailsSubmitted ?? false,
     currentlyDue: data.currentlyDue ?? [],
     disabledReason: data.disabledReason ?? null,
+    taxReady: data.taxReady ?? false,
   };
 }
 
@@ -372,6 +381,10 @@ export async function getSellerReadiness(
  * Put whatever your success/purchase page needs to identify the buyer into
  * `successUrl` yourself (e.g. `?ref=<reference>&buyer=<email>`); Stencil adds
  * nothing to it.
+ *
+ * `amountCents` is the price before tax. Checkout asks the buyer for a billing
+ * address and adds sales tax on top where the seller is registered, so show
+ * "plus applicable tax" next to the price and never compute tax in the app.
  *
  * Expected rejections never crash the page: when the checkout can't start —
  * the seller isn't charge-ready yet (`seller_not_onboarded` /
@@ -841,9 +854,11 @@ export async function disconnectSeller(
  *     await sellerPanelLink(request, context);
  *   }
  *
- * `panelPath` is an optional page inside the hosted dashboard to open (e.g. "/payouts").
- * It is never an app URL: the dashboard lives on its own origin, and a URL outside it is
- * ignored. Unlike `onboardSeller`'s `returnUrl`, the seller is not sent back to the app.
+ * `panelPath` is an optional page inside the hosted dashboard to open (e.g. "/payouts",
+ * or "/?tab=tax" for a "Sales tax settings" link, where the seller adds registrations or
+ * fixes their address). It is never an app URL: the dashboard lives on its own origin, and
+ * a URL outside it is ignored. Unlike `onboardSeller`'s `returnUrl`, the seller is not sent
+ * back to the app.
  */
 export async function sellerPanelLink(
   request: Request,
@@ -1091,7 +1106,9 @@ async function writeProduct(env: Env, stmt: D1PreparedStatement, productId: stri
 /**
  * Add a product the current user sells, stored in the app's own database.
  * Needs `getSellerStatus()` to be `active`. `interval` is required for a
- * `recurring` product and not allowed on a `one_time` one.
+ * `recurring` product and not allowed on a `one_time` one. `amountCents` is the
+ * price before tax: checkout adds sales tax on top where the seller is
+ * registered, so show "plus applicable tax" next to it.
  *
  *   export async function action({ request, context }: Route.ActionArgs) {
  *     const form = await request.formData();
@@ -1250,7 +1267,9 @@ export async function getProduct(
  * `extraLines` work the same (and `extraLines` must likewise come from stored
  * settings, never the form), and every rejection redirects back to `cancelUrl`
  * with `?checkout_error=<code>` — including `product_unavailable` (missing,
- * archived, or not a one-time product).
+ * archived, or not a one-time product). The price is before tax: Checkout asks
+ * the buyer for a billing address and adds sales tax on top where the seller is
+ * registered, so show "plus applicable tax" next to it.
  *
  *   export async function action({ request, context, params }: Route.ActionArgs) {
  *     const form = await request.formData();
@@ -1362,7 +1381,9 @@ async function readSellerSubscriptions(env: Env, userId: string, productId?: str
  * `product_unavailable` (missing, archived, or not a recurring product),
  * `already_subscribed` (they already subscribe to this seller — to change
  * product they cancel in `manageSellerSubscription`, then subscribe again),
- * `seller_not_ready`.
+ * `seller_not_ready`. The price is before tax: Checkout asks the buyer for a
+ * billing address and adds sales tax on top where the seller is registered, so
+ * show "plus applicable tax" next to it.
  *
  *   export async function action({ request, context, params }: Route.ActionArgs) {
  *     await subscribeToProduct(request, context, {

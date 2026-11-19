@@ -5,9 +5,10 @@ import { ACCOUNT_PHOTO_PREFIX, ACCOUNT_PHOTO_ROUTE } from "../../auth/account-ph
 import { closeAccount, forgetSession, requireAuth, safeReturnTo } from "../../auth/server";
 import { createAuth } from "../../auth/utils";
 import { forwardCookies, postToAuth } from "../../auth/two-factor";
-import { manageSubscription } from "../../payments/server";
+import { getSubscription, isComplimentary, manageSubscription } from "../../payments/server";
 import { createStorage } from "../../storage";
 import { SignOutButton } from "../../ui/auth/sign-out-button";
+import { StoredPhoto } from "../../ui/photo/stored";
 import { hasPassword as userHasPassword } from "./set-password";
 
 const PHOTO_TYPES: Record<string, string> = {
@@ -19,7 +20,7 @@ const PHOTO_TYPES: Record<string, string> = {
 const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 const MIN_PASSWORD_LENGTH = 8;
 
-type Intent = "profile" | "remove-photo" | "email" | "password" | "devices" | "close";
+type Intent = "profile" | "remove-photo" | "email" | "password" | "devices" | "billing" | "close";
 type Result = { intent: Intent; ok: boolean; message: string; billing?: boolean };
 
 /** /auth/account — the stock account page every app with sign-in gets: name and photo,
@@ -29,8 +30,14 @@ type Result = { intent: Intent; ok: boolean; message: string; billing?: boolean 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.cloudflare.env;
   const { user } = await requireAuth(request, env);
+  const [hasPassword, { sub }] = await Promise.all([
+    userHasPassword(env, user.id),
+    getSubscription(request, context),
+  ]);
   return {
     backTo: backToApp(request),
+    // Free access has no Stripe customer, so there is nothing for the portal to open.
+    canManageBilling: Boolean(sub?.customerId) && !isComplimentary(sub),
     user: {
       name: user.name,
       email: user.email,
@@ -38,7 +45,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       image: user.image ?? null,
       twoFactorEnabled: Boolean(user.twoFactorEnabled),
     },
-    hasPassword: await userHasPassword(env, user.id),
+    hasPassword,
   };
 }
 
@@ -128,6 +135,11 @@ export async function action({ request, context }: ActionFunctionArgs) {
       const res = await postToAuth(auth, request, "/revoke-other-sessions", {});
       return fromAuth(res, "Signed out everywhere except this device.");
     }
+    case "billing": {
+      // Always leaves by redirect: to the billing portal, or back here when there is nothing to manage.
+      await manageSubscription(request, context, `${origin}/auth/account`);
+      return reply(false, "Billing couldn't be opened. Try again.");
+    }
     case "close": {
       if (form.get("billing") === "1") {
         await manageSubscription(request, context, `${origin}/auth/account`);
@@ -168,7 +180,7 @@ async function deleteStoredPhoto(env: Env, userId: string, image: string | null 
 }
 
 export default function Account() {
-  const { user, hasPassword, ...loaded } = useLoaderData() as Awaited<ReturnType<typeof loader>>;
+  const { user, hasPassword, canManageBilling, ...loaded } = useLoaderData() as Awaited<ReturnType<typeof loader>>;
   const result = useActionData() as Result | undefined;
   const busy = useNavigation().state !== "idle";
   // Kept from the first load: a save re-runs the loader with this page as the referer.
@@ -188,7 +200,7 @@ export default function Account() {
           <input type="hidden" name="intent" value="profile" />
           <div className="flex items-center gap-4">
             {user.image ? (
-              <img src={user.image} alt="" className="h-16 w-16 rounded-full object-cover" />
+              <StoredPhoto ratio="1/1" src={user.image} alt="" width={64} height={64} sizes="64px" className="h-16 w-16 rounded-full" />
             ) : (
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-xl">
                 {(user.name.trim()[0] ?? "?").toUpperCase()}
@@ -214,6 +226,17 @@ export default function Account() {
         ) : null}
         {removePhotoNote ? <div className="mt-2">{removePhotoNote}</div> : null}
       </Section>
+
+      {canManageBilling ? (
+        <Section title="Billing">
+          <Form method="post">
+            <input type="hidden" name="intent" value="billing" />
+            <p className="text-sm text-muted-foreground">Change your card, see your receipts or cancel your subscription.</p>
+            {note("billing")}
+            <button type="submit" disabled={busy} className={`${secondaryButton} mt-3`}>Manage billing</button>
+          </Form>
+        </Section>
+      ) : null}
 
       <Section title="Sign-in email">
         <p className="text-sm text-muted-foreground">

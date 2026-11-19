@@ -21,6 +21,7 @@ tables, blob-anchor snippets) are bugs waiting to be re-found; don't write them.
 | Already in R2 — an upload, a finished video render | `serveR2Object(storage, key, request, { downloadAs: "name.ext" })` |
 | On another host — a render provider, a connected service's URL | `downloadResponse(url, "name.ext", { hosts })` in a resource route |
 | Generated in the browser — a canvas, composed text | `saveFile(data, "name.ext")` |
+| Many stored files at once — an album's photos, every file in a vault, "Download all" | `zipResponse(storage, files, "name.zip")` in a resource route (see below) |
 | Several files generated in the browser — a story set, a batch of cards | `saveFiles(files)` from one click (see below) |
 | The same set, into the phone's Photos or another app | `shareFiles(files)` — the `share-to-apps` skill |
 | Tabular data built in the browser — rows already on screen, a filtered view | `toCsv(rows)` → `saveFile(csv, "name.csv")` |
@@ -149,6 +150,66 @@ return serveR2Object(storage, video.r2Key, request, { downloadAs: `${video.title
 A "Download video" button is an anchor pointing at that route. Omit `downloadAs` when the
 route feeds an inline `<video>`/`<img>` — the option exists for the take-away copy.
 
+### Download all: many stored files as one zip
+
+"Download all", "Save photos", "Download this speaker's files": one resource route returning
+`zipResponse` from `~stencil/storage`. It streams the stored files into a zip without holding
+them in memory, keeps every name unique and safe to unpack, and sets the download headers.
+Never write a zip maker or install a zip library (`jszip`, `fflate`, `archiver`) for this.
+
+```ts
+// app/routes/albums.$id.download.tsx — register route("albums/:id/download", ...)
+import type { Route } from "./+types/albums.$id.download";
+import { requireAuth } from "~stencil/auth/server";
+import { createDb } from "~stencil/db";
+import { createStorage, zipResponse } from "~stencil/storage";
+import { albums, photos } from "~/generated/db-schema";
+import { and, eq } from "drizzle-orm";
+
+export async function loader({ request, params, context }: Route.LoaderArgs) {
+  const env = context.cloudflare.env;
+  const { user } = await requireAuth(request, env);
+  const db = createDb(env);
+  const [album] = await db
+    .select()
+    .from(albums)
+    .where(and(eq(albums.id, params.id), eq(albums.createdBy, user.id)));
+  if (!album) throw new Response("Not found", { status: 404 });
+  const rows = await db.select().from(photos).where(eq(photos.albumId, album.id));
+
+  return zipResponse(
+    createStorage(env),
+    rows.map((photo) => ({ key: photo.fileKey, name: photo.originalName })),
+    `${album.title}.zip`,
+  );
+}
+```
+
+```tsx
+<Button asChild>
+  <a href={`/albums/${album.id}/download`}>Download all ({photos.length})</a>
+</Button>
+```
+
+- **The route is the access check.** Load the records exactly as the page that lists them
+  does (same sign-in, same owner or share-link rule) and pass only those files. Never take
+  storage keys from the query string or a form.
+- **Zip what the app user sees.** Build the list from the same query as the screen. Anything
+  on screen that is not stored yet (an unsaved design, a canvas) is saved first, or it is
+  missing from the zip.
+- `key` takes what the record holds: a stored key or its `/api/files/...` URL. `name` is
+  the name inside the zip — the original file name, or `${speaker.name}/${file.name}` for
+  folders. Two files with the same name become `photo.jpg` and `photo (2).jpg`.
+- **Limits**: 400 files and 2 GB per zip by default; over either the route answers 413 before
+  sending anything. For a bigger set, split the download (per day, per folder, per 400) and
+  show the count on each button. The fourth argument `{ maxFiles, maxBytes }` lowers either
+  limit, or raises `maxBytes` up to 4 GB; don't raise `maxFiles`, since every file costs
+  two storage reads out of the request's budget.
+- **The button is a plain anchor**, never a `fetch` that re-saves a blob: the browser shows
+  its own progress with the full size, on a phone as well as a computer.
+- On a phone a zip lands in Files, not the camera roll. For photos keep a per-photo save or
+  the share sheet (`shareFiles`, below) beside Download all.
+
 ## Downloading a file from another host
 
 Browsers ignore the `download` attribute on a cross-origin `<a>`, so a link straight at a
@@ -187,8 +248,8 @@ The download button is a plain anchor at `/download/${file.id}`.
   keeps the route from being an open proxy: never derive it from the request or from the
   stored URL itself.
 - **One app-user click → one gesture.** For "Download all" of files the app serves, give each
-  file its own anchor or build one ZIP server-side; for files built in the browser call
-  `saveFiles` (below). Never loop clicks or form posts on a timer, never post the bytes
+  file its own anchor or serve one zip with `zipResponse` (above); for files built in the
+  browser call `saveFiles` (below). Never loop clicks or form posts on a timer, never post the bytes
   through a hidden frame, never zip in the browser: a timer leaves the click's permission
   so Chrome drops every download after the first, a shared frame cancels each request
   when the next starts so only the last file lands, and Chrome flags a zip saved from a
@@ -242,7 +303,7 @@ copy and the Instagram caveats. Keep Download all beside it on every device.
 Do not branch on the device or the browser, open a hidden frame, post the bytes back to
 the app to re-download them, or build a zip in the browser — each of these loses files
 or trips a browser guard; the two helpers are the whole answer. A real zip of stored
-files is a server route, not a browser job.
+files is a server route returning `zipResponse`, not a browser job.
 
 When the app draws the exported image itself (a canvas of creatives, cards, slides), the
 recurring bugs live upstream of the save — settle each the same way every time:

@@ -327,6 +327,10 @@ export async function getSubscription(
  * charging full price, so only pass a code the app is promoting. A signed-out
  * visitor is sent to sign in with the code kept as `?c=` in the return address.
  *
+ * `link: false` leaves the card form as the only way to pay, and `termsUrl` adds a
+ * required "I agree to the Terms" checkbox linking to that address. Both are off
+ * unless passed, and work the same on `payFirstCheckout` and `buy`.
+ *
  * Call in a form action:
  *
  *   import { tier } from "~/generated/tiers";
@@ -348,6 +352,10 @@ export async function checkout(
     successUrl?: string;
     cancelUrl?: string;
     promoCode?: string;
+    /** `false` hides Stripe's Link wallet, leaving the card form only. */
+    link?: boolean;
+    /** An `https://` address of the app's terms; the buyer must tick a box agreeing to them. */
+    termsUrl?: string;
   },
 ): Promise<void> {
   const env = context.cloudflare.env;
@@ -362,6 +370,8 @@ export async function checkout(
         tierId: opts.tierId,
         interval: opts.interval,
         promoCode: opts.promoCode,
+        link: opts.link,
+        termsUrl: opts.termsUrl,
         successUrl: opts.successUrl ?? `${base}/app`,
         cancelUrl: opts.cancelUrl ?? `${base}/upgrade`,
       });
@@ -391,6 +401,8 @@ export async function checkout(
       // interval the plan actually offers (a yearly-only plan has no monthly price).
       ...(opts.interval ? { interval: opts.interval } : {}),
       ...(opts.promoCode ? { promoCode: opts.promoCode } : {}),
+      ...(opts.link === false ? { link: false } : {}),
+      ...(opts.termsUrl ? { termsUrl: opts.termsUrl } : {}),
       endUserId: user.id,
       successUrl,
       cancelUrl: opts.cancelUrl ?? `${base}/upgrade`,
@@ -443,6 +455,10 @@ export async function payFirstCheckout(
     successUrl: string;
     cancelUrl: string;
     promoCode?: string;
+    /** `false` hides Stripe's Link wallet, leaving the card form only. */
+    link?: boolean;
+    /** An `https://` address of the app's terms; the buyer must tick a box agreeing to them. */
+    termsUrl?: string;
   },
 ): Promise<void> {
   const env = context.cloudflare.env;
@@ -464,6 +480,8 @@ export async function payFirstCheckout(
       tierId: opts.tierId,
       ...(opts.interval ? { interval: opts.interval } : {}),
       ...(opts.promoCode ? { promoCode: opts.promoCode } : {}),
+      ...(opts.link === false ? { link: false } : {}),
+      ...(opts.termsUrl ? { termsUrl: opts.termsUrl } : {}),
       payFirst: true,
       ...(signupAttribution ? { signupAttribution } : {}),
       ...readMetaBrowserIds(opts.request?.headers),
@@ -738,6 +756,10 @@ export async function buy(
     promoCode?: string;
     email?: string;
     reference?: string;
+    /** `false` hides Stripe's Link wallet, leaving the card form only. */
+    link?: boolean;
+    /** An `https://` address of the app's terms; the buyer must tick a box agreeing to them. */
+    termsUrl?: string;
   },
 ): Promise<void> {
   const env = context.cloudflare.env;
@@ -768,6 +790,8 @@ export async function buy(
       productId: opts.productId,
       ...(opts.promoCode ? { promoCode: opts.promoCode } : {}),
       ...(opts.reference ? { reference: opts.reference } : {}),
+      ...(opts.link === false ? { link: false } : {}),
+      ...(opts.termsUrl ? { termsUrl: opts.termsUrl } : {}),
       ...readMetaBrowserIds(request.headers),
       successUrl,
       cancelUrl,

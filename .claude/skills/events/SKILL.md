@@ -168,7 +168,7 @@ An email is a side effect you can't undo. If the handler does anything else afte
 
 ## Worked example 3 — add paying app users to the Flodesk list
 
-Brief: "when someone subscribes, add them to my Flodesk". The app builder has connected Flodesk and saved segments on the Users page (the `flodesk` skill); the handler only hands the email over.
+Brief: "when someone subscribes, add them to my Flodesk". The app builder has connected Flodesk and saved segments on the Users page (the `mailing-list` skill); the handler only hands the email over.
 
 ```ts
 import { addToFlodesk } from "~stencil/flodesk";
@@ -183,7 +183,7 @@ on("subscription.activated", async (event, env) => {
 
 ## Sending to Zapier, Make, a CRM
 
-A mailing list is not this. Flodesk, Kit, ActiveCampaign and MailerLite have built-in connections, so "add my signups to ActiveCampaign" or "add my signups to MailerLite" belongs to the `flodesk` or `mailing-list` skill and never to a destination here — including when that service is not open for the workspace yet, where the answer is another built-in service and never Zapier or Make.
+A mailing list is not this. Flodesk, Kit, ActiveCampaign and MailerLite have built-in connections, so "add my signups to ActiveCampaign" or "add my signups to MailerLite" belongs to the `mailing-list` skill and never to a destination here — including when that service is not open for the workspace yet, where the answer is another built-in service and never Zapier or Make.
 
 There is nothing to code beyond `emit()` (or nothing at all, for a platform event). The app builder:
 

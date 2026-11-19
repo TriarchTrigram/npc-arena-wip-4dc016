@@ -708,3 +708,202 @@ export async function serveR2Object(
   }
   return new Response(obj.body, { status: 206, headers });
 }
+
+export interface ZipFile {
+  /** The stored key, or the `/api/files/<key>` URL a record holds. */
+  key: string;
+  /** The name inside the zip (`/` makes folders); defaults to the key's last segment. */
+  name?: string;
+}
+
+export interface ZipLimits {
+  /** Most files one zip may hold. Each costs two storage reads of the request's budget. */
+  maxFiles?: number;
+  /** Largest zip served, in bytes; the format written here ends at 4 GiB. */
+  maxBytes?: number;
+}
+
+const ZIP_MAX_FILES = 400;
+const ZIP_MAX_BYTES = 2 * 1024 ** 3;
+const ZIP_FORMAT_MAX_BYTES = 0xffff_ffff;
+// Sizes follow the data, and names are UTF-8.
+const ZIP_FLAGS = 0x0808;
+
+interface ZipEntry {
+  key: string;
+  name: Uint8Array;
+  head: R2Object;
+  offset: number;
+  crc: number;
+}
+
+const CRC_TABLE = new Uint32Array(256).map((_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c;
+});
+
+// A name safe to unpack anywhere: no absolute or `..` path, no characters Windows
+// refuses, and a counter when two files would land on the same name.
+function zipEntryName(raw: string, taken: Set<string>): string {
+  const clean =
+    raw
+      .replace(/\\/g, "/")
+      .split("/")
+      .map((part) => part.replace(/[\x00-\x1f<>:"|?*]/g, "_").trim())
+      .filter((part) => part && part !== "." && part !== "..")
+      .join("/") || "file";
+  const dot = clean.lastIndexOf(".");
+  const stem = dot > clean.lastIndexOf("/") + 1 ? clean.slice(0, dot) : clean;
+  let name = clean;
+  for (let n = 2; taken.has(name.toLowerCase()); n++) {
+    name = `${stem} (${n})${clean.slice(stem.length)}`;
+  }
+  taken.add(name.toLowerCase());
+  return name;
+}
+
+// The header before a file's bytes, or (`central`) its row in the closing directory.
+function zipHeader(entry: ZipEntry, central: boolean): Uint8Array<ArrayBuffer> {
+  const fixed = central ? 46 : 30;
+  const out = new Uint8Array(fixed + entry.name.length);
+  const view = new DataView(out.buffer);
+  const at = central ? 6 : 4;
+  const when = entry.head.uploaded;
+  view.setUint32(0, central ? 0x02014b50 : 0x04034b50, true);
+  if (central) view.setUint16(4, 20, true);
+  view.setUint16(at, 20, true);
+  view.setUint16(at + 2, ZIP_FLAGS, true);
+  view.setUint16(
+    at + 6,
+    (when.getUTCHours() << 11) | (when.getUTCMinutes() << 5) | (when.getUTCSeconds() >> 1),
+    true,
+  );
+  view.setUint16(
+    at + 8,
+    (Math.max(0, when.getUTCFullYear() - 1980) << 9) |
+      ((when.getUTCMonth() + 1) << 5) |
+      when.getUTCDate(),
+    true,
+  );
+  if (central) {
+    view.setUint32(at + 10, entry.crc, true);
+    view.setUint32(at + 14, entry.head.size, true);
+    view.setUint32(at + 18, entry.head.size, true);
+    view.setUint32(42, entry.offset, true);
+  }
+  view.setUint16(at + 22, entry.name.length, true);
+  out.set(entry.name, fixed);
+  return out;
+}
+
+// The app user's browser stopped reading: routine, so it is never logged as a fault.
+class DownloadCancelled extends Error {}
+
+async function writeZip(
+  storage: R2Bucket,
+  entries: ZipEntry[],
+  writer: WritableStreamDefaultWriter<Uint8Array>,
+): Promise<void> {
+  const send = (bytes: Uint8Array) =>
+    writer.write(bytes).catch((err) => {
+      throw new DownloadCancelled("download cancelled", { cause: err });
+    });
+  for (const entry of entries) {
+    await send(zipHeader(entry, false));
+    // The length is already promised, so a file replaced since it was measured fails the download.
+    const obj = await storage.get(entry.key, { onlyIf: { etagMatches: entry.head.etag } });
+    if (!obj || !("body" in obj)) throw new Error(`stored file changed mid-download: ${entry.key}`);
+    let crc = 0xffff_ffff;
+    const reader = obj.body.getReader();
+    for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+      for (const byte of chunk.value) crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+      await send(chunk.value);
+    }
+    entry.crc = (crc ^ 0xffff_ffff) >>> 0;
+    const descriptor = new DataView(new ArrayBuffer(16));
+    descriptor.setUint32(0, 0x08074b50, true);
+    descriptor.setUint32(4, entry.crc, true);
+    descriptor.setUint32(8, entry.head.size, true);
+    descriptor.setUint32(12, entry.head.size, true);
+    await send(new Uint8Array(descriptor.buffer));
+  }
+  let directoryBytes = 0;
+  for (const entry of entries) {
+    const row = zipHeader(entry, true);
+    directoryBytes += row.length;
+    await send(row);
+  }
+  const last = entries[entries.length - 1];
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true);
+  end.setUint16(8, entries.length, true);
+  end.setUint16(10, entries.length, true);
+  end.setUint32(12, directoryBytes, true);
+  end.setUint32(16, last.offset + 30 + last.name.length + last.head.size + 16, true);
+  await send(new Uint8Array(end.buffer));
+  await writer.close();
+}
+
+/**
+ * Serve many stored files as one zip download, streamed uncompressed so memory stays
+ * flat. Pass only files this app user may read; one missing from storage is left out,
+ * and over a limit the answer is a 413 before any byte is sent.
+ */
+export async function zipResponse(
+  storage: R2Bucket,
+  files: readonly ZipFile[],
+  filename: string,
+  limits: ZipLimits = {},
+): Promise<Response> {
+  const maxFiles = Math.min(limits.maxFiles ?? ZIP_MAX_FILES, 0xffff);
+  if (files.length > maxFiles) {
+    return new Response(`Too many files for one download (limit ${maxFiles})`, { status: 413 });
+  }
+  const taken = new Set<string>();
+  const encoder = new TextEncoder();
+  const entries: ZipEntry[] = [];
+  let offset = 0;
+  let directoryBytes = 0;
+  // Six at a time: the most storage reads a request may have open at once.
+  for (let i = 0; i < files.length; i += 6) {
+    const batch = files.slice(i, i + 6).map((file) => ({
+      file,
+      key: keyFromStoredFileRef(file.key),
+    }));
+    const heads = await Promise.all(batch.map(({ key }) => (key ? storage.head(key) : null)));
+    batch.forEach(({ file, key }, n) => {
+      const head = heads[n];
+      if (!key || !head) return;
+      const name = encoder.encode(zipEntryName(file.name ?? key.split("/").pop() ?? "", taken));
+      entries.push({ key, name, head, offset, crc: 0 });
+      offset += 30 + name.length + head.size + 16;
+      directoryBytes += 46 + name.length;
+    });
+  }
+  const total = offset + directoryBytes + 22;
+  if (entries.length === 0) return new Response("Not found", { status: 404 });
+  const maxBytes = Math.min(limits.maxBytes ?? ZIP_MAX_BYTES, ZIP_FORMAT_MAX_BYTES);
+  if (total > maxBytes) {
+    return new Response("These files are too large for one download", { status: 413 });
+  }
+
+  const { readable, writable } = new FixedLengthStream(total);
+  const writer = writable.getWriter();
+  writeZip(storage, entries, writer).catch((err) => {
+    if (!(err instanceof DownloadCancelled)) {
+      console.error(`[storage] zip download "${filename}" (${entries.length} files) failed:`, err);
+    }
+    // Ends the download as failed; on a stream that is already gone this has nothing left to do.
+    writer.abort(err).catch(() => {});
+  });
+  return new Response(readable, {
+    headers: {
+      "Content-Type": "application/zip",
+      "Content-Disposition": contentDisposition(filename),
+      "Content-Length": String(total),
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}

@@ -80,7 +80,8 @@ hero images), **do not** transform at upload time and store a second file. Store
 the original once; the serving route resizes on the way out when the URL asks
 for a size — `/api/files/<key>?width=800` keeps the photo's own shape, and
 `?width=128&height=128&fit=cover` is the avatar square — and the variant
-is cached at the edge. That works for every image already in storage, needs no
+is cached at the edge. In a screen, `<StoredPhoto>` from `~stencil/ui/photo/stored`
+writes those sizes for you and lazy-loads the picture. That works for every image already in storage, needs no
 naming convention linking two files, and never drifts out of sync with the
 original. The route wiring (`serveR2Object` + `imageTransformFromRequest`) and
 the accepted params are in the `storage` skill's serving section.

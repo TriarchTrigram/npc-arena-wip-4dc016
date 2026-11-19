@@ -1,48 +1,66 @@
 ---
 name: mailing-list
 description: >
-  Use whenever the app builder names Kit, ConvertKit, ActiveCampaign or MailerLite, or wants their
-  app's signups, waitlist, leads or buyers in a mailing list service other than Flodesk.
-  Kit (formerly ConvertKit), ActiveCampaign and MailerLite are built-in mailing list services: the app
-  builder connects one from chat with `connectMailingList` and picks where new signups go
-  (Kit tags; ActiveCampaign lists and tags; MailerLite groups), with no build and no key
-  typed into the chat. "Connect ActiveCampaign", "connect MailerLite" and "add my signups
-  to MailerLite" are this skill, not a webhook and not custom code. Flodesk itself, and the question of which email marketing platforms Stencil
-  supports, belong to the `flodesk` skill.
+  Use whenever the app builder mentions Flodesk, Kit, ConvertKit, ActiveCampaign or MailerLite,
+  email marketing, a newsletter or mailing list for their app's signups, waitlist, leads or
+  buyers, or asks which email marketing platforms Stencil works with (Mailchimp, Klaviyo,
+  beehiiv, …). Flodesk, Kit (formerly ConvertKit), ActiveCampaign and MailerLite are Stencil's
+  four built-in mailing list services: the app builder connects one from chat with
+  `connectMailingList` and picks where new signups go (Flodesk segments; Kit tags;
+  ActiveCampaign lists and tags; MailerLite groups), with no build and no key typed into the
+  chat. "Connect Flodesk", "connect ActiveCampaign" and "add my signups to MailerLite" are this
+  skill, not a webhook and not custom code. Covers the in-chat connect flow, why it is not done
+  until something is picked, broken sync, how to answer "which email platforms do you support",
+  and how app code adds any other email it collects (`addToFlodesk` for Flodesk,
+  `addToMailingList` for the other three); waitlist joins sync on their own.
 allowed-tools: connectMailingList
 metadata:
   agents: [chat, builder]
 ---
 
-# Kit — one connection, one call
+# Mailing list — four built-in services, one card
 
-Kit (formerly ConvertKit) is a built-in mailing list service the app builder connects once
-for the whole workspace. They pick per app which Kit tags, plus an optional form, new signups go
-to, and the platform sends every new app user signup and every waitlist join there. No
-code, no webhook, no API key. Its `service` id is `"kit"`.
+Stencil has four built-in mailing list services: **Flodesk, Kit (formerly ConvertKit),
+ActiveCampaign and MailerLite**. They connect and behave the same way. The app builder
+connects one, then picks per app where new signups go, and the
+platform sends every new app user signup and every waitlist join there. No code, no webhook,
+no API key typed into the chat. One tool, `connectMailingList`, shows the same card for each;
+its `service` id is `"flodesk"`, `"kit"`, `"activecampaign"` or `"mailerlite"`. An app can
+use more than one at the same time; they are independent.
 
-**ActiveCampaign is built in the same way**, on the same card, tool and helper. Its
-`service` id is `"activecampaign"`. Everything below that is said about Kit holds for it
-too; the differences are in [ActiveCampaign](#activecampaign). Never say Stencil does not
-support ActiveCampaign, and never route a plain "connect ActiveCampaign" or "add my
-signups to ActiveCampaign" to Events, a webhook, Zapier, Make or a build — not even when
-the card comes back `unavailable`.
+Whose account an app uses:
 
-**MailerLite is built in the same way too.** Its `service` id is `"mailerlite"`, and the
-differences are in [MailerLite](#mailerlite). Never say Stencil does not support
-MailerLite or that it needs the app builder's own key and custom code for plain signups,
-and never route "connect MailerLite" or "add my signups to MailerLite" to Events, a
-webhook, Zapier, Make or a build — not even when the card comes back `unavailable`.
+- By default a workspace has one account per service, shared by every app in it.
+- An app can use its own account instead, and then only that app uses it. That is set on
+  the app's **Users page**, on the mailing list card: **Switch account** on a connected
+  service, or **This app only** after picking a service to connect. It is not done in chat.
+- Switching an app to another account clears that app's chosen destinations and its plans'
+  destinations, and holds waiting sign-ups until new ones are picked. Say so before
+  suggesting it.
+- Disconnecting the workspace's account does not touch an app that has its own.
 
-**Flodesk keeps its own skill, tool and call — load `flodesk` for it and never pass
-`"flodesk"` here.** An app can use Flodesk and Kit at the same time; they are independent.
+**Never say Stencil has no built-in email-marketing connection**, and never say it does not
+support one of the four. None of them is registered with `addCustomProvider` or researched
+for OAuth endpoints, and a plain "connect ActiveCampaign" or "add my signups to MailerLite"
+never goes to Events, a webhook, Zapier, Make or a build — not even when the card comes back
+`unavailable`.
+
+When the app builder names no service ("add my signups to my newsletter"), ask which one
+they use, naming the four with Flodesk first. Do not pick one for them.
+
+Everything below is written with Kit as the example and holds for all four. What differs is
+in [Flodesk](#flodesk), [ActiveCampaign](#activecampaign) and [MailerLite](#mailerlite).
 
 ## Answering "which email marketing platforms do you support"
 
-This skill does not answer that question, even in a conversation that is already about
-Kit. Load the `flodesk` skill and give its answer as it is written there: Flodesk first,
-then Kit, ActiveCampaign and MailerLite as built in too, then other platforms through their own API. Do not add any route
-that answer does not name.
+Name the four built-in services, **Flodesk first**: Flodesk, Kit (formerly ConvertKit),
+ActiveCampaign and MailerLite, each connected from this chat with signups syncing on their
+own. Flodesk and Kit connect through a sign-in popup; the ActiveCampaign and MailerLite
+cards take a key in their own dialog, so never ask for one in the chat. Then, if the builder
+wants a different platform: most other ESPs (Mailchimp, Klaviyo, beehiiv, …) can be reached
+from app code through their own APIs with an API key stored in the app's secrets — a build,
+not a built-in connection. Never present that list without the four built-in services at
+the top, Flodesk first, and do not add any route this answer does not name.
 
 ## In chat (chat agent only): `connectMailingList`
 
@@ -68,8 +86,11 @@ service's status in a later turn, call the tool again.
 
 Do not send the app builder to Settings for this. The card is the flow; the only other
 place it lives is the app's **Users page** (More → Users), which you can mention as where
-to manage it later. Connecting needs a workspace owner or admin; the card tells anyone
-else so.
+to manage it later, and the one place an app is given its own account (above): for that
+ask, name the Users page control and do not call the tool as if it could do it. A result's
+`account` says whose account the app uses: `app` is its own, `workspace` the shared one.
+Connecting needs a workspace owner or admin; the card tells anyone else so. Disconnecting a service is the **Disconnect** button on its Users page card; no
+tool does it.
 
 ### When the result is `unavailable`
 
@@ -89,6 +110,61 @@ Stencil could not check whether the service is open for this workspace just now.
 is known, so do not say Kit is unavailable, connected or broken. Say the check failed on
 Stencil's side and to try again in a moment, and call the tool again when they ask.
 **Never ask for a Kit API key** here either.
+
+## Flodesk
+
+When the app builder wants Flodesk, call `connectMailingList({ service: "flodesk" })` after
+one line such as *"Here's Flodesk — connect it and pick at least one segment; nothing syncs
+until you do."* The card, its states and a broken sync all work as described for Kit. What
+differs:
+
+- **Always available.** Flodesk is open to every workspace, so its result is never
+  `unavailable` or `status_unknown`.
+- **A sign-in popup, and no key at all.** The card's Connect button opens Flodesk's own
+  sign-in. Never ask for a Flodesk API key, never accept one, and never offer a secret box
+  for it: `requestSecret` refuses a Flodesk name. If the app builder pastes a key anyway, do
+  not use it: call `redactSecret` with the value copied exactly and no `saveAs`, say Flodesk
+  needs no key, and show the card.
+- **They pick segments.** At least one; nothing syncs until a segment is saved. Segments are
+  created in Flodesk; the picker shows what the account has. To change them later ("change
+  my Flodesk segments"), call the tool again: the same card shows the picker.
+- **A segment per plan:** the "Flodesk segment" field on each subscription plan in More →
+  Settings → Payments, once Flodesk is connected. "Paid app users in their own segment" or
+  "one segment per plan" is that setting, never an `addToFlodesk` call in a
+  `subscription.activated` handler.
+
+In app code Flodesk has its own call, not `addToMailingList`:
+
+```ts
+import { addToFlodesk } from "~stencil/flodesk";
+
+await addToFlodesk(context.cloudflare.env, { email, name });
+// or, to also join specific segments on top of the saved ones:
+await addToFlodesk(context.cloudflare.env, { email, name, segmentIds: [segmentId] });
+```
+
+It makes the same promises as `addToMailingList` below: after the write that collected the
+email, server side only, never throws, skipped in local dev, and `false` when Flodesk is not
+connected and no segment is named anywhere, which never means "already subscribed". Use it
+for any email the app collects that is not a signup or a waitlist join: a lead form with its
+own fields, a quiz, a guest purchase, a plan change. Never write it for a waitlist, and never
+build a waitlist entity to hold the emails. An app that already has such an entity keeps it:
+its rows are not on the platform list and are not synced, and a build cannot move them — the
+`landing-page` skill, rule 5, says what to do and what to tell the app builder.
+
+**A segment per form field** (a role picked on a waitlist, a course bought) is the
+`segmentIds` parameter. It takes Flodesk segment ids, and there is no tool yet that lists
+the account's segments with their ids, so build it only when the builder gives you the ids
+(keep them as named constants in the handler). Otherwise say plainly that routing by form
+field is not available yet, and never ask for an API key to get around it.
+
+Never call Flodesk's API from app code: the connection already covers it, and a hand-wired
+call skips the queue, so leads vanish when Flodesk blips.
+
+The one Flodesk ask that is *not* this feature: an app whose **app users** market to their
+own contacts through their own Flodesk accounts. That is an app user connection to a provider
+the catalog does not have — the `member-connections` skill's custom-provider path — not this
+built-in service.
 
 ## ActiveCampaign
 
@@ -205,7 +281,8 @@ builder asks to move it.
 
 Connecting syncs nothing on its own: the platform only sends a signup once this app has at
 least one destination saved. For Kit that means **at least one tag**; for ActiveCampaign,
-at least one list or tag; for MailerLite, at least one group. A **form** is
+at least one list or tag; for MailerLite, at least one group; for Flodesk, at least one
+segment. A **form** is
 optional and at most one: adding it runs that form's confirmation email, which is how the
 builder keeps double opt-in. Tags and forms are created in Kit, not here; the picker lists
 what the account already has.
@@ -241,8 +318,8 @@ await addToMailingList(context.cloudflare.env, { service: "kit", email, name });
 await addToMailingList(context.cloudflare.env, { service: "kit", email, name, destinationIds: [tagId] });
 ```
 
-It adds the person to the destinations saved on the Users page through the workspace's
-connection, on the same queue and retry as signups. Call it after the write that collected
+It adds the person to the destinations saved on the Users page through the connection
+the app uses, on the same queue and retry as signups. Call it after the write that collected
 the email (the form action, or the handler for `order.paid` in `app/events.ts` — see the
 `events` skill). It never throws and is skipped in local dev; it resolves `false` when the
 service is not set up for this app, so the form still succeeds either way. `false` never
@@ -290,3 +367,11 @@ app code. A brief that says "add my leads / buyers to Kit" is one `addToMailingL
 where the email is collected, and nothing else; it resolves `false` until Kit is connected
 and a tag is saved, so say in your summary that the builder must do that for it to take
 effect. "Add my waitlist to Kit" needs no code at all.
+
+The same holds for Flodesk, with "connect Flodesk" as what the builder says in the chat and
+`addToFlodesk` as the call: no Flodesk API call, no signup hook that posts to Flodesk and no
+Flodesk API key. A brief that says "add new signups to my Flodesk" is done by connecting and
+picking segments, in the chat or on the Users page, not in app code. "Add my leads / buyers
+to Flodesk" is one `addToFlodesk` call where the email is collected, and nothing else. "Add
+my waitlist to Flodesk" needs no code at all. Sign-ups the app stored in an entity of its
+own are not synced and a build cannot move them; say so, as `landing-page` rule 5 describes.

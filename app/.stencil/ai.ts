@@ -1,7 +1,6 @@
 import { createOpenAI, type OpenAIProvider } from "@ai-sdk/openai";
 import { createAnthropic, type AnthropicProvider } from "@ai-sdk/anthropic";
 import {
-  APICallError,
   createProviderRegistry,
   generateObject,
   wrapLanguageModel,
@@ -230,83 +229,6 @@ const failReplyAtLimit: LanguageModelMiddleware = {
   },
 };
 
-// Anthropic compiles a structured-output schema into a grammar before the call and refuses one it
-// cannot compile, every time, in several wordings: "Schema is too complex.", too many union or
-// optional parameters, or a grammar too large. The match is the meaning, not one phrase.
-const SCHEMA_TOO_COMPLEX = /too complex|too many (\S+ )?parameters|grammar/i;
-
-const schemaTooComplex = (error: unknown): boolean =>
-  APICallError.isInstance(error) && error.statusCode === 400 && SCHEMA_TOO_COMPLEX.test(error.message);
-
-type CallOptions = Parameters<NonNullable<LanguageModelMiddleware["transformParams"]>>[0]["params"];
-type ContentPart = Awaited<ReturnType<NonNullable<LanguageModelMiddleware["wrapGenerate"]>>>["content"][number];
-type StreamPart =
-  Awaited<ReturnType<NonNullable<LanguageModelMiddleware["wrapStream"]>>>["stream"] extends ReadableStream<infer P> ? P : never;
-
-const JSON_TOOL = "json";
-
-const jsonSchemaOf = (params: CallOptions) => (params.responseFormat?.type === "json" ? params.responseFormat.schema : undefined);
-
-// The same schema sent as an ordinary tool needs no grammar, and generateObject still validates
-// the reply. It is asked for by name and in the prompt: the SDK sends a model that refuses a
-// forced tool `auto` with only this tool, so the prompt is what makes that model call it.
-const asJsonTool = (params: CallOptions, schema: NonNullable<ReturnType<typeof jsonSchemaOf>>): CallOptions => ({
-  ...params,
-  responseFormat: undefined,
-  tools: [{ type: "function", name: JSON_TOOL, description: "Respond with a JSON object.", inputSchema: schema }],
-  toolChoice: { type: "tool", toolName: JSON_TOOL },
-  prompt: [{ role: "system", content: `Answer by calling the ${JSON_TOOL} tool. Do not answer in text.` }, ...params.prompt],
-});
-
-// generateObject reads its object from text, so the tool's input is handed back as text.
-const jsonToolAsText = (part: ContentPart): ContentPart =>
-  part.type === "tool-call" && part.toolName === JSON_TOOL ? { type: "text", text: part.input } : part;
-
-const jsonToolStreamAsText = () => {
-  const ids = new Set<string>();
-  return new TransformStream<StreamPart, StreamPart>({
-    transform(part, controller) {
-      if (part.type === "tool-input-start" && part.toolName === JSON_TOOL) {
-        ids.add(part.id);
-        controller.enqueue({ type: "text-start", id: part.id });
-      } else if (part.type === "tool-input-delta" && ids.has(part.id)) {
-        controller.enqueue({ type: "text-delta", id: part.id, delta: part.delta });
-      } else if (part.type === "tool-input-end" && ids.has(part.id)) {
-        controller.enqueue({ type: "text-end", id: part.id });
-      } else if (!(part.type === "tool-call" && part.toolName === JSON_TOOL)) {
-        controller.enqueue(part);
-      }
-    },
-  });
-};
-
-const retrySchemaTooComplex: LanguageModelMiddleware = {
-  specificationVersion: "v3",
-  async wrapGenerate({ doGenerate, model, params }) {
-    try {
-      return await doGenerate();
-    } catch (error) {
-      const schema = jsonSchemaOf(params);
-      if (!schemaTooComplex(error) || !schema) throw error;
-      const result = await model.doGenerate(asJsonTool(params, schema));
-      return { ...result, content: result.content.map(jsonToolAsText) };
-    }
-  },
-  async wrapStream({ doStream, model, params }) {
-    try {
-      return await doStream();
-    } catch (error) {
-      const schema = jsonSchemaOf(params);
-      if (!schemaTooComplex(error) || !schema) throw error;
-      const { stream, ...rest } = await model.doStream(asJsonTool(params, schema));
-      return { stream: stream.pipeThrough(jsonToolStreamAsText()), ...rest };
-    }
-  },
-};
-
-// Tells the gateway the app retries a refused schema itself, so it files the refusal as a warning.
-const SCHEMA_FALLBACK_HEADER = "x-stencil-schema-fallback";
-
 // Anthropic takes a request of 32 MB, and a PDF grows by a third as base64; the image path
 // has the transform's own 20 MB cap, so one limit covers every kind.
 const DOCUMENT_MAX_BYTES = 20 * 1024 * 1024;
@@ -378,7 +300,6 @@ export function createAI(env: Env): AI {
   const anthropic = createAnthropic({
     baseURL: `${BACKEND_BASE}/ai/anthropic`,
     apiKey: "unused",
-    headers: { [SCHEMA_FALLBACK_HEADER]: "json-tool" },
     fetch: backendFetch,
   });
 
@@ -386,10 +307,9 @@ export function createAI(env: Env): AI {
   // `createAI`'s declared type free of ai's nested @ai-sdk/provider copy, which declaration emit can't name.
   const registry: Registry = createProviderRegistry({
     openai,
-    // Listed outermost first: the retry sits next to the model so its reply gets the limit check too.
     anthropic: wrapProvider({
       provider: anthropic,
-      languageModelMiddleware: [failReplyAtLimit, retrySchemaTooComplex],
+      languageModelMiddleware: [failReplyAtLimit],
     }) as AnthropicProvider,
   });
 

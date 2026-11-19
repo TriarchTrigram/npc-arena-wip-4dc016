@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { CompassIcon, RefreshCwIcon, TriangleAlertIcon } from "lucide-react";
+import { CompassIcon, LockIcon, RefreshCwIcon, TriangleAlertIcon } from "lucide-react";
 import type { PlatformError } from "../types/error";
 import { resolveUpdateCopy, type UpdateCopy } from "./update-notice";
 import { checkForUpdate, getUpdateState, useUpdateState } from "./update-watch";
@@ -44,6 +44,9 @@ function deadLinkMessage(): string {
  * crawler probe, or a loader that found no record is noise, but a link inside the
  * app to a page no route serves is a broken page the app builder needs to hear about.
  *
+ * A 403 is the app refusing an account that lacks the role, which is the app working:
+ * it gets a no-access screen and is never reported.
+ *
  * A page a publish has superseded fails for reasons its app builder cannot fix, so
  * once the served version is known to differ the screen offers a refresh instead
  * and reports nothing.
@@ -62,6 +65,7 @@ export function ErrorScreen({
   updateCopy?: UpdateCopy;
 }) {
   const notFound = error.status === 404;
+  const noAccess = error.status === 403;
   const stale = useUpdateState() === "stale";
 
   let heading = "Something went wrong";
@@ -75,6 +79,9 @@ export function ErrorScreen({
   } else if (notFound) {
     heading = "Page not found";
     details = "This page doesn't exist, or it moved somewhere else.";
+  } else if (noAccess) {
+    heading = "You don't have access to this page";
+    details = "Your account isn't allowed to open it. Go back home, or sign in with a different account.";
   } else if (error.status !== undefined) {
     // Keep the code on screen so an app user reporting the problem can quote it.
     statusLine = [error.status, error.statusText].filter(Boolean).join(" ");
@@ -88,7 +95,7 @@ export function ErrorScreen({
   useEffect(() => {
     let cancelled = false;
     void checkForUpdate().then(() => {
-      if (cancelled || (notFound && !deadLink) || getUpdateState() === "stale") return;
+      if (cancelled || noAccess || (notFound && !deadLink) || getUpdateState() === "stale") return;
       try {
         window.postMessage(
           {
@@ -109,11 +116,11 @@ export function ErrorScreen({
     return () => {
       cancelled = true;
     };
-  }, [error, notFound, deadLink]);
+  }, [error, notFound, noAccess, deadLink]);
 
-  // Reloading a 404 only re-renders the 404, so home leads that case — unless the
-  // page is stale, when a reload is exactly what fetches the version that has it.
-  const reloads = stale || !notFound;
+  // Reloading a 404 or a refusal only re-renders it, so home leads those cases — unless
+  // the page is stale, when a reload is exactly what fetches the version that has it.
+  const reloads = stale || !(notFound || noAccess);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-6 py-16 text-foreground">
@@ -123,6 +130,8 @@ export function ErrorScreen({
             <RefreshCwIcon className="size-6" />
           ) : notFound ? (
             <CompassIcon className="size-6" />
+          ) : noAccess ? (
+            <LockIcon className="size-6" />
           ) : (
             <TriangleAlertIcon className="size-6" />
           )}
@@ -150,13 +159,20 @@ export function ErrorScreen({
               <a href="/" className={`${ACTION} ${PRIMARY}`}>
                 Back to home
               </a>
-              <button
-                type="button"
-                onClick={() => window.history.back()}
-                className={`${ACTION} ${OUTLINE}`}
-              >
-                Go back
-              </button>
+              {noAccess ? (
+                // /logout confirms before ending the session, and sends a signed-out visitor home.
+                <a href="/logout" className={`${ACTION} ${OUTLINE}`}>
+                  Use a different account
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => window.history.back()}
+                  className={`${ACTION} ${OUTLINE}`}
+                >
+                  Go back
+                </button>
+              )}
             </>
           )}
         </div>

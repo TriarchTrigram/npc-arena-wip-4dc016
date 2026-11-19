@@ -18,6 +18,7 @@ import { FIGHTERS, DEF_BY_ID, type FighterDef, type Power } from "~/lib/fighters
 import { W, H, TEAM_COLORS, newGame, step, drawScene, buildBackdrop, type Game, type FeedItem } from "~/lib/arena-engine";
 import { drawBracket, recordWinner, nextMatch, champion, progress, started, entrants, type Bracket, type MatchRef } from "~/lib/bracket";
 import { BracketView } from "~/components/bracket-view";
+import { TitleScreen } from "~/components/title-screen";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -60,6 +61,7 @@ function shuffled<T>(xs: T[]): T[] {
 }
 
 export default function Home() {
+  const [screen, setScreen] = useState<"title" | "arena">("title");
   const [mode, setMode] = useState<Mode>("ffa");
   const [picked, setPicked] = useState<Power[]>(FIGHTERS.map((f) => f.id));
   const [status, setStatus] = useState<Status>("ready");
@@ -70,6 +72,7 @@ export default function Home() {
   const [bracket, setBracket] = useState<Bracket | null>(null);
   const [jugg, setJugg] = useState<Power>("pyro");
   const canvasAria = useString("arena.canvasAria");
+  const titleBackAria = useString("title.backAria");
   const speedAria = useString("arena.controls.speedAria");
   const juggAria = useString("arena.jugg.label");
   const teamNames = [useString("arena.teams.name0"), useString("arena.teams.name1"), useString("arena.teams.name2"), useString("arena.teams.name3")];
@@ -227,6 +230,11 @@ export default function Home() {
     setPicked(m === "tournament" && bracket && started(bracket) && !champion(bracket) ? entrants(bracket) : defaultPicks(m, jugg));
   };
 
+  const enterFromTitle = (m: Mode) => {
+    switchMode(m);
+    setScreen("arena");
+  };
+
   const fighting = status === "running" || status === "paused";
   const locked = fighting || tourLive;
   const tour = bracket ? progress(bracket) : null;
@@ -235,19 +243,34 @@ export default function Home() {
   return (
     <PageContainer>
       <nav className="mb-6 flex items-center gap-2">
-        <Text id="common.appName" className="mr-auto font-display text-lg" />
+        {screen === "arena" && !fighting && !tourLive ? (
+          <button
+            type="button"
+            onClick={() => setScreen("title")}
+            aria-label={titleBackAria}
+            className="mr-auto font-display text-lg text-foreground transition-colors duration-150 hover:text-foreground-secondary"
+          >
+            <Text id="common.appName" as="span" />
+          </button>
+        ) : (
+          <Text id="common.appName" className="mr-auto font-display text-lg" />
+        )}
         <Button asChild variant="secondary" size="sm"><Link to="/"><Text id="common.arena" /></Link></Button>
         <Button asChild variant="ghost" size="sm"><Link to="/roster"><Text id="common.fighters" /></Link></Button>
       </nav>
 
-      <PageHeader
-        eyebrow={<Text id="arena.eyebrow" />}
-        title={<Text id="arena.title" />}
-        subtitle={<Text id="arena.subtitle" />}
-        actions={<StatusBadge tone={tone}><Text id={`arena.status.${status}` as StringKey} /></StatusBadge>}
-      />
+      {screen === "title" ? (
+        <TitleScreen onPick={enterFromTitle} />
+      ) : (
+        <>
+          <PageHeader
+            eyebrow={<Text id="arena.eyebrow" />}
+            title={<Text id="arena.title" />}
+            subtitle={<Text id="arena.subtitle" />}
+            actions={<StatusBadge tone={tone}><Text id={`arena.status.${status}` as StringKey} /></StatusBadge>}
+          />
 
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="flex flex-col gap-6">
           <Panel>
             <PanelBody className="flex flex-col gap-4">
@@ -463,7 +486,9 @@ export default function Home() {
             </div>
           </section>
         </aside>
-      </div>
+          </div>
+        </>
+      )}
     </PageContainer>
   );
 }
