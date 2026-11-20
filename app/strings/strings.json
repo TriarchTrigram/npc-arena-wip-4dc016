@@ -31,7 +31,11 @@
       "resume": "Resume",
       "restart": "Restart",
       "speed": "Speed",
-      "speedAria": "Battle speed"
+      "speedAria": "Battle speed",
+      "soundAria": "Sound",
+      "mute": "Mute sound",
+      "unmute": "Turn sound on",
+      "volume": "Volume"
     },
     "status": {
       "ready": "Ready",

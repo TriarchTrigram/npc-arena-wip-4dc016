@@ -12,10 +12,13 @@ import {
   StatusBadge,
   EmptyState,
 } from "~/components/design";
+import { Slider } from "~/components/ui/slider";
+import { PiSpeakerHighBold, PiSpeakerLowBold, PiSpeakerSlashBold } from "react-icons/pi";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { cn } from "~/lib/utils";
 import { FIGHTERS, DEF_BY_ID, type FighterDef, type Power } from "~/lib/fighters";
 import { W, H, TEAM_COLORS, newGame, step, drawScene, buildBackdrop, type Game, type FeedItem } from "~/lib/arena-engine";
+import { arenaSound } from "~/lib/arena-sound";
 import { drawBracket, recordWinner, nextMatch, champion, progress, started, entrants, type Bracket, type MatchRef } from "~/lib/bracket";
 import { BracketView } from "~/components/bracket-view";
 import { TitleScreen } from "~/components/title-screen";
@@ -84,6 +87,36 @@ export default function Home() {
     setCleared(c);
     setStage(Math.min(c, STAGES_PER_CHAPTER - 1));
   }, []);
+  // Sound: saved volume and mute are read from this browser after the first render.
+  const [volume, setVolume] = useState(60);
+  const [muted, setMuted] = useState(false);
+  useEffect(() => {
+    const prefs = arenaSound.load();
+    setVolume(Math.round(prefs.volume * 100));
+    setMuted(prefs.muted);
+    // browsers start audio only after a tap or key press
+    const unlock = () => arenaSound.unlock();
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock);
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
+  const changeVolume = (v: number) => {
+    setVolume(v);
+    const unmute = v > 0 && muted;
+    if (unmute) setMuted(false);
+    arenaSound.set({ volume: v / 100, ...(unmute ? { muted: false } : {}) });
+  };
+  const toggleMute = () => {
+    arenaSound.unlock();
+    setMuted(!muted);
+    arenaSound.set({ muted: !muted });
+  };
+  const muteAria = useString(muted ? "arena.controls.unmute" : "arena.controls.mute");
+  const volumeAria = useString("arena.controls.volume");
+  const soundAria = useString("arena.controls.soundAria");
   const canvasAria = useString("arena.canvasAria");
   const titleBackAria = useString("title.backAria");
   const speedAria = useString("arena.controls.speedAria");
@@ -155,6 +188,8 @@ export default function Home() {
       if (g && statusRef.current === "running") {
         const sub = speedRef.current;
         for (let i = 0; i < sub && !g.over; i++) step(g, dt);
+        arenaSound.play(g.sfx);
+        g.sfx.length = 0;
         snapTimer += dt;
         if (snapTimer > 0.2 || g.over) {
           snapTimer = 0;
@@ -336,6 +371,20 @@ export default function Home() {
                       {`${s}x`}
                     </Button>
                   ))}
+                </div>
+                <div className="flex items-center gap-2" role="group" aria-label={soundAria}>
+                  <Button size="sm" variant={muted ? "secondary" : "outline"} onClick={toggleMute} aria-label={muteAria} aria-pressed={muted}>
+                    {muted || volume === 0 ? <PiSpeakerSlashBold className="size-5" /> : volume < 45 ? <PiSpeakerLowBold className="size-5" /> : <PiSpeakerHighBold className="size-5" />}
+                  </Button>
+                  <Slider
+                    className="w-28"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={[muted ? 0 : volume]}
+                    onValueChange={(v) => changeVolume(v[0] ?? 0)}
+                    aria-label={volumeAria}
+                  />
                 </div>
               </div>
               <div className="relative">

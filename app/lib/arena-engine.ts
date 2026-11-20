@@ -1,5 +1,6 @@
 // Side-view stickman fight engine for the arena canvas. Runs entirely in the browser.
 import { DEF_BY_ID, juggernautOf, type Anim, type FighterDef, type Move, type Power, type StatusEffect } from "./fighters";
+import type { Sfx } from "./arena-sound";
 import { LOOKS, drawFx, drawSpark, drawShotLook, drawBeamLook, drawEruptionLook, drawZoneLook, drawRushLook, eruptionColors, type Fx, type PShape } from "./move-looks";
 
 export const W = 960;
@@ -175,6 +176,8 @@ export type Game = {
   /** Each move's own cast and impact effects. */
   fx: Fx[];
   feed: FeedItem[];
+  /** Sounds queued this frame; the arena screen plays and clears them. */
+  sfx: Sfx[];
   shake: number;
   hitstop: number;
   ending: number;
@@ -239,7 +242,7 @@ export function newGame(ids: (Power | FighterDef)[], preview = false, teams?: nu
     };
   });
   return {
-    t: 0, fighters, projectiles: [], beams: [], eruptions: [], zones: [], particles: [], pops: [], waves: [], fx: [], feed: [],
+    t: 0, fighters, projectiles: [], beams: [], eruptions: [], zones: [], particles: [], pops: [], waves: [], fx: [], feed: [], sfx: [],
     shake: 0, hitstop: 0, ending: 0, over: false, winner: null, preview, duel: n === 2 && !teamMode,
     teamMode, winnerId: null, winnerTeam: null,
   };
@@ -297,6 +300,11 @@ function castFx(g: Game, f: Fighter, m: Move) {
   moveFx(g, m.id, false, at.x, at.y, f.facing, s, lk.castLife ?? 0.3, reach);
 }
 
+/** Queue a sound for the screen to play. A preview arena stays silent. */
+function sfx(g: Game, e: Sfx) {
+  if (!g.preview && g.sfx.length < 48) g.sfx.push(e);
+}
+
 function pop(g: Game, x: number, y: number, text: string, color: string, size = 18, life = 0.8) {
   g.pops.push({ x, y, text, color, life, max: life, size });
 }
@@ -328,6 +336,7 @@ function shockwave(g: Game, x: number, y: number, pa: Power, pb: Power, r = 170)
     f.kneelT = 0;
   }
   pop(g, x, y - 46, "CLASH!", "hsl(46 100% 62%)", 30, 0.9);
+  sfx(g, { k: "clash" });
   g.shake = Math.max(g.shake, 13);
   g.hitstop = Math.max(g.hitstop, 0.09);
 }
@@ -357,6 +366,7 @@ function m1Clash(g: Game, a: Fighter, b: Fighter) {
     for (const m of f.def.moves) if (m.kind === "melee") f.cds[m.id] = Math.max(f.cds[m.id], 0.5);
   }
   pop(g, x, y - 40, "CLASH!", "white", 28, 0.9);
+  sfx(g, { k: "m1clash" });
   g.shake = Math.max(g.shake, 10);
   g.hitstop = Math.max(g.hitstop, 0.13);
 }
@@ -369,6 +379,7 @@ function startDash(g: Game, f: Fighter, dir: number) {
   }
   f.dashT = DASH_TIME;
   f.dashDir = dir;
+  sfx(g, { k: "dash", air: !f.onGround });
   f.dashCd = DASH_CD * (1.15 - f.aggro * 0.3);
   f.iframeT = IFRAMES;
   f.vx = 0;
@@ -399,6 +410,7 @@ function knockOut(g: Game, f: Fighter, by: Fighter | null) {
   g.feed.unshift({ id: ++feedId, killer: by && by !== f ? by.def.name : null, victim: f.def.name });
   const c = center(f);
   emit(g, f.def.id, c.x, c.y, 34, 420);
+  sfx(g, { k: "ko" });
   g.shake = Math.max(g.shake, 14);
   g.hitstop = Math.max(g.hitstop, 0.12);
 }
@@ -430,6 +442,7 @@ function hit(g: Game, a: Fighter, o: Fighter, move: Move, power: Power, dir: num
   const crit = move.crit != null && Math.random() < move.crit;
   if (crit) dmg *= 1.8;
   dmg = Math.round(dmg * 10) / 10;
+  sfx(g, { k: "hit", power, move: move.id, kind: move.kind, anim: move.anim, dmg, crit });
   o.flash = 0.1;
   if (power !== "shift") o.lastHitBy = power;
   const weight = o.jugg ? 0.5 : 1;
@@ -498,6 +511,7 @@ function fire(g: Game, f: Fighter, act: Action) {
   const s = f.scale;
   const enemies = g.fighters.filter((o) => o.alive && foe(f, o));
   if (m.kind !== "blink") castFx(g, f, m);
+  sfx(g, { k: "cast", power, move: m.id, kind: m.kind, anim: m.anim });
   switch (m.kind) {
     case "melee": {
       const x1 = f.x + f.facing * (m.range + 14) * s;
@@ -1189,6 +1203,7 @@ export function step(g: Game, dt: number) {
     e.t += dt;
     if (!e.fired && e.t >= 0.3) {
       e.fired = true;
+      sfx(g, { k: "erupt", power: e.power, move: e.move.id });
       const owner = g.fighters[e.owner];
       const r = e.move.radius ?? 44;
       for (const o of g.fighters) {
