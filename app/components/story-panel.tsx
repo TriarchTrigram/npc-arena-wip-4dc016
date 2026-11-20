@@ -150,7 +150,7 @@ export function StoryPanel({ cleared, chapter, onChapter, stage, onStage, pair, 
   );
 }
 
-function FighterSelect({ value, label, disabled, onChange }: { value: Power; label: string; disabled: boolean; onChange: (p: Power) => void }) {
+export function FighterSelect({ value, label, disabled, onChange }: { value: Power; label: string; disabled: boolean; onChange: (p: Power) => void }) {
   return (
     <Select value={value} onValueChange={(v) => onChange(v as Power)} disabled={disabled}>
       <SelectTrigger className="w-48" aria-label={label}>

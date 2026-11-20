@@ -16,7 +16,10 @@ import { Slider } from "~/components/ui/slider";
 import { PiSpeakerHighBold, PiSpeakerLowBold, PiSpeakerSlashBold } from "react-icons/pi";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { cn } from "~/lib/utils";
-import { FIGHTERS, DEF_BY_ID, type FighterDef, type Power } from "~/lib/fighters";
+import { FIGHTERS, defOf, type FighterDef, type Power, type RosterId } from "~/lib/fighters";
+import { rememberHybrid, useHybrids } from "~/lib/hybrids";
+import { FusionSheet } from "~/components/fusion-sheet";
+import { FighterDot } from "~/components/fighter-dot";
 import { W, H, TEAM_COLORS, newGame, step, drawScene, buildBackdrop, type Game, type FeedItem } from "~/lib/arena-engine";
 import { arenaSound } from "~/lib/arena-sound";
 import { arenaMusic } from "~/lib/arena-music";
@@ -25,7 +28,7 @@ import { drawBracket, recordWinner, nextMatch, champion, progress, started, entr
 import { BracketView } from "~/components/bracket-view";
 import { TitleScreen } from "~/components/title-screen";
 import { StoryPanel } from "~/components/story-panel";
-import { CHAPTERS, STAGES_PER_CHAPTER, canTeam, chapterOpen, fusionOrder, loadProgress, rememberHybrid, saveProgress, stageLineup, type Pair } from "~/lib/story";
+import { CHAPTERS, STAGES_PER_CHAPTER, canTeam, chapterOpen, fusionOrder, loadProgress, saveProgress, stageLineup, type Pair } from "~/lib/story";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -36,7 +39,7 @@ export function meta({}: Route.MetaArgs) {
 
 type Status = "ready" | "running" | "paused" | "finished";
 type Mode = "story" | "duel" | "ffa" | "teams" | "tournament" | "juggernaut";
-type Result = { name: string | null; id: Power | null; team: number | null };
+type Result = { name: string | null; id: RosterId | null; team: number | null };
 
 type Snapshot = { alive: { key: number; name: string; color: string; hp: number; maxHp: number; kills: number; team: number; jugg: boolean }[]; feed: FeedItem[] };
 
@@ -55,8 +58,10 @@ const HINTS: Record<Mode, StringKey> = {
   tournament: "arena.pick.tournamentHint",
   juggernaut: "arena.pick.juggHint",
 };
-const ALL = FIGHTERS.map((f) => f.id);
-const defaultPicks = (m: Mode, jugg: Power): Power[] =>
+const ALL: RosterId[] = FIGHTERS.map((f) => f.id);
+/** Picks are roster ids: an original fighter or a saved hybrid. */
+const defsOf = (ids: RosterId[]) => ids.map(defOf);
+const defaultPicks = (m: Mode, jugg: RosterId): RosterId[] =>
   m === "duel" ? ["pyro", "cryo"] : m === "tournament" ? ALL.slice(0, 8) : m === "juggernaut" ? ALL.filter((id) => id !== jugg).slice(0, CHALLENGERS) : ALL;
 
 function shuffled<T>(xs: T[]): T[] {
@@ -71,14 +76,15 @@ function shuffled<T>(xs: T[]): T[] {
 export default function Home() {
   const [screen, setScreen] = useState<"title" | "arena">("title");
   const [mode, setMode] = useState<Mode>("ffa");
-  const [picked, setPicked] = useState<Power[]>(FIGHTERS.map((f) => f.id));
+  const [picked, setPicked] = useState<RosterId[]>(ALL);
+  const hybrids = useHybrids();
   const [status, setStatus] = useState<Status>("ready");
   const [speed, setSpeed] = useState<number>(1);
   const [snap, setSnap] = useState<Snapshot>({ alive: [], feed: [] });
   const [result, setResult] = useState<Result | null>(null);
   const [teamCount, setTeamCount] = useState<number>(2);
   const [bracket, setBracket] = useState<Bracket | null>(null);
-  const [jugg, setJugg] = useState<Power>("pyro");
+  const [jugg, setJugg] = useState<RosterId>("pyro");
   // Story mode: each chapter's cleared count is read from this browser after the first render.
   const [clearedAll, setClearedAll] = useState<number[]>(() => CHAPTERS.map(() => 0));
   const [chapter, setChapter] = useState(0);
@@ -175,7 +181,7 @@ export default function Home() {
   const validFor = (m: Mode, n: number) =>
     m === "story" ? stage <= cleared : m === "duel" ? n === 2 : m === "teams" ? n >= teamCount * 2 && n <= 16 : m === "juggernaut" ? n === CHALLENGERS && !picked.includes(jugg) : n >= 3 && n <= 16;
   const valid = validFor(mode, picked.length);
-  const teamsFor = (ids: Power[]) => ids.map((_, i) => i % teamCount);
+  const teamsFor = (ids: RosterId[]) => ids.map((_, i) => i % teamCount);
   const upNext = mode === "tournament" && bracket ? nextMatch(bracket) : null;
   const champ = bracket ? champion(bracket) : null;
   const tourLive = mode === "tournament" && !!bracket && started(bracket) && !champ;
@@ -261,14 +267,14 @@ export default function Home() {
   const upA = upNext && bracket ? bracket[upNext.r][upNext.i].a : null;
   const upB = upNext && bracket ? bracket[upNext.r][upNext.i].b : null;
   useEffect(() => {
-    if (mode === "tournament") previewRef.current = newGame(upA && upB ? [upA, upB] : [], true);
+    if (mode === "tournament") previewRef.current = newGame(upA && upB ? defsOf([upA, upB]) : [], true);
     else if (mode === "story") {
       const { defs, teams } = stageLineup(pair, CHAPTERS[chapter].stages[stage]);
       previewRef.current = newGame(defs, true, teams);
     } else if (mode === "juggernaut") {
       const ids = [...picked.filter((id) => id !== jugg), jugg];
-      previewRef.current = newGame(ids, true, ids.map((_, i) => (i === ids.length - 1 ? 1 : 0)), ids.length - 1);
-    } else previewRef.current = newGame(picked, true, mode === "teams" ? picked.map((_, i) => i % teamCount) : undefined);
+      previewRef.current = newGame(defsOf(ids), true, ids.map((_, i) => (i === ids.length - 1 ? 1 : 0)), ids.length - 1);
+    } else previewRef.current = newGame(defsOf(picked), true, mode === "teams" ? picked.map((_, i) => i % teamCount) : undefined);
   }, [picked, mode, teamCount, upA, upB, jugg, pair, stage, chapter]);
 
   const begin = (g: Game) => {
@@ -297,15 +303,15 @@ export default function Home() {
       const m = at && bracket ? bracket[at.r][at.i] : null;
       if (!at || !m?.a || !m.b) return;
       matchRef.current = at;
-      begin(newGame([m.a, m.b]));
+      begin(newGame(defsOf([m.a, m.b])));
       return;
     }
     if (!valid) return;
     if (mode === "juggernaut") {
-      begin(newGame([...picked, jugg], false, JUGG_TEAMS, CHALLENGERS));
+      begin(newGame(defsOf([...picked, jugg]), false, JUGG_TEAMS, CHALLENGERS));
       return;
     }
-    begin(newGame(picked, false, mode === "teams" ? teamsFor(picked) : undefined));
+    begin(newGame(defsOf(picked), false, mode === "teams" ? teamsFor(picked) : undefined));
   };
 
   const restart = () => {
@@ -321,7 +327,7 @@ export default function Home() {
     setBracket(validFor("tournament", picked.length) ? drawBracket(picked) : null);
   };
 
-  const toggle = (id: Power) => {
+  const toggle = (id: RosterId) => {
     if (locked) return;
     setPicked((cur) => {
       if (cur.includes(id)) return cur.filter((x) => x !== id);
@@ -331,7 +337,7 @@ export default function Home() {
     });
   };
 
-  const chooseJugg = (id: Power) => {
+  const chooseJugg = (id: RosterId) => {
     if (locked) return;
     setJugg(id);
     setPicked((cur) => cur.filter((x) => x !== id));
@@ -351,6 +357,17 @@ export default function Home() {
   };
 
   const fighting = status === "running" || status === "paused";
+  const chip = (id: RosterId) => (
+    <FighterChip
+      key={id}
+      def={defOf(id)}
+      on={picked.includes(id) || (mode === "juggernaut" && id === jugg)}
+      disabled={locked || (mode === "juggernaut" && id === jugg)}
+      onClick={() => toggle(id)}
+      team={mode === "teams" && picked.includes(id) ? picked.indexOf(id) % teamCount : null}
+      juggernaut={mode === "juggernaut" && id === jugg}
+    />
+  );
   const locked = fighting || tourLive;
   const tour = bracket ? progress(bracket) : null;
   const tone = status === "running" ? "success" : status === "paused" ? "warning" : status === "finished" ? "info" : "neutral";
@@ -464,7 +481,7 @@ export default function Home() {
                       <WinnerBanner
                         mode={mode}
                         result={result}
-                        champ={champ ? DEF_BY_ID[champ].name : null}
+                        champ={champ ? defOf(champ).name : null}
                         teamName={result?.team != null ? teamNames[result.team] : null}
                         teamColor={result?.team != null ? TEAM_COLORS[result.team] : null}
                         onAgain={start}
@@ -538,15 +555,15 @@ export default function Home() {
             {mode === "juggernaut" && (
               <div className="mt-3 flex flex-wrap items-center gap-3" data-jugg-picker>
                 <Text id="arena.jugg.label" className="text-sm text-muted-foreground" />
-                <Select value={jugg} onValueChange={(v) => chooseJugg(v as Power)} disabled={locked}>
+                <Select value={jugg} onValueChange={(v) => chooseJugg(v)} disabled={locked}>
                   <SelectTrigger className="w-48" aria-label={juggAria}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {FIGHTERS.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        <span className="size-3 shrink-0 rounded-full border-2 border-foreground" style={{ background: f.color }} />
-                        {f.name}
+                    {[...ALL, ...hybrids].map((id) => (
+                      <SelectItem key={id} value={id}>
+                        <FighterDot def={defOf(id)} />
+                        {defOf(id).name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -559,19 +576,25 @@ export default function Home() {
                 <StoryPanel cleared={clearedAll} chapter={chapter} onChapter={chooseChapter} stage={stage} onStage={setStage} pair={pair} onPair={setPair} locked={fighting} />
               </div>
             ) : (
+            <>
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
-              {FIGHTERS.map((f) => (
-                <FighterChip
-                  key={f.id}
-                  def={f}
-                  on={picked.includes(f.id) || (mode === "juggernaut" && f.id === jugg)}
-                  disabled={locked || (mode === "juggernaut" && f.id === jugg)}
-                  onClick={() => toggle(f.id)}
-                  team={mode === "teams" && picked.includes(f.id) ? picked.indexOf(f.id) % teamCount : null}
-                  juggernaut={mode === "juggernaut" && f.id === jugg}
-                />
-              ))}
+              {ALL.map(chip)}
             </div>
+            <div className="mt-6 flex flex-wrap items-center gap-3" data-arena-hybrids>
+              <Text id="arena.hybrids.title" as="h3" className="font-display text-xl text-foreground" />
+              {hybrids.length > 0 && <Text id="arena.hybrids.count" vars={{ count: hybrids.length }} className="text-sm text-muted-foreground tabular-nums" />}
+              <div className="ml-auto">
+                <FusionSheet saved={hybrids} />
+              </div>
+            </div>
+            {hybrids.length === 0 ? (
+              <Text id="arena.hybrids.empty" as="p" className="mt-3 max-w-prose text-sm text-muted-foreground" />
+            ) : (
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+                {hybrids.map(chip)}
+              </div>
+            )}
+            </>
             )}
           </section>
         </div>
@@ -752,7 +775,7 @@ function FighterChip({ def, on, disabled, onClick, team, juggernaut = false }: {
       )}
       style={juggernaut ? { borderColor: def.color, boxShadow: `0 0 0 2px ${def.glow}` } : undefined}
     >
-      <span className="size-5 shrink-0 rounded-full border-2 border-foreground" style={{ background: def.color }} />
+      <FighterDot def={def} className="size-5" />
       <span className="truncate">{def.name}</span>
       {juggernaut && <Text id="arena.jugg.badge" className="ml-auto shrink-0 text-xs font-extrabold uppercase tracking-[0.08em] text-foreground" />}
       {team != null && (

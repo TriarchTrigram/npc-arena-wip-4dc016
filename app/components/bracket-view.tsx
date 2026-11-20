@@ -1,6 +1,7 @@
 import { Text, type StringKey } from "~stencil/ui/strings";
 import { cn } from "~/lib/utils";
-import { DEF_BY_ID, type Power } from "~/lib/fighters";
+import { defOf, type RosterId } from "~/lib/fighters";
+import { FighterDot } from "~/components/fighter-dot";
 import { champion, type Bracket, type Match, type MatchRef } from "~/lib/bracket";
 
 const ROUND_KEY: Record<number, StringKey> = {
@@ -52,7 +53,7 @@ function MatchCard({ m, round, live }: { m: Match; round: number; live: boolean 
   );
 }
 
-function Side({ id, winner, round }: { id: Power | null; winner: Power | null; round: number }) {
+function Side({ id, winner, round }: { id: RosterId | null; winner: RosterId | null; round: number }) {
   if (!id) {
     return (
       <div className="px-3 py-2">
@@ -68,11 +69,11 @@ function Side({ id, winner, round }: { id: Power | null; winner: Power | null; r
   );
 }
 
-function Entrant({ id, strong, lost }: { id: Power; strong?: boolean; lost?: boolean }) {
-  const def = DEF_BY_ID[id];
+function Entrant({ id, strong, lost }: { id: RosterId; strong?: boolean; lost?: boolean }) {
+  const def = defOf(id);
   return (
     <span className={cn("flex items-center gap-2 text-sm", strong ? "font-semibold text-foreground" : lost ? "text-muted-foreground" : "text-foreground-secondary")}>
-      <span className="size-3 shrink-0 rounded-full border-2 border-foreground" style={{ background: def.color }} />
+      <FighterDot def={def} />
       <span className="truncate">{def.name}</span>
     </span>
   );

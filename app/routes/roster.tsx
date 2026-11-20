@@ -14,7 +14,9 @@ import {
   EmptyState,
 } from "~/components/design";
 import { cn } from "~/lib/utils";
-import { FIGHTERS, type FighterDef, type Role } from "~/lib/fighters";
+import { FIGHTERS, defOf, type FighterDef, type Role } from "~/lib/fighters";
+import { useHybrids } from "~/lib/hybrids";
+import { FusionSheet, HybridParents } from "~/components/fusion-sheet";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -54,7 +56,8 @@ function TopBar() {
   );
 }
 
-function FighterCard({ fighter, index }: { fighter: Fighter; index: number }) {
+function FighterCard({ fighter, index }: { fighter: Fighter; index: number | null }) {
+  const hybrid = !!fighter.parents;
   return (
     <Panel className="h-full">
       <PanelBody className="flex h-full flex-col gap-4">
@@ -62,17 +65,22 @@ function FighterCard({ fighter, index }: { fighter: Fighter; index: number }) {
           <div
             aria-hidden="true"
             className="flex size-14 shrink-0 items-center justify-center rounded-full border-4 border-foreground font-display text-xl text-foreground"
-            style={{ backgroundColor: fighter.color }}
+            style={{ background: hybrid ? `linear-gradient(90deg, ${fighter.color} 50%, ${fighter.glow} 50%)` : fighter.color }}
           >
             {fighter.name.charAt(0)}
           </div>
           <div className="min-w-0 flex-1">
-            <Text
-              id="roster.card.number"
-              vars={{ n: index + 1 }}
-              className="text-xs uppercase tracking-widest text-muted-foreground tabular-nums"
-            />
+            {index == null ? (
+              <Text id="roster.card.hybrid" className="text-xs uppercase tracking-widest text-muted-foreground" />
+            ) : (
+              <Text
+                id="roster.card.number"
+                vars={{ n: index + 1 }}
+                className="text-xs uppercase tracking-widest text-muted-foreground tabular-nums"
+              />
+            )}
             <h3 className="font-display text-xl text-foreground">{fighter.name}</h3>
+            <HybridParents def={fighter} className="block text-sm text-muted-foreground" />
           </div>
           <StatusBadge tone={ROLE_TONE[fighter.role]}>
             <Text id={`roster.role.${fighter.role}` as StringKey} />
@@ -91,7 +99,7 @@ function FighterCard({ fighter, index }: { fighter: Fighter; index: number }) {
           <ul className="mt-2 flex flex-col gap-2">
             {fighter.moves.map((m) => (
               <li key={m.id} className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="font-semibold text-foreground">{m.name}</span>
+                <span className={cn("text-foreground", m.id.startsWith("mix-") ? "font-extrabold" : "font-semibold")}>{m.name}</span>
                 <Text id={`roster.kind.${m.kind}` as StringKey} className="shrink-0 text-muted-foreground" />
               </li>
             ))}
@@ -105,6 +113,9 @@ function FighterCard({ fighter, index }: { fighter: Fighter; index: number }) {
 export default function Roster() {
   const [role, setRole] = useState<Role | "all">("all");
   const shown = FIGHTERS.map((f, i) => ({ f, i })).filter(({ f }) => role === "all" || f.role === role);
+  const hybridKeys = useHybrids();
+  const hybrids = hybridKeys.map(defOf);
+  const shownHybrids = hybrids.filter((f) => role === "all" || f.role === role);
 
   return (
     <PageContainer>
@@ -167,6 +178,33 @@ export default function Roster() {
           </ul>
         )}
       </div>
+
+      <section className="mt-12" data-roster-hybrids>
+        <SectionHeading
+          title={<Text id="roster.sectionHybrids" />}
+          action={
+            <div className="flex items-center gap-3">
+              {hybrids.length > 0 && (
+                <Text id="roster.hybridCount" vars={{ count: shownHybrids.length }} className="text-sm text-muted-foreground tabular-nums" />
+              )}
+              <FusionSheet saved={hybridKeys} />
+            </div>
+          }
+        />
+        {hybrids.length === 0 ? (
+          <EmptyState title={<Text id="roster.hybridsEmpty.title" />} body={<Text id="roster.hybridsEmpty.body" />} />
+        ) : shownHybrids.length === 0 ? (
+          <Text id="roster.hybridsFiltered" as="p" className="text-sm text-muted-foreground" />
+        ) : (
+          <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {shownHybrids.map((f, k) => (
+              <li key={hybridKeys[hybrids.indexOf(f)] ?? k}>
+                <FighterCard fighter={f} index={null} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </PageContainer>
   );
 }

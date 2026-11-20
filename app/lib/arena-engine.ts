@@ -1,5 +1,5 @@
 // Side-view stickman fight engine for the arena canvas. Runs entirely in the browser.
-import { DEF_BY_ID, juggernautOf, type Anim, type FighterDef, type Move, type Power, type StatusEffect } from "./fighters";
+import { DEF_BY_ID, juggernautOf, rosterIdOf, type Anim, type FighterDef, type Move, type Power, type StatusEffect } from "./fighters";
 import type { Sfx } from "./arena-sound";
 import { INTROS, INTRO_LEN, INTRO_ARRIVED, type IntroBurst, type IntroPose } from "./spawn-intros";
 import { LOOKS, setLookTint, drawFx, drawSpark, drawShotLook, drawBeamLook, drawEruptionLook, drawZoneLook, drawRushLook, eruptionColors, type Fx, type PShape } from "./move-looks";
@@ -226,7 +226,8 @@ export type Game = {
   preview: boolean;
   duel: boolean;
   teamMode: boolean;
-  winnerId: Power | null;
+  /** The winner's roster id: a power id, or a hybrid's pair key. */
+  winnerId: string | null;
   winnerTeam: number | null;
   /** A rage cutscene in progress: the match holds still until it ends. */
   cut: { key: number; t: number; max: number } | null;
@@ -1512,7 +1513,7 @@ export function step(g: Game, dt: number) {
     g.over = true;
     const top = [...left].sort((a, b) => b.hp - a.hp)[0];
     g.winner = top?.def.name ?? null;
-    g.winnerId = top?.def.id ?? null;
+    g.winnerId = top ? rosterIdOf(top.def) : null;
     g.winnerTeam = g.teamMode && top ? top.team : null;
   }
 }

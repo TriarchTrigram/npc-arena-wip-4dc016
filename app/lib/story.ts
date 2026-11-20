@@ -1,6 +1,8 @@
 // Story mode: chapters of stages. The player brings two fighters into each stage and either fuses
 // them into one hybrid or sends them in side by side with team attacks. Progress lives in the browser.
-import { DEF_BY_ID, FIGHTERS, hybridOf, withTeamAttack, type FighterDef, type Power } from "./fighters";
+import { DEF_BY_ID, fusionOrder, hybridOf, withTeamAttack, type FighterDef, type Power } from "./fighters";
+
+export { fusionOrder };
 
 export type Stage = {
   /** Enemies on the other side. A boss is a hybrid fused from two fighters with extra health. */
@@ -106,12 +108,6 @@ export function playerSide(p: Pair): FighterDef[] {
   return [withTeamAttack(p.a, p.b), withTeamAttack(p.b, p.a)];
 }
 
-const ORDER = new Map(FIGHTERS.map((f, i) => [f.id, i]));
-/** The same two fighters make the same hybrid whichever is picked first. */
-export function fusionOrder(a: Power, b: Power): [Power, Power] {
-  return (ORDER.get(a) ?? 0) <= (ORDER.get(b) ?? 0) ? [a, b] : [b, a];
-}
-
 export function enemySide(stage: Stage): FighterDef[] {
   if (stage.boss) {
     const { a, b, name, hpBoost } = stage.boss;
@@ -135,7 +131,6 @@ export function stageLineup(p: Pair, stage: Stage): { defs: FighterDef[]; teams:
 // ---------- Saved progress (this browser only) ----------
 
 const PROGRESS_KEY = "npc-arena-story";
-const HYBRIDS_KEY = "npc-arena-hybrids";
 
 /** How many stages of each chapter are cleared. */
 export type Progress = { cleared: number[] };
@@ -163,13 +158,3 @@ export function saveProgress(p: Progress) {
   }
 }
 
-/** Remember each hybrid made (one entry per pair, in either order) for the Hybrids roster to come. */
-export function rememberHybrid(a: Power, b: Power) {
-  try {
-    const key = [a, b].sort().join("+");
-    const list: string[] = JSON.parse(localStorage.getItem(HYBRIDS_KEY) ?? "[]");
-    if (!list.includes(key)) localStorage.setItem(HYBRIDS_KEY, JSON.stringify([...list, key]));
-  } catch {
-    // not kept if storage is blocked
-  }
-}

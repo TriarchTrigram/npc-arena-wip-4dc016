@@ -111,7 +111,12 @@
       "perks": "Flies on wings, has 10 moves and double health.",
       "badge": "Boss"
     },
-    "idleStory": "Press Start to begin stage {{n}}"
+    "idleStory": "Press Start to begin stage {{n}}",
+    "hybrids": {
+      "title": "Hybrids",
+      "count": "{{count}} saved",
+      "empty": "No hybrids yet. Fuse two fighters and the hybrid shows up here, ready to pick."
+    }
   },
   "title": {
     "eyebrow": "Sixteen powers. One arena.",
@@ -145,7 +150,8 @@
       "power": "Power",
       "ability": "In the arena",
       "number": "No. {{n}}",
-      "moves": "Moves ({{count}})"
+      "moves": "Moves ({{count}})",
+      "hybrid": "Hybrid"
     },
     "role": {
       "attacker": "Attacker",
@@ -176,7 +182,14 @@
       "zone": "Field",
       "pull": "Pull",
       "mimic": "Copy"
-    }
+    },
+    "sectionHybrids": "Hybrids",
+    "hybridCount": "{{count}} hybrids",
+    "hybridsEmpty": {
+      "title": "No hybrids yet",
+      "body": "Fuse two fighters and the hybrid joins the roster here. Hybrids you make in Story mode show up too."
+    },
+    "hybridsFiltered": "No hybrids with this style yet."
   },
   "story": {
     "title": "Story",
@@ -270,5 +283,17 @@
         "s10": "The Riftmaker's Core"
       }
     }
+  },
+  "fusion": {
+    "open": "Fuse a hybrid",
+    "title": "Fuse a hybrid",
+    "intro": "Pick two fighters. The hybrid keeps both move sets and gains two mixed moves. The same fighter twice makes a Prime hybrid of its own.",
+    "yours": "Your hybrid",
+    "moves": "{{count}} moves. Mixed moves are in bold.",
+    "from": "Fused from {{a}} and {{b}}",
+    "fromSame": "Fused from {{a}} twice",
+    "fuse": "Fuse and save",
+    "saved": "Already in your hybrids",
+    "savedNote": "{{name}} is saved. Pick it under Hybrids in the arena, or find it on the Fighters page."
   }
 }

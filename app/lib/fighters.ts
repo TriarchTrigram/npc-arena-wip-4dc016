@@ -374,3 +374,42 @@ export function withTeamAttack(self: Power, partner: Power): FighterDef {
     : M({ id: `duo-barrage-${self}-${partner}`, name: `${ws.word} ${wp.word} Duo Barrage`, kind: "rain", anim: "raise", range: 500, cd: 5.5, dmg: 8, count: 6, radius: 140, wind: 0.3, ...st });
   return { ...D, moves: [...D.moves, move] };
 }
+
+// ---------- Roster ids ----------
+// An original fighter is picked by its power id; a hybrid by its pair key ("lux+umbra", "pyro+pyro").
+
+export type RosterId = string;
+
+/** The same two fighters always share one key, in either order. */
+export const hybridKey = (a: Power, b: Power): RosterId => [a, b].sort().join("+");
+
+const ROSTER_ORDER = new Map(FIGHTERS.map((f, i) => [f.id, i]));
+/** The same two fighters make the same hybrid whichever is picked first. */
+export function fusionOrder(a: Power, b: Power): [Power, Power] {
+  return (ROSTER_ORDER.get(a) ?? 0) <= (ROSTER_ORDER.get(b) ?? 0) ? [a, b] : [b, a];
+}
+
+/** The id a fighter is picked, saved and crowned by. */
+export const rosterIdOf = (d: FighterDef): RosterId => (d.parents ? hybridKey(d.parents[0], d.parents[1]) : d.id);
+
+const isPower = (x: string): x is Power => x in DEF_BY_ID;
+
+/** The pair behind a hybrid key, or null when the key is not one. */
+export function parseHybridKey(key: string): [Power, Power] | null {
+  const [a, b, extra] = key.split("+");
+  if (extra !== undefined || !a || !b || !isPower(a) || !isPower(b)) return null;
+  return fusionOrder(a, b);
+}
+
+const hybridCache = new Map<RosterId, FighterDef>();
+/** The fighter behind any roster id: an original, or the hybrid its pair key makes. */
+export function defOf(id: RosterId): FighterDef {
+  if (isPower(id)) return DEF_BY_ID[id];
+  let d = hybridCache.get(id);
+  if (!d) {
+    const pair = parseHybridKey(id);
+    d = pair ? hybridOf(pair[0], pair[1]) : DEF_BY_ID.pyro;
+    hybridCache.set(id, d);
+  }
+  return d;
+}

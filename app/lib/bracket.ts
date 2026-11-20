@@ -1,13 +1,13 @@
-import type { Power } from "./fighters";
+import type { RosterId } from "./fighters";
 
 /** One bracket slot. A null side in round one is a bye; in later rounds it is still to be decided. */
-export type Match = { a: Power | null; b: Power | null; winner: Power | null };
+export type Match = { a: RosterId | null; b: RosterId | null; winner: RosterId | null };
 /** Rounds in order, first round first; the last round holds the final. */
 export type Bracket = Match[][];
 export type MatchRef = { r: number; i: number };
 
 /** Shuffles the entrants into a single-elimination bracket, handing out byes when the count is not a power of two. */
-export function drawBracket(ids: Power[]): Bracket {
+export function drawBracket(ids: RosterId[]): Bracket {
   const pool = [...ids];
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -47,7 +47,7 @@ function settle(b: Bracket): Bracket {
   return b;
 }
 
-export function recordWinner(b: Bracket, at: MatchRef, winner: Power): Bracket {
+export function recordWinner(b: Bracket, at: MatchRef, winner: RosterId): Bracket {
   const next = b.map((round) => round.map((m) => ({ ...m })));
   const m = next[at.r]?.[at.i];
   if (!m || m.winner || (winner !== m.a && winner !== m.b)) return b;
@@ -64,7 +64,7 @@ export function nextMatch(b: Bracket): MatchRef | null {
   return null;
 }
 
-export const champion = (b: Bracket): Power | null => b[b.length - 1]?.[0]?.winner ?? null;
+export const champion = (b: Bracket): RosterId | null => b[b.length - 1]?.[0]?.winner ?? null;
 
 const isBout = (m: Match) => !!m.a && !!m.b;
 
@@ -77,4 +77,4 @@ export function progress(b: Bracket) {
 
 export const started = (b: Bracket) => progress(b).played > 0;
 
-export const entrants = (b: Bracket): Power[] => b[0].flatMap((m) => [m.a, m.b]).filter((x): x is Power => !!x);
+export const entrants = (b: Bracket): RosterId[] => b[0].flatMap((m) => [m.a, m.b]).filter((x): x is RosterId => !!x);
