@@ -35,7 +35,11 @@
       "soundAria": "Sound",
       "mute": "Mute sound",
       "unmute": "Turn sound on",
-      "volume": "Volume"
+      "volume": "Volume",
+      "musicAria": "Music",
+      "musicMute": "Mute music",
+      "musicUnmute": "Turn music on",
+      "musicVolume": "Music volume"
     },
     "status": {
       "ready": "Ready",

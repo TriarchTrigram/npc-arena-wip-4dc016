@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Text } from "~stencil/ui/strings";
 import type { StringKey } from "~stencil/types/strings";
 import { cn } from "~/lib/utils";
@@ -73,7 +74,7 @@ function ElementYinYang({ redColor, blueColor, className }: { redColor: string; 
   );
 }
 
-export function TitleScreen({ onPick }: { onPick: (mode: Mode) => void }) {
+export function TitleScreen({ onPick, music }: { onPick: (mode: Mode) => void; music?: ReactNode }) {
   const pyro = DEF_BY_ID.pyro;
   const hydro = DEF_BY_ID.hydro;
   return (
@@ -81,6 +82,7 @@ export function TitleScreen({ onPick }: { onPick: (mode: Mode) => void }) {
       className="relative overflow-hidden rounded-2xl border-4 border-border"
       style={{ background: "linear-gradient(180deg, hsl(222 70% 62%) 0%, hsl(260 60% 78%) 55%, hsl(28 95% 86%) 100%)" }}
     >
+      {music && <div className="relative flex justify-end px-3 pt-3 sm:absolute sm:right-3 sm:top-3 sm:z-10 sm:p-0"><div className="rounded-full bg-card/90 px-2 py-1 shadow-sm">{music}</div></div>}
       <div className="relative flex flex-col items-center gap-8 px-6 py-10 sm:gap-10 sm:py-16">
         <div className="flex w-full max-w-3xl items-center justify-between gap-2 sm:gap-6">
           <FighterFigure def={pyro} kind="fire" />

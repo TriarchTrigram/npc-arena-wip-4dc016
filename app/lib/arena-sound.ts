@@ -234,6 +234,7 @@ export type SoundPrefs = { volume: number; muted: boolean };
 export class ArenaSound {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private comp: DynamicsCompressorNode | null = null;
   private synth: Synth | null = null;
   private last: Record<string, number> = {};
   volume = 0.6;
@@ -282,10 +283,16 @@ export class ArenaSound {
       for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
       this.ctx = ctx;
       this.master = master;
+      this.comp = comp;
       this.synth = new Synth(ctx, master, buf, 1);
       this.apply();
     }
     if (this.ctx.state === "suspended") void this.ctx.resume();
+  }
+
+  /** The shared audio graph once a tap has unlocked it: the theme music plays through it too, with its own volume. */
+  get output(): { ctx: AudioContext; out: AudioNode } | null {
+    return this.ctx && this.comp ? { ctx: this.ctx, out: this.comp } : null;
   }
 
   private apply() {

@@ -19,6 +19,8 @@ import { cn } from "~/lib/utils";
 import { FIGHTERS, DEF_BY_ID, type FighterDef, type Power } from "~/lib/fighters";
 import { W, H, TEAM_COLORS, newGame, step, drawScene, buildBackdrop, type Game, type FeedItem } from "~/lib/arena-engine";
 import { arenaSound } from "~/lib/arena-sound";
+import { arenaMusic } from "~/lib/arena-music";
+import { MusicControl } from "~/components/music-control";
 import { drawBracket, recordWinner, nextMatch, champion, progress, started, entrants, type Bracket, type MatchRef } from "~/lib/bracket";
 import { BracketView } from "~/components/bracket-view";
 import { TitleScreen } from "~/components/title-screen";
@@ -102,12 +104,21 @@ export default function Home() {
   // Sound: saved volume and mute are read from this browser after the first render.
   const [volume, setVolume] = useState(60);
   const [muted, setMuted] = useState(false);
+  // Theme music has its own volume and mute, saved the same way.
+  const [musicVolume, setMusicVolume] = useState(50);
+  const [musicMuted, setMusicMuted] = useState(false);
   useEffect(() => {
     const prefs = arenaSound.load();
     setVolume(Math.round(prefs.volume * 100));
     setMuted(prefs.muted);
+    const music = arenaMusic.load();
+    setMusicVolume(Math.round(music.volume * 100));
+    setMusicMuted(music.muted);
     // browsers start audio only after a tap or key press
-    const unlock = () => arenaSound.unlock();
+    const unlock = () => {
+      arenaSound.unlock();
+      arenaMusic.unlock();
+    };
     window.addEventListener("pointerdown", unlock);
     window.addEventListener("keydown", unlock);
     return () => {
@@ -126,6 +137,23 @@ export default function Home() {
     setMuted(!muted);
     arenaSound.set({ muted: !muted });
   };
+  const changeMusicVolume = (v: number) => {
+    setMusicVolume(v);
+    const unmute = v > 0 && musicMuted;
+    if (unmute) setMusicMuted(false);
+    arenaMusic.set({ volume: v / 100, ...(unmute ? { muted: false } : {}) });
+  };
+  const toggleMusic = () => {
+    arenaMusic.unlock();
+    setMusicMuted(!musicMuted);
+    arenaMusic.set({ muted: !musicMuted });
+  };
+  // The title theme on the title screen, the battle theme in the arena; leaving the page stops it.
+  useEffect(() => {
+    arenaMusic.play(screen === "title" ? "title" : "battle");
+  }, [screen]);
+  useEffect(() => () => arenaMusic.play(null), []);
+  const musicControl = <MusicControl volume={musicVolume} muted={musicMuted} onVolume={changeMusicVolume} onToggle={toggleMusic} />;
   const muteAria = useString(muted ? "arena.controls.unmute" : "arena.controls.mute");
   const volumeAria = useString("arena.controls.volume");
   const soundAria = useString("arena.controls.soundAria");
@@ -347,7 +375,7 @@ export default function Home() {
       </nav>
 
       {screen === "title" ? (
-        <TitleScreen onPick={enterFromTitle} />
+        <TitleScreen onPick={enterFromTitle} music={musicControl} />
       ) : (
         <>
           <PageHeader
@@ -399,6 +427,7 @@ export default function Home() {
                     aria-label={volumeAria}
                   />
                 </div>
+                {musicControl}
               </div>
               <div className="relative">
                 <canvas
