@@ -117,7 +117,7 @@ export function setLookTint(t: Tint | null) {
   tint = t;
 }
 function lookOf(id: string): Look | undefined {
-  const lk = lookOf(id);
+  const lk = LOOKS[id];
   return lk && tint ? { ...lk, a: tint.a, b: tint.b } : lk;
 }
 
