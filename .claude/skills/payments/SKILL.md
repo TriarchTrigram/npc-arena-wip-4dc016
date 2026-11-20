@@ -1,6 +1,6 @@
 ---
 name: payments
-description: Subscriptions and one-time products — the app builder charging app users. Covers plans and pricing, payouts, discount codes (coupons / promo codes), receipts, and status via the payment tools (conversation), plus gating, upgrade pages, and checkout/billing-portal via `~stencil/payments/*` (app code). Load before touching that code or the `subscription` table — and before answering ANY question about what payments can do ("can app users enter a discount code?", "can I give someone 20% off?", "do subscribers get receipts?"): these capabilities live in the platform, so the app's own source won't show them. Also load for fixes — a subscribe button doing nothing, `/upgrade` redirect or 404, a paywall, an app user stuck on the upgrade page or a Log in link that lands on it, a plan not registering after checkout, `requireSubscription`, billing-portal issues, or letting someone in without paying (free/beta/comp). Load too for changing one app user's discount: ending, improving or giving one, and for what one app user really paid and which code they used — "what did this person pay?", "why is my purchase log showing $27 when they paid $7", an affiliate commission or ad conversion value built from the plan price, or correcting one. Load it too for earnings, Stripe fees, net, payouts and tax documents — where those figures live and what an app can show — and for taking a card in person. NOT for app users charging their own end users — see `selling`.
+description: Subscriptions and one-time products — the app builder charging app users. Covers plans and pricing, payouts, discount codes (coupons / promo codes), receipts, and status via the payment tools (conversation), plus gating, upgrade pages, and checkout/billing-portal via `~stencil/payments/*` (app code). Load before touching that code or the `subscription` table — and before answering ANY question about what payments can do ("can app users enter a discount code?", "can I give someone 20% off?", "do subscribers get receipts?"): these capabilities live in the platform, so the app's own source won't show them. Also load for fixes — a subscribe button doing nothing, `/upgrade` redirect or 404, a paywall, an app user stuck on the upgrade page or a Log in link that lands on it, a plan not registering after checkout, `requireSubscription`, billing-portal issues, or letting someone in without paying (free/beta/comp). Load too for changing one app user's discount: ending, improving or giving one, and for what one app user really paid and which code they used — "what did this person pay?", "why is my purchase log showing $27 when they paid $7", an affiliate commission or ad conversion value built from the plan price, or correcting one. Load it too for earnings, Stripe fees, net, payouts and tax documents — where those figures live and what an app can show — and for taking a card in person. Load it as well when something for sale has a limited number (event seats, tickets, stock, spots, "sold out") or a membership is capped at a number of people. NOT for app users charging their own end users — see `selling`.
 allowed-tools: getPaymentStatus setupPayments getPayoutSetupLink setSubscriptionPrice removeSubscription setOneTimePrice removeOneTimePrice setFreeTrial createCoupon listCoupons removeCoupon getSubscriberBilling getAuthConfig configureAuth setSubscriptionSettings
 metadata:
   agents: [chat, builder]
@@ -214,6 +214,7 @@ When the app builder says they've finished but `getPaymentStatus` is still not r
 
 - To add or change a plan, call `setSubscriptionPrice` — it's keyed by plan **name**: reusing an existing name updates that plan in place, a new name adds a plan (up to ten).
 - A legacy price kept only for the app users already on it (app users moved from another system keep their old price): pass `existingMembersOnly: true` to `setSubscriptionPrice`. The plan still renews and still gates, but it is left out of `~/generated/tiers` (so the pricing page never lists it), checkout refuses it (`plan_not_for_sale`) and Stripe's billing page never offers it as a switch. App users on it can still switch to an offered plan. Pass `false` to put it back on sale.
+- A plan has no limit on how many app users can subscribe, and none can be set. For "cap my membership at 30" see the limited-number rule under **Rules → In conversation**.
 - To remove a plan, call `removeSubscription` with the plan `name` (the name is optional only when the app has exactly one plan). This archives its Stripe product; existing subscribers on it complete their current period.
 
 ## One-time products
@@ -224,9 +225,10 @@ A one-time product is something an app user pays for once and keeps — a course
 - `setOneTimePrice` creates or updates a product, keyed by **name** like plans, with `priceCents` (the minimum is normally $5) and an optional `description`. `removeOneTimePrice` archives one; nobody new can buy it.
 - `getPaymentStatus` returns them as `products`, separate from `tiers`.
 - A product goes on sale in the app on the next build/publish, like a plan: app code reads it from `~/generated/tiers` and sells it with `buy` (Part 2 §10).
-- An app user can own each product once. A refund or a lost dispute takes the access away by itself; the app builder refunds from the **Payments panel**.
+- An app user can own each product once. A refund or a lost dispute takes the access away by itself; the app builder refunds from the **Payments panel**. The exception is a product sold as a **top-up pack** (extra credits, minutes or uses): the Builder Agent sells it so the same app user can buy it again and again (the usage rule under **Rules → In conversation**).
 - A plan-only coupon never discounts a product. For a product discount, call `createCoupon` with `productName` or `scope: "one_time"` (or `"both"`), and duration `once`.
 - **One product per checkout; there is no built-in cart.** A buyer who wants several products pays for each one on its own. When the app builder asks for a cart, "add to cart" or one payment for several items, say it is not built in: the Builder Agent can build a cart page that lists the chosen products, but each product is still paid for in its own checkout, so managed payments cannot put one payment on the whole cart. The only route to a single basket payment is a custom Stripe integration, which gives up the Payments panel, refunds and dispute handling for those charges (the custom-Stripe rule under **Rules → In conversation**) — never raise it yourself and never brief it as the fix for a cart: name it only if the app builder asks what a single payment would take, never ask them for a Stripe key, and never promise a one-payment cart on top of managed payments.
+- **A product has no quantity.** Nothing in the Payments panel or the payment tools stops sales at a number. For event seats, tickets or stock, the Builder Agent builds the limit into the app: see the limited-number rule under **Rules → In conversation**.
 - **No EU right-of-withdrawal waiver at checkout.** Stripe's page collects no consent checkbox of the app builder's own, and there is no setting for one. The Builder Agent can add a required checkbox with the waiver text on the app's buy page, before the buy button sends the buyer to Stripe, and record that consent in the app's own table; it cannot put anything on Stripe's page. Say that split plainly, and say nothing about whether the waiver is legally enough — that is for their lawyer.
 
 ## Discount codes
@@ -778,6 +780,34 @@ const { taxEnabled } = await getPaymentSettings(context);
 
 Most apps have one plan — for those, always use the `tier` shorthand and pass `tier!.id` to `requireSubscription`. A multi-plan app (up to ten, ordered low→high) reads `tiers` instead and ships the pricing scaffolds (§4); gate each surface with the lowest plan that unlocks it — a subscriber on a higher plan qualifies automatically. That goes for soft gates too: a feature grid, a badge or a "your plan" label in a multi-plan app reads `hasPlan(sub, paymentsEnabled, tiers.<slug>.id)` per plan, never a bare "is there an active subscription" check — that check cannot tell Basic from Premium and hands every paying app user the top plan. If `tier` is `null`, don't pass `undefined` as a workaround — that accepts any active subscription and is semantically wrong. Don't call `requireSubscription` at all until a plan exists.
 
+### Levels inside one plan
+
+"One Pro plan with three sizes" is three plans, one per level, that the pricing page shows as **one card with a level picker**. Which plans belong to which card is a constant map in app code, keyed by each plan's key in `~/generated/tiers` — never worked out from the plan's name. A number per level (credits, seats) is a constant in the same map; Stripe does not hold it.
+
+```ts
+// app/lib/plan-levels.ts
+import { tiers } from "~/generated/tiers";
+
+export const planCards = [
+  {
+    name: "Pro",
+    levels: [
+      { plan: tiers.pro_100_credits, credits: 100 },
+      { plan: tiers.pro_250_credits, credits: 250 },
+      { plan: tiers.pro_500_credits, credits: 500 },
+    ],
+  },
+];
+
+export const levelOf = (tierId: string | undefined) =>
+  planCards.flatMap((card) => card.levels).find((level) => level.plan.id === tierId);
+```
+
+- **Subscribe** posts the chosen level's `tierId` to `/subscribe`, which calls `checkout` with it (§4).
+- **An app user who already subscribes sees "Change level", never Subscribe.** It posts to an action that calls `manageSubscription` — `checkout` refuses an app user who already has a plan. Next to the button, one line: "You'll pick the new level on the billing page. Moving up charges the difference today." No level change happens inside the app. An app user on free access (`isComplimentary(sub)`) gets no "Change level" button, the same as Manage billing and Change plan in §3: there is no Stripe subscription behind it.
+- **The level's number** comes from the map: read the plan with `getSubscription`, confirm it with `hasPlan(sub, paymentsEnabled)`, then `levelOf(sub?.tierId)?.credits`.
+- **Gating.** Or-higher — `hasPlan(sub, paymentsEnabled, level.plan.id)` — is right only when positions follow the levels. When two cards unlock different things (Team levels and Company levels), gate with that card's exact list of plans: `card.levels.some((level) => hasPlan(sub, paymentsEnabled, level.plan.id, { exact: true }))`.
+
 ## 8. Payment receipts are automatic — do not send your own
 
 The platform sends the payment receipt email itself, on Stripe's settled-payment webhook: a new receipt on every subscription charge (signup and each renewal) and one on every one-time sale. It goes to the payer, from the app's own email domain when the builder has connected one (otherwise the shared sender), under the app's **Sender name** (More → Settings → General; the app title until set — a builder who wants their business name on receipts changes it there, not in code), and links Stripe's own receipt. **No wiring is required and app code must not send its own receipt** — adding one via the `email` skill (`~stencil/email`) just double-sends. Only add a *different* transactional email (e.g. an order-shipped notice) through that skill.
@@ -796,7 +826,7 @@ If a platform gate blocks something the builder wants — most commonly "let the
 
 ## 10. One-time products
 
-A product is bought once and kept. Use it only for something the app builder sells once (a course, a template pack, a lifetime unlock); recurring access is always a plan. **A product never replaces `requireSubscription`** — gate plan features on the plan and product content on the product, even in an app that has both.
+A product is bought once and kept. Use it only for something the app builder sells once (a course, a template pack, a lifetime unlock); recurring access is always a plan. The one exception is a top-up pack, bought again with a fresh `reference` each time ("Top-up packs" below). **A product never replaces `requireSubscription`** — gate plan features on the plan and product content on the product, even in an app that has both.
 
 Read products from `~/generated/tiers`, keyed by slug like plans. A product removed after the code was written reads as a stub whose empty `id` nobody owns, so check `id` before showing a buy button:
 
@@ -823,9 +853,35 @@ The success page signs a guest buyer **straight in, no email hop**: `buy()` puts
 
 **One product per `buy()`.** A checkout carries exactly one product at quantity one; there is no cart helper and no way to pass several `productId`s. A cart page can list what the buyer chose, but each product goes through its own `buy()`. **An EU withdrawal waiver** ("I agree to immediate delivery and lose my right to withdraw") is not collected on Stripe's page: when the builder asks for one, put a required checkbox with their wording on the buy page, refuse the action when it is unchecked, and store the consent with the buyer's email and a timestamp in an app table of its own — never claim Stripe's page shows it.
 
+**A limited number** (40 seats, 12 in stock, "Sold out") is built as one row per unit, held through checkout by `reference`: §13.
+
 **My purchases** — `getPurchases(request, context)` lists what the signed-in app user owns (`productId`, `orderId`, `purchasedAt`, newest first). Match `productId` against `products` for names. Build this page when the app sells more than one product.
 
 The `purchase` table these read is platform-owned like `subscription` (§9): read it through these helpers, never write it.
+
+### Top-up packs — a product bought again and again
+
+A top-up pack is extra usage (credits, minutes, generations) an app user buys on top of their plan's allowance, as often as they like. It is the per-record `reference` sale above, with one record per purchase:
+
+- **One one-time product per pack size**, set with `setOneTimePrice`. How many credits each pack gives is a constant in app code next to the product slug, never a value from the request.
+- **Signed-in app users only.** The buy-more page sits behind login, so every purchase belongs to a known app user.
+- **The buy action creates a row, then pays for that row.** Create a `topups` row (`userId`, `pack`, `credits` copied from the constant, `status: "pending"`) and call `buy` with `reference: row.id`. A fresh row, and so a fresh reference, on every click. Never call `buy` for a pack without a `reference`: the second purchase is refused with `already_purchased`.
+- **Credit only on `isReferencePaid` plus a claim.** The success page's loader and the loader of the page that shows the balance both list the signed-in app user's `pending` rows; for each one where `isReferencePaid(context, row.id)` is true, `claim` it from `pending` to `credited` (§12). The credits count only on a returned row. Checking on the balance page too means a buyer who closed the tab is credited on their next visit. Never credit because the success page opened, from `hasPurchased`, from the `purchase` table (it keeps one row per app user per product, however many packs were bought) or from a `session_id`.
+- **The balance is worked out, not stored.** It is the plan's allowance for the current period, plus the credits of every `credited` row, minus what was used. Keep packs as rows rather than adding to a wallet number, so crediting is one write that cannot half-happen. Key the period's usage counter by `sub.currentPeriodEnd` so the allowance resets on renewal; on a yearly plan that period is the year, so key a monthly allowance by calendar month instead. Spending is the allowance claim: count under the value read, before the paid work runs (§12 "A free allowance is a balance", and the `ai-sdk` skill's "Free uses, quotas and limits").
+- **Refunds leave the credits.** `isReferencePaid` turns false after a refund, but a `credited` row stays credited. Say so in the build report, so the app builder can ask for refunded packs to be taken back.
+
+```ts
+// Buy action: a new pending row per purchase, and its id is the payment's reference.
+const row = await db.from("topups").create({ userId: user.id, pack: "pack_100", credits: PACK_CREDITS.pack_100, status: "pending" });
+await buy(request, context, { productId: products.pack_100.id, reference: row.id, successUrl: `${origin}/credits` });
+
+// Loader of the success page and of the balance page: credit each paid pack once.
+for (const row of await db.from("topups").list({ where: { userId: user.id, status: "pending" } })) {
+  if (await isReferencePaid(context, row.id)) await db.from("topups").claim(row.id, { status: "credited" }, { where: { status: "pending" } });
+}
+```
+
+The pack's real price is charged even in the App preview, so tell the app builder before they test a purchase.
 
 ## 11. What an app user really paid — `getBilling` / `getBillingFor`
 
@@ -932,6 +988,23 @@ Everything the platform charges is already safe to repeat: `checkout`, `buy` and
 - **An approval that pays is a claim, not a status write.** Approve, accept, mark complete, mark shipped — when the transition creates a payout, an invoice or a ledger row, the transition itself is the claim (`claim(jobId, { status: "approved" }, { where: { status: "awaiting_review" } })`) and the dependent row is created only on a returned row. Two submits of one approval otherwise pay the contractor twice.
 - **A free allowance is a balance.** "Three free prompts, then subscribe" is counted with the same claim as a coupon use — count under the value you read, before the paid call runs, never after. Counted after, parallel requests all pass and every one lands on the app builder's AI bill.
 
+## 13. A limited number for sale
+
+For a one-time product with a limited number: event seats, tickets, stock, spots. The platform keeps no count, sends the app no event when a payment page is abandoned or expires, and `buy()`'s payment page stays payable for 24 hours after the buyer leaves it. So the app holds one unit before the payment page opens, and frees it only once that page can no longer be paid.
+
+- **One row per unit, never a counter.** A `spots` table: `itemId`, `status` (`available` / `held` / `sold`), `heldBy` (the hold's reference), `heldUntil`, `firstUnpaidAt`. Create N `available` rows when the item is set up. "X left" is the count of `available` rows; "Sold out" is none.
+- **Every status change is one conditional write** (§12): `claim` on the data SDK, or `UPDATE … WHERE … RETURNING` on Drizzle where there is no session (a guest's buy, the scheduled job). Only server code writes `spots`.
+- **Buy action.** Read one `available` row and claim it to `held` where `status` is still `available`, with `heldBy` = a new random id and `heldUntil` = now + 25 hours (the payment page's 24 hours plus a margin). No row back means another buyer took it: try the next `available` row, three in total at most, then show "That one just went, try again", or "Sold out" when none is left. Then call `buy()` with `reference` = that `heldBy` (§10). Each unit is one claim on one row, so two buyers can never get the same spot.
+- **Never release on the cancel page**, or on a hold shorter than 25 hours: the payment page is still payable after the buyer leaves it, and a spot freed early is sold twice.
+- **Settle.** The success page's loader reads `reference` from the URL and, when `isReferencePaid(context, reference)` is true, claims that row from `held` to `sold` where `heldBy` still matches. The scheduled job below does the same for every `held` row, for a buyer who paid and never came back to the success page.
+- **Release.** A job in `schedules.ts` (hourly is enough; the `recurring-actions` skill has the shape) takes each `held` row past `heldUntil` and asks `isReferencePaid`:
+  - Paid: claim it to `sold`.
+  - Not paid: `isReferencePaid` is also `false` when the check could not complete, so one `false` proves nothing. On the first, only record `firstUnpaidAt`. Release on a second `false` at least an hour after it: claim from `held` to `available` where `heldBy` still matches, clearing `heldBy`, `heldUntil` and `firstUnpaidAt`. A failed check must never free a paid spot.
+- **Refunds.** A `sold` spot stays sold after a refund unless the app builder asks otherwise.
+- **Say in the build report:** the release job runs only once the app is published, so in the App preview a held spot stays held.
+
+Never build this for a plan (a subscriber cap) or for seller products: see the limited-number rule under **Rules → In conversation**.
+
 # Rules
 
 In conversation:
@@ -949,11 +1022,35 @@ In conversation:
   - Cancelling an app user's own plan because a one-time purchase replaces it (a lifetime upgrade): app code, with `cancelSubscription()` (Part 2 §3). Never answer that this isn't possible.
   - Pausing a subscription from chat or the panel, or moving one app user to a different plan: **not possible yet**. Say so plainly and point to Stencil support. Don't offer custom Stripe code as the way around it; if the app builder asks for that, the next rule applies.
 - **A custom Stripe integration is allowed, but never silent.** When the app builder asks for their own Stripe checkout, their own Stripe key, Stripe Connect for their sellers, or any code that talks to Stripe directly, say plainly *before you build* that Stencil's managed payments are the preferred path — this skill for the app builder charging app users, the `selling` skill for app users charging their own customers — and name what the custom path gives up: nothing shows in the Payments panel, Stencil cannot refund or handle disputes for those charges, the platform's receipts and payment notifications never fire, and the app builder runs their own Stripe account, keys and webhooks from then on. Offer the managed equivalent first: for a per-seller setup that is seller onboarding, seller checkout, the seller panel and seller disconnect from `selling`. Build the custom path only once the app builder confirms they still want it, and say in the build reply that they chose it and what it trades away, so the choice is visible in the chat.
+- **A limited number for sale is never a payments setting.** Products and plans carry no quantity, so the answer depends on what is limited:
+  - **A one-time item** (event seats, tickets, stock, spots): the Builder Agent builds it into the app (Part 2 §13). Say two things in the same reply, in plain words:
+    - A spot is held for up to a day while someone is on the payment page. "Sold out" can show while a buyer is still paying, and the spot comes back if they do not pay.
+    - A refunded spot does not come back on its own.
+  - **A plan with limited spots** (a membership capped at 30): there is no built-in limit. Offer an invite-only app instead (`configureAuth` with `accessMode: "invite-only"`): people join the waitlist, the app builder lets them in up to the limit (`manageInvites`, in the `app-users-admin` skill, which says so when the app's invite cap is reached), and each one then subscribes. An app holds at most 100 open invites at once, and an invite stays open until it expires, about a month. So when the cap they ask for is above 100, or they want to let in more than 100 people in a short time, say plainly that invite-only lets in at most 100 people with open invites at once, do not offer it as a full answer, and never promise a membership cap above 100. Never build a subscriber counter, and never promise an automatic "full" state for a plan.
+  - **Seller products** (app users selling to their own end users, the `selling` skill): do not offer this recipe for them.
 - Default to a single plan; only build tiers when the app builder asks. The cap is ten plans per app (the tools enforce it and report it).
+- **Per-seat, per-person, usage-based or minimum-charge pricing is not offered, and Stencil has decided not to add it.** Each plan is one fixed price per subscriber, monthly or yearly. When an app builder asks for seats, a price per extra team member, a price per active person, metered or usage billing, or a monthly minimum, say so warmly and plainly in the first reply, before any setup step. Never say "not yet", "coming soon" or "on the roadmap", and never say it was logged or passed on. Then offer the workaround that fits, using their own numbers:
+  1. **Team size plans.** Up to ten plans side by side, one per team size. Example for "$39 with 3 seats, $5 each after": Team of 3 at $39, up to 5 at $49, up to 10 at $74. The team's admin buys the plan. The Builder Agent builds the team into the app: the admin invites teammates, teammates get access through the admin's plan, the app counts members on the server, and when the team is full it asks the admin to move up a plan (the admin switches plan in the billing portal, `manageSubscription`).
+  2. **Per active person with a minimum.** The same size bands counted by active people, with the smallest band priced at the minimum (for "$3 per person, $15 minimum": up to 5 at $15, up to 10 at $30, up to 20 at $60).
+  3. **Everyone pays for themselves.** When each teammate can pay on their own, each one buys the plan; no team code needed.
+
+  Never offer, as the way round this: their own Stripe account or key, a Stripe metered or graduated price, an outside billing tool (Orb, Lago, Paddle, Lemon Squeezy), or billing teams by hand. If the app builder raises their own Stripe by themselves, the custom Stripe rule above applies.
+- **Building the team size workaround (Builder Agent):** build the team with the `workspaces` skill: its `workspaces` / `workspace_members` / `workspace_invites` model and its invite rules, with the workspace owner as the team admin who buys the plan. A teammate's access is checked on the server by reading the owner's `subscription` row and passing it to `hasPlan` (§9 allows reading it for one app user's access), never a flag copied onto the teammate. The member cap is checked in that skill's invite action on the server, made to happen once (the "anything the app keeps in its own tables" rule), never only on screen.
+- **Tiers, sizes or levels inside one plan** (credit amounts, headcount bands, "like Stencil's own plans"): say plainly that there is no separate tiers feature, and that the way to do it is one plan per level, shown on the pricing page as one card with a level picker (Part 2 §7, "Levels inside one plan").
+  - Set each level up with `setSubscriptionPrice`: a name that reads as a level ("Pro · 100 credits", "Pro · 250 credits") and `position` low→high by price.
+  - Every level of every plan counts against the ten-plan cap. When they want more than ten, say so and suggest fewer, bigger steps. Never suggest another way round the cap.
+  - Never promise a one-click level change: the app user picks the new level on the billing page, and moving up charges the difference at once.
+  - Never promise that the app builder can move a subscriber to another level.
+  - Never promise that the app reads a level's number (seats, credits) from Stripe: the number lives in the app's own code.
 - Never claim a plan is live for app users while `setSubscriptionPrice` reports `rebuildRequired: true` — the live bundle is stale until the next build/publish. See "A plan only goes live on the next build/publish" above.
 - Plans don't wait for Stripe. Set them as soon as the payout account exists; when `setSubscriptionPrice` returns `paymentsPath`, Stripe can't take charges yet — say that no app user can subscribe until the app builder finishes Stripe setup, and point at the **Open payments settings** button the call put in the chat.
 - You can't enable annual billing from chat — it's a payments-settings-page toggle, off by default. Send the builder there when they want annual pricing.
 - Sales tax is the same: an opt-in on the payments settings page, never from chat. When it is on, Stripe adds it on top of the price at checkout.
+- **Charging or limiting by usage: allowances and top-up packs, never a usage bill.** When an app builder asks to charge per use, bill for what was used, or limit how much an app user can use, say in the first reply what is possible and what is not, using their own numbers:
+  - **Possible, and the Builder Agent builds it:** an allowance per plan that resets each billing period ("50 generations a month on Pro"), a stop with an upgrade or "buy more" prompt when it runs out, and top-up packs — one-time products an app user can buy as often as they like ("100 more for $5"). Set each pack with `setOneTimePrice`; the allowance itself is app code, with nothing to set from chat.
+  - **Not possible — say so plainly, never "not yet" or "coming soon":** charging the card automatically for what was used (per use, overage, an end-of-month usage bill), a bill that changes with usage, and per-person or per-seat pricing. Every plan is one fixed price, and a pack is a purchase the app user makes themselves.
+  - **Never promise** that the app charges an app user on its own when they run out (they buy a pack themselves, on Stripe's checkout page), or that refunding a pack takes its credits back (the credits stay unless the app builder asks for that to be built).
+  - Never offer a Stripe metered price, an outside billing tool or the app builder's own Stripe key as the way round this. If the app builder raises their own Stripe themselves, the custom Stripe rule above applies.
 - Branch on `chargesEnabled` / `payoutsEnabled`, never on the `status` string.
 - Never propose registering the payout account under a different country than the one the app builder's business is in, and never call the country choice temporary or reversible (see "The model"). A managed app (`connect.managed`) never gets a Stripe link, an identity step, a bank-account reminder or a country to change.
 - A paid-only app is `configureAuth` with `accessMode: "payment-required"` plus the pay-first scaffold matching the plan count (see §4 in Part 2) — never a hand-rolled gate.
@@ -964,6 +1061,7 @@ In app code:
 - **No custom Stripe code until the app builder has confirmed it** (see "In conversation"). Until then: no `stripe.js`, no `loadStripe()`, no Stripe secret key — sell and gate with the SDK in this skill.
 - **A route another payment service posts to (PayPal, a checkout or affiliate tool) is a webhook — load the `webhooks` skill and build it there.** It refuses every delivery until its verification secret is saved in More → Settings → Secrets: never verify "only if the secret is set", never fall back to a value written in the code. A forged delivery to a route that creates a paid account, cancels a buyer or marks a payout paid is money lost.
 - **Never store purchase state yourself** — sell with `buy()` and gate with `requirePurchase()` / `hasPurchased()` (§10).
+- **A limited number for sale is one row per unit, held for 25 hours and freed only on two unpaid checks** (§13). Never a counter decremented on payment, never a release on the cancel page, never a subscriber cap on a plan.
 - **Never store subscription state yourself.** Use `getSubscription()` / `requireSubscription()` — they read from the platform's D1 table.
 - **Never log, report or pay out money from the `subscription` row or `~/generated/tiers`.** What a person paid comes from `getBilling()` / `getBillingFor()` (§11): on the success page, in actions and in a daily `schedules.ts` job, never in an ordinary loader.
 - **An earnings, revenue or "tax statement" section in the app shows gross only.** It reads `getSubscriberSummary()` / `getBillingFor()` (§11), is titled as gross ("Gross sales, before Stripe fees"), and says the full figures (fees, net, deposits, tax forms) are in Stencil's Payments panel. Neither read returns a fee, a net or a payout: never estimate fees or tax in app code.

@@ -107,7 +107,19 @@ export const LOOKS: Record<string, Look> = {
 };
 
 /** A one-off effect: a move's signature when it fires (hit = false) or its mark on whoever it struck (hit = true). */
-export type Fx = { id: string; hit: boolean; x: number; y: number; dir: number; size: number; life: number; max: number; seed: number; reach: number };
+export type Fx = { id: string; hit: boolean; x: number; y: number; dir: number; size: number; life: number; max: number; seed: number; reach: number; tint?: Tint };
+
+/** A colour swap for every move of one fighter (Rage Mode): same shapes, new body colour and highlight. */
+export type Tint = { a: string; b: string };
+let tint: Tint | null = null;
+/** Set before drawing something a tinted fighter owns, and cleared after. */
+export function setLookTint(t: Tint | null) {
+  tint = t;
+}
+function lookOf(id: string): Look | undefined {
+  const lk = lookOf(id);
+  return lk && tint ? { ...lk, a: tint.a, b: tint.b } : lk;
+}
 
 // ---------- helpers ----------
 const TAU = Math.PI * 2;
@@ -327,7 +339,8 @@ export function drawSpark(ctx: CanvasRenderingContext2D, shape: PShape, x: numbe
 
 // ---------- one-off effects ----------
 export function drawFx(ctx: CanvasRenderingContext2D, fx: Fx, t: number) {
-  const lk = LOOKS[fx.id];
+  const base = LOOKS[fx.id];
+  const lk = base && fx.tint ? { ...base, ...fx.tint } : base;
   if (!lk) return;
   const k = clamp(1 - fx.life / fx.max, 0, 1);
   const e = out3(k);
@@ -1260,7 +1273,7 @@ type Shot = { x: number; y: number; vx: number; vy: number; r: number; rot: numb
 
 /** Draws a move's shot. Returns false when the move has no look of its own. */
 export function drawShotLook(ctx: CanvasRenderingContext2D, id: string, p: Shot, t: number) {
-  const lk = LOOKS[id];
+  const lk = lookOf(id);
   if (!lk) return false;
   const { a, b } = lk;
   const r = p.r;
@@ -1590,7 +1603,7 @@ export function drawShotLook(ctx: CanvasRenderingContext2D, id: string, p: Shot,
 type BeamShape = { x: number; y: number; ang: number; len: number; width: number };
 
 export function drawBeamLook(ctx: CanvasRenderingContext2D, id: string, bm: BeamShape, alpha: number, t: number) {
-  const lk = LOOKS[id];
+  const lk = lookOf(id);
   if (!lk) return false;
   const { a, b } = lk;
   const w = bm.width;
@@ -1718,13 +1731,13 @@ export function drawBeamLook(ctx: CanvasRenderingContext2D, id: string, bm: Beam
 
 // ---------- ground eruptions ----------
 export function eruptionColors(id: string) {
-  const lk = LOOKS[id];
+  const lk = lookOf(id);
   return lk ? { a: lk.a, b: lk.b } : null;
 }
 
 /** Draws a risen eruption whose column is `h` tall, standing on the ground at `gy`. */
 export function drawEruptionLook(ctx: CanvasRenderingContext2D, id: string, x: number, gy: number, r: number, h: number, t: number) {
-  const lk = LOOKS[id];
+  const lk = lookOf(id);
   if (!lk) return false;
   const { a, b } = lk;
   ctx.save();
@@ -1875,7 +1888,7 @@ export function drawEruptionLook(ctx: CanvasRenderingContext2D, id: string, x: n
 
 // ---------- lingering fields ----------
 export function drawZoneLook(ctx: CanvasRenderingContext2D, id: string, x: number, gy: number, r: number, alpha: number, t: number) {
-  const lk = LOOKS[id];
+  const lk = lookOf(id);
   if (!lk) return false;
   const { a, b } = lk;
   ctx.save();
@@ -2026,7 +2039,7 @@ export function drawZoneLook(ctx: CanvasRenderingContext2D, id: string, x: numbe
 // ---------- rushing moves ----------
 /** Drawn around a fighter while a rush move carries them forward. */
 export function drawRushLook(ctx: CanvasRenderingContext2D, id: string, x: number, y: number, s: number, dir: number, t: number) {
-  const lk = LOOKS[id];
+  const lk = lookOf(id);
   if (!lk) return;
   const { a, b } = lk;
   ctx.save();

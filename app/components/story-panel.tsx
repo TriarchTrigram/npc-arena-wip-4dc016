@@ -4,15 +4,16 @@ import { Button } from "~/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { cn } from "~/lib/utils";
 import { DEF_BY_ID, FIGHTERS, type Power } from "~/lib/fighters";
-import { CHAPTERS, STAGES_PER_CHAPTER, canTeam, enemySide, playerSide, type Pair } from "~/lib/story";
+import { CHAPTERS, STAGES_PER_CHAPTER, canTeam, chapterOpen, enemySide, playerSide, type Pair } from "~/lib/story";
 
-const STAGE_KEYS: StringKey[] = [
-  "story.stages.s1", "story.stages.s2", "story.stages.s3", "story.stages.s4", "story.stages.s5",
-  "story.stages.s6", "story.stages.s7", "story.stages.s8", "story.stages.s9", "story.stages.s10",
-];
+const TITLE_KEYS: StringKey[] = ["story.chapterTitle", "story.ch2.title", "story.ch3.title", "story.ch4.title", "story.ch5.title"];
+const STAGE_PREFIX = ["story.stages", "story.ch2.stages", "story.ch3.stages", "story.ch4.stages", "story.ch5.stages"];
+const stageKey = (ch: number, i: number) => `${STAGE_PREFIX[ch]}.s${i + 1}` as StringKey;
 
-export function StoryPanel({ cleared, stage, onStage, pair, onPair, locked }: {
-  cleared: number;
+export function StoryPanel({ cleared, chapter, onChapter, stage, onStage, pair, onPair, locked }: {
+  cleared: number[];
+  chapter: number;
+  onChapter: (ch: number) => void;
   stage: number;
   onStage: (i: number) => void;
   pair: Pair;
@@ -21,23 +22,45 @@ export function StoryPanel({ cleared, stage, onStage, pair, onPair, locked }: {
 }) {
   const firstAria = useString("story.first");
   const secondAria = useString("story.second");
-  const stages = CHAPTERS[0].stages;
+  const chaptersAria = useString("story.chaptersAria");
+  const stages = CHAPTERS[chapter].stages;
+  const done = cleared[chapter] ?? 0;
   const side = playerSide(pair);
   const teamOk = canTeam(pair);
   const fused = pair.fuse || !teamOk;
 
   return (
     <div className="flex flex-col gap-6" data-story-panel>
+      <div className="-my-1.5 flex gap-2 overflow-x-auto py-1.5" role="group" aria-label={chaptersAria} data-story-chapters>
+        {CHAPTERS.map((_, ch) => {
+          const open = chapterOpen(cleared, ch);
+          return (
+            <Button
+              key={ch}
+              size="sm"
+              variant={ch === chapter ? "default" : "outline"}
+              disabled={!open || locked}
+              aria-pressed={ch === chapter}
+              onClick={() => onChapter(ch)}
+              className="shrink-0"
+            >
+              <Text id="story.chapterLabel" vars={{ n: ch + 1 }} />
+              {(cleared[ch] ?? 0) >= STAGES_PER_CHAPTER ? <Text id="story.cleared" className="text-xs font-extrabold" /> : !open ? <Text id="story.locked" className="text-xs" /> : null}
+            </Button>
+          );
+        })}
+      </div>
+
       <div className="flex flex-col gap-1">
-        <Text id="story.chapterTitle" as="h3" className="font-display text-xl text-foreground" />
+        <Text id={TITLE_KEYS[chapter]} as="h3" className="font-display text-xl text-foreground" />
         <Text id="story.chapterIntro" as="p" className="max-w-prose text-sm text-muted-foreground" />
-        <Text id="story.progress" vars={{ count: cleared, total: STAGES_PER_CHAPTER }} as="p" className="text-sm font-semibold text-foreground tabular-nums" />
+        <Text id="story.progress" vars={{ count: done, total: STAGES_PER_CHAPTER }} as="p" className="text-sm font-semibold text-foreground tabular-nums" />
       </div>
 
       <ol className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5" data-story-stages>
         {stages.map((s, i) => {
-          const open = i <= cleared;
-          const done = i < cleared;
+          const open = i <= done;
+          const beaten = i < done;
           const on = i === stage;
           const foes = enemySide(s);
           return (
@@ -55,7 +78,7 @@ export function StoryPanel({ cleared, stage, onStage, pair, onPair, locked }: {
               >
                 <span className="flex w-full items-center gap-2">
                   <Text id="story.stageNumber" vars={{ n: i + 1 }} className="text-xs font-extrabold uppercase tracking-[0.08em] text-muted-foreground" />
-                  {done ? (
+                  {beaten ? (
                     <Text id="story.cleared" className="ml-auto text-xs font-extrabold text-success" />
                   ) : !open ? (
                     <Text id="story.locked" className="ml-auto text-xs font-semibold text-muted-foreground" />
@@ -63,7 +86,7 @@ export function StoryPanel({ cleared, stage, onStage, pair, onPair, locked }: {
                     <Text id="story.boss" className="ml-auto text-xs font-extrabold text-error" />
                   ) : null}
                 </span>
-                <Text id={STAGE_KEYS[i]} className="font-display text-base leading-[1.2] text-foreground" />
+                <Text id={stageKey(chapter, i)} className="font-display text-base leading-[1.2] text-foreground" />
                 <span className="flex flex-wrap gap-1">
                   {foes.map((f, k) => (
                     <span key={k} className="flex items-center gap-1 text-xs text-muted-foreground">

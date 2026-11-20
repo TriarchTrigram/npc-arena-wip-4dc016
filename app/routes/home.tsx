@@ -23,7 +23,7 @@ import { drawBracket, recordWinner, nextMatch, champion, progress, started, entr
 import { BracketView } from "~/components/bracket-view";
 import { TitleScreen } from "~/components/title-screen";
 import { StoryPanel } from "~/components/story-panel";
-import { CHAPTERS, STAGES_PER_CHAPTER, canTeam, fusionOrder, loadProgress, rememberHybrid, saveProgress, stageLineup, type Pair } from "~/lib/story";
+import { CHAPTERS, STAGES_PER_CHAPTER, canTeam, chapterOpen, fusionOrder, loadProgress, rememberHybrid, saveProgress, stageLineup, type Pair } from "~/lib/story";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -77,16 +77,28 @@ export default function Home() {
   const [teamCount, setTeamCount] = useState<number>(2);
   const [bracket, setBracket] = useState<Bracket | null>(null);
   const [jugg, setJugg] = useState<Power>("pyro");
-  // Story mode: chapter 1's cleared count is read from this browser after the first render.
-  const [cleared, setCleared] = useState(0);
+  // Story mode: each chapter's cleared count is read from this browser after the first render.
+  const [clearedAll, setClearedAll] = useState<number[]>(() => CHAPTERS.map(() => 0));
+  const [chapter, setChapter] = useState(0);
   const [stage, setStage] = useState(0);
   const [pair, setPair] = useState<Pair>({ a: "pyro", b: "hydro", fuse: true });
-  const stageRef = useRef<number | null>(null);
+  // the chapter and stage of the fight on screen
+  const stageRef = useRef<{ ch: number; i: number } | null>(null);
+  const cleared = clearedAll[chapter] ?? 0;
   useEffect(() => {
-    const c = loadProgress().cleared[0] ?? 0;
-    setCleared(c);
-    setStage(Math.min(c, STAGES_PER_CHAPTER - 1));
+    const all = loadProgress().cleared;
+    setClearedAll(all);
+    // pick up in the furthest chapter that is open
+    let ch = 0;
+    while (ch + 1 < CHAPTERS.length && chapterOpen(all, ch + 1)) ch++;
+    setChapter(ch);
+    setStage(Math.min(all[ch] ?? 0, STAGES_PER_CHAPTER - 1));
   }, []);
+  const chooseChapter = (ch: number) => {
+    if (!chapterOpen(clearedAll, ch)) return;
+    setChapter(ch);
+    setStage(Math.min(clearedAll[ch] ?? 0, STAGES_PER_CHAPTER - 1));
+  };
   // Sound: saved volume and mute are read from this browser after the first render.
   const [volume, setVolume] = useState(60);
   const [muted, setMuted] = useState(false);
@@ -151,13 +163,12 @@ export default function Home() {
       setBracket((b) => (b ? recordWinner(b, at, id) : b));
     }
     matchRef.current = null;
-    const cleared0 = stageRef.current;
-    if (mode === "story" && cleared0 != null && g.winnerTeam === 0) {
-      setCleared((c) => {
-        const next = Math.max(c, cleared0 + 1);
-        const saved = loadProgress();
-        saved.cleared[0] = next;
-        saveProgress(saved);
+    const at0 = stageRef.current;
+    if (mode === "story" && at0 != null && g.winnerTeam === 0) {
+      setClearedAll((all) => {
+        const next = [...all];
+        next[at0.ch] = Math.max(next[at0.ch] ?? 0, at0.i + 1);
+        saveProgress({ cleared: next });
         return next;
       });
     }
@@ -186,7 +197,8 @@ export default function Home() {
       last = now;
       const g = gameRef.current;
       if (g && statusRef.current === "running") {
-        const sub = speedRef.current;
+        // a rage cutscene always plays at normal speed
+        const sub = g.cut ? 1 : speedRef.current;
         for (let i = 0; i < sub && !g.over; i++) step(g, dt);
         arenaSound.play(g.sfx);
         g.sfx.length = 0;
@@ -223,13 +235,13 @@ export default function Home() {
   useEffect(() => {
     if (mode === "tournament") previewRef.current = newGame(upA && upB ? [upA, upB] : [], true);
     else if (mode === "story") {
-      const { defs, teams } = stageLineup(pair, CHAPTERS[0].stages[stage]);
+      const { defs, teams } = stageLineup(pair, CHAPTERS[chapter].stages[stage]);
       previewRef.current = newGame(defs, true, teams);
     } else if (mode === "juggernaut") {
       const ids = [...picked.filter((id) => id !== jugg), jugg];
       previewRef.current = newGame(ids, true, ids.map((_, i) => (i === ids.length - 1 ? 1 : 0)), ids.length - 1);
     } else previewRef.current = newGame(picked, true, mode === "teams" ? picked.map((_, i) => i % teamCount) : undefined);
-  }, [picked, mode, teamCount, upA, upB, jugg, pair, stage]);
+  }, [picked, mode, teamCount, upA, upB, jugg, pair, stage, chapter]);
 
   const begin = (g: Game) => {
     gameRef.current = g;
@@ -238,10 +250,11 @@ export default function Home() {
     setStatus("running");
   };
 
-  const startStage = (i: number) => {
-    const { defs, teams } = stageLineup(pair, CHAPTERS[0].stages[i]);
+  const startStage = (i: number, ch = chapter) => {
+    const { defs, teams } = stageLineup(pair, CHAPTERS[ch].stages[i]);
     if (pair.fuse || !canTeam(pair)) rememberHybrid(...fusionOrder(pair.a, pair.b));
-    stageRef.current = i;
+    stageRef.current = { ch, i };
+    setChapter(ch);
     setStage(i);
     begin(newGame(defs, false, teams));
   };
@@ -410,11 +423,13 @@ export default function Home() {
                     <div className="rounded-2xl border-4 border-foreground bg-card px-8 py-6 text-center">
                       {mode === "story" ? (
                         <StoryBanner
-                          stage={stageRef.current ?? stage}
+                          chapter={stageRef.current?.ch ?? chapter}
+                          stage={stageRef.current?.i ?? stage}
                           won={result?.team === 0}
-                          onRetry={() => startStage(stageRef.current ?? stage)}
-                          onNext={() => startStage(Math.min((stageRef.current ?? stage) + 1, STAGES_PER_CHAPTER - 1))}
-                          onBack={() => { setStage(Math.min((stageRef.current ?? stage) + 1, STAGES_PER_CHAPTER - 1)); restart(); }}
+                          onRetry={() => startStage(stageRef.current?.i ?? stage, stageRef.current?.ch ?? chapter)}
+                          onNext={() => startStage(Math.min((stageRef.current?.i ?? stage) + 1, STAGES_PER_CHAPTER - 1), stageRef.current?.ch ?? chapter)}
+                          onNextChapter={() => { const ch = Math.min((stageRef.current?.ch ?? chapter) + 1, CHAPTERS.length - 1); setChapter(ch); setStage(0); restart(); }}
+                          onBack={() => { setStage(Math.min((stageRef.current?.i ?? stage) + 1, STAGES_PER_CHAPTER - 1)); restart(); }}
                         />
                       ) : (
                       <WinnerBanner
@@ -512,7 +527,7 @@ export default function Home() {
             )}
             {mode === "story" ? (
               <div className="mt-6">
-                <StoryPanel cleared={cleared} stage={stage} onStage={setStage} pair={pair} onPair={setPair} locked={fighting} />
+                <StoryPanel cleared={clearedAll} chapter={chapter} onChapter={chooseChapter} stage={stage} onStage={setStage} pair={pair} onPair={setPair} locked={fighting} />
               </div>
             ) : (
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
@@ -601,9 +616,10 @@ export default function Home() {
   );
 }
 
-function StoryBanner({ stage, won, onRetry, onNext, onBack }: { stage: number; won: boolean; onRetry: () => void; onNext: () => void; onBack: () => void }) {
+function StoryBanner({ chapter, stage, won, onRetry, onNext, onNextChapter, onBack }: { chapter: number; stage: number; won: boolean; onRetry: () => void; onNext: () => void; onNextChapter: () => void; onBack: () => void }) {
   const title = "font-display text-3xl text-foreground";
   const last = stage >= STAGES_PER_CHAPTER - 1;
+  const finale = last && chapter >= CHAPTERS.length - 1;
   if (!won) {
     return (
       <>
@@ -616,9 +632,14 @@ function StoryBanner({ stage, won, onRetry, onNext, onBack }: { stage: number; w
   }
   return (
     <>
-      <Text id={last ? "arena.winner.chapterCleared" : "arena.winner.stageCleared"} vars={{ n: stage + 1 }} as="p" className={title} />
+      {finale ? (
+        <Text id="arena.winner.storyComplete" as="p" className={cn(title, "max-w-sm text-balance")} />
+      ) : (
+        <Text id={last ? "arena.winner.chapterCleared" : "arena.winner.stageCleared"} vars={{ n: last ? chapter + 1 : stage + 1 }} as="p" className={title} />
+      )}
       <div className="mt-4 flex flex-wrap justify-center gap-2">
         {!last && <Button onClick={onNext}><Text id="arena.winner.nextStage" /></Button>}
+        {last && !finale && <Button onClick={onNextChapter}><Text id="arena.winner.nextChapter" /></Button>}
         <Button variant="outline" onClick={last ? onRetry : onBack}><Text id={last ? "arena.winner.again" : "arena.winner.changePair"} /></Button>
       </div>
     </>

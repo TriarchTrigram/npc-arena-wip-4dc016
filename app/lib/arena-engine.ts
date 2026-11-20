@@ -1,7 +1,7 @@
 // Side-view stickman fight engine for the arena canvas. Runs entirely in the browser.
 import { DEF_BY_ID, juggernautOf, type Anim, type FighterDef, type Move, type Power, type StatusEffect } from "./fighters";
 import type { Sfx } from "./arena-sound";
-import { LOOKS, drawFx, drawSpark, drawShotLook, drawBeamLook, drawEruptionLook, drawZoneLook, drawRushLook, eruptionColors, type Fx, type PShape } from "./move-looks";
+import { LOOKS, setLookTint, drawFx, drawSpark, drawShotLook, drawBeamLook, drawEruptionLook, drawZoneLook, drawRushLook, eruptionColors, type Fx, type PShape } from "./move-looks";
 
 export const W = 960;
 export const H = 600;
@@ -116,6 +116,32 @@ const FX: Record<Power, { shape: PShape; add: boolean; grav: number }> = {
   shift: { shape: "dot", add: true, grav: 0 },
 };
 
+// ---------- Rage Mode ----------
+/** Pushed below a third of their health, Pyro, Electro and Aero snap once: a cutscene pauses the match, then they fight on recoloured and stronger. */
+type Rage = {
+  body: string; glow: string;
+  /** Their moves' new colour and highlight. */
+  a: string; b: string;
+  /** Electro's black lightning. */
+  dark?: string;
+  title: string;
+  dmg: number; kb: number; cd: number; speed: number; act: number;
+};
+const RAGE: Partial<Record<Power, Rage>> = {
+  pyro: { body: "hsl(218 88% 56%)", glow: "hsl(195 100% 74%)", a: "hsl(222 100% 58%)", b: "hsl(190 100% 80%)", title: "BLUE FLAME", dmg: 1.3, kb: 1.1, cd: 0.8, speed: 1.1, act: 1.1 },
+  electro: { body: "hsl(0 0% 97%)", glow: "hsl(0 0% 100%)", a: "hsl(0 0% 100%)", b: "hsl(215 40% 94%)", dark: "hsl(265 45% 7%)", title: "BLACK LIGHTNING", dmg: 1.15, kb: 1, cd: 0.45, speed: 1.6, act: 1.45 },
+  aero: { body: "hsl(168 78% 36%)", glow: "hsl(150 100% 80%)", a: "hsl(166 88% 34%)", b: "hsl(146 100% 82%)", title: "STORM FURY", dmg: 1.5, kb: 1.7, cd: 0.8, speed: 1.15, act: 1.1 },
+};
+const RAGE_AT = 0.34;
+const CUT_TIME = 2.7;
+const RAGE_POSE: Pose = { t: -0.22, aF1: 0.5, aF2: 0.2, aB1: -0.5, aB2: -0.2, lF1: 0.5, lF2: 0.22, lB1: -0.5, lB2: -0.22 };
+const ROAR_POSE: Pose = { ...RAGE_POSE, t: -0.3, ...ANIMS.raise.strike };
+const rageOf = (f?: Fighter | null) => (f?.rage ? RAGE[f.def.id] ?? null : null);
+/** Rage only belongs to the pure fighters, not to a hybrid carrying their power. */
+const canRage = (f: Fighter) => !!RAGE[f.def.id] && !f.def.parents && !f.rage;
+/** Whose rage colours new particles and effects take while a fighter acts. */
+let paint: Rage | null = null;
+
 // ---------- game state ----------
 type Action = { id: number; move: Move; power: Power; t: number; fired: boolean; target: number; hits: number[]; label: string; landed: boolean };
 type Ghost = { x: number; y: number; pose: Pose; face: number; life: number };
@@ -148,6 +174,8 @@ export type Fighter = {
   team: number;
   // juggernaut: always flying on wings, holding at hoverY
   jugg: boolean; hoverY: number;
+  // Rage Mode: on for the rest of the fight once it fires; rageT times Aero's gusts
+  rage: boolean; rageT: number;
 };
 
 type Projectile = {
@@ -188,6 +216,8 @@ export type Game = {
   teamMode: boolean;
   winnerId: Power | null;
   winnerTeam: number | null;
+  /** A rage cutscene in progress: the match holds still until it ends. */
+  cut: { key: number; t: number; max: number } | null;
 };
 
 let feedId = 0;
@@ -239,12 +269,13 @@ export function newGame(ids: (Power | FighterDef)[], preview = false, teams?: nu
       aggro: clamp(AGGRO[def.role] + rand(-0.08, 0.08), 0.2, 0.95), targetKey: null, reacted: -1, comboT: 0,
       team: teamMode ? teams![i] : -1,
       jugg: isJugg, hoverY,
+      rage: false, rageT: 0,
     };
   });
   return {
     t: 0, fighters, projectiles: [], beams: [], eruptions: [], zones: [], particles: [], pops: [], waves: [], fx: [], feed: [], sfx: [],
     shake: 0, hitstop: 0, ending: 0, over: false, winner: null, preview, duel: n === 2 && !teamMode,
-    teamMode, winnerId: null, winnerTeam: null,
+    teamMode, winnerId: null, winnerTeam: null, cut: null,
   };
 }
 
@@ -256,13 +287,14 @@ const hand = (f: Fighter) => ({ x: f.x + f.facing * 34 * f.scale, y: f.y - 66 * 
 function emit(g: Game, power: Power, x: number, y: number, n: number, spd: number, opts: Partial<Particle> = {}) {
   const def = DEF_BY_ID[power];
   const fx = FX[power];
+  const rg = paint && RAGE[power] === paint ? paint : null;
   for (let i = 0; i < n && g.particles.length < 900; i++) {
     const a = rand(0, Math.PI * 2);
     const s = rand(spd * 0.3, spd);
     const life = rand(0.3, 0.7);
     g.particles.push({
       x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life, max: life,
-      size: rand(3, 7), color: Math.random() < 0.5 ? def.color : def.glow,
+      size: rand(3, 7), color: rg ? rageColor(rg) : Math.random() < 0.5 ? def.color : def.glow,
       shape: fx.shape, grav: fx.grav, add: fx.add, rot: rand(0, 6), ...opts,
     });
   }
@@ -278,16 +310,22 @@ function emitMove(g: Game, m: Move, power: Power, x: number, y: number, n: numbe
     const life = rand(0.3, 0.7);
     g.particles.push({
       x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life, max: life,
-      size: rand(3, 7), color: Math.random() < 0.5 ? lk.a : lk.b,
-      shape: lk.p, grav: lk.grav, add: lk.add, rot: rand(0, 6), ...opts,
+      size: rand(3, 7), color: paint ? rageColor(paint) : Math.random() < 0.5 ? lk.a : lk.b,
+      shape: lk.p, grav: lk.grav, add: lk.add && !(paint?.dark), rot: rand(0, 6), ...opts,
     });
   }
+}
+
+/** One of a raging fighter's colours; Electro's mix in black. */
+function rageColor(r: Rage) {
+  const k = Math.random();
+  return r.dark && k < 0.3 ? r.dark : k < 0.65 ? r.a : r.b;
 }
 
 /** A move's signature effect, at the hand when it fires or on whoever it hit. */
 function moveFx(g: Game, id: string, hitFx: boolean, x: number, y: number, dir: number, size: number, life: number, reach = 0) {
   if (!LOOKS[id] || g.fx.length > 80) return;
-  g.fx.push({ id, hit: hitFx, x, y, dir, size, life, max: life, seed: Math.random() * 100, reach });
+  g.fx.push({ id, hit: hitFx, x, y, dir, size, life, max: life, seed: Math.random() * 100, reach, tint: paint ? { a: paint.a, b: paint.b } : undefined });
 }
 
 /** Fires a move's signature effect from where its look says. */
@@ -423,7 +461,18 @@ function hurt(g: Game, f: Fighter, amount: number, by: Fighter | null) {
 }
 
 function hit(g: Game, a: Fighter, o: Fighter, move: Move, power: Power, dir: number, mult = 1) {
+  const prev = paint;
+  paint = rageOf(a);
+  try {
+    return landHit(g, a, o, move, power, dir, mult);
+  } finally {
+    paint = prev;
+  }
+}
+
+function landHit(g: Game, a: Fighter, o: Fighter, move: Move, power: Power, dir: number, mult = 1) {
   if (!o.alive || !foe(a, o)) return false;
+  const rg = rageOf(a);
   const c = center(o);
   if (invuln(o)) {
     if (Math.random() < 0.5) pop(g, c.x, c.y - 50 * o.scale, "dodge", o.def.glow, 15, 0.5);
@@ -438,7 +487,7 @@ function hit(g: Game, a: Fighter, o: Fighter, move: Move, power: Power, dir: num
     pop(g, c.x, c.y - 50 * o.scale, "miss", DEF_BY_ID.lux.color, 16);
     return false;
   }
-  let dmg = move.dmg * mult * (a.jugg ? JUGG_DMG : 1);
+  let dmg = move.dmg * mult * (a.jugg ? JUGG_DMG : 1) * (rg?.dmg ?? 1);
   const crit = move.crit != null && Math.random() < move.crit;
   if (crit) dmg *= 1.8;
   dmg = Math.round(dmg * 10) / 10;
@@ -446,8 +495,18 @@ function hit(g: Game, a: Fighter, o: Fighter, move: Move, power: Power, dir: num
   o.flash = 0.1;
   if (power !== "shift") o.lastHitBy = power;
   const weight = o.jugg ? 0.5 : 1;
-  if (move.kb) o.vx = dir * move.kb * weight;
+  if (move.kb) o.vx = dir * move.kb * weight * (rg?.kb ?? 1);
   if (move.lift) { o.vy = move.lift * weight; o.onGround = false; }
+  if (rg && a.def.id === "pyro") o.status.burn = Math.max(o.status.burn, g.t + 1.2 * (o.jugg ? 0.33 : 1));
+  // raging Electro juggles: an air strike pops them up and he follows for the next one
+  if (rg && a.def.id === "electro" && move.kind === "melee" && !a.onGround && !o.jugg) {
+    o.vy = Math.min(o.vy, -430);
+    o.onGround = false;
+    a.vy = -360;
+    a.airDashed = false;
+    a.comboT = 0.8;
+    a.think = 0;
+  }
   // a juggernaut shakes off effects in a third of the time
   if (move.status) o.status[move.status] = Math.max(o.status[move.status], g.t + (move.statusDur ?? 1) * (o.jugg ? 0.33 : 1));
   const heavy = dmg >= 9 || move.lift != null || move.status === "stun" || move.status === "freeze";
@@ -765,7 +824,7 @@ function startMove(g: Game, f: Fighter, move: Move, target: Fighter) {
     const c = center(f);
     moveFx(g, move.id, false, c.x, c.y, f.facing, f.scale, LOOKS[move.id]?.castLife ?? 0.6);
   }
-  f.cds[move.id] = move.cd * (f.jugg ? JUGG_CD : 1);
+  f.cds[move.id] = move.cd * (f.jugg ? JUGG_CD : 1) * (rageOf(f)?.cd ?? 1);
   f.act = { id: ++actId, move: m, power, t: 0, fired: false, target: target.key, hits: [], label, landed: false };
   f.facing = target.x >= f.x ? 1 : -1;
   const showCall = g.duel || move.cd >= 3;
@@ -829,6 +888,110 @@ function react(g: Game, f: Fighter, target: Fighter, dt: number) {
   return false;
 }
 
+/** Embers, sparks or wind coming off a raging fighter, and Aero's gusts. */
+function rageAura(g: Game, f: Fighter, rg: Rage, dt: number) {
+  const s = f.scale;
+  if (Math.random() < dt * 26) emit(g, f.def.id, f.x + rand(-16, 16) * s, f.y - rand(10, 100) * s, 1, 50);
+  if (f.def.id === "electro" && Math.random() < dt * 10) {
+    g.particles.push({ x: f.x + rand(-26, 26) * s, y: f.y - rand(10, 100) * s, vx: rand(-120, 120), vy: rand(-120, 120), life: 0.18, max: 0.18, size: rand(5, 9) * s, color: rg.dark ?? INK, shape: "spark", grav: 0, add: false, rot: rand(0, 6) });
+  }
+  if (f.def.id !== "aero") return;
+  f.rageT -= dt;
+  if (f.rageT > 0 || g.t < 1 || g.ending > 0) return;
+  f.rageT = rand(1.1, 1.6);
+  // a gust: shoves every nearby enemy away and nicks them
+  const c = center(f);
+  const r = 250 * s;
+  g.waves.push({ x: c.x, y: c.y, r, life: 0.45, max: 0.45, a: rg.b, b: rg.a });
+  for (let i = 0; i < 18; i++) {
+    const an = (i / 18) * Math.PI * 2;
+    g.particles.push({ x: c.x, y: c.y, vx: Math.cos(an) * 700, vy: Math.sin(an) * 420, life: 0.3, max: 0.3, size: rand(4, 7), color: i % 2 ? rg.a : rg.b, shape: "spark", grav: 0, add: false, rot: an });
+  }
+  sfx(g, { k: "dash", air: true });
+  for (const o of g.fighters) {
+    if (!o.alive || !foe(f, o) || invuln(o)) continue;
+    const oc = center(o);
+    const d = Math.hypot(oc.x - c.x, (oc.y - c.y) * 0.8);
+    if (d > r) continue;
+    const k = 1 - d / r;
+    const dir = Math.sign(o.x - f.x) || f.facing;
+    const w = o.jugg ? 0.4 : 1;
+    o.vx = dir * (300 + 420 * k) * w;
+    if (o.onGround && !o.jugg) { o.vy = -160 - 160 * k; o.onGround = false; }
+    hurt(g, o, 2 + 3 * k, f);
+  }
+}
+
+/** Pushed to the limit: the match pauses for the transformation. */
+function startRage(g: Game, f: Fighter) {
+  f.rage = true;
+  f.rageT = 0.6;
+  f.act = null;
+  f.dashT = 0;
+  f.kneelT = 0;
+  f.clashAir = false;
+  f.hurtT = 0;
+  f.vx = 0;
+  g.cut = { key: f.key, t: 0, max: CUT_TIME };
+  g.hitstop = 0;
+  sfx(g, { k: "rage", power: f.def.id });
+}
+
+/** The cutscene plays: only the raging fighter and the effects move. */
+function stepCut(g: Game, dt: number) {
+  const cut = g.cut!;
+  cut.t += dt;
+  const f = g.fighters[cut.key];
+  const rg = rageOf(f);
+  const k = cut.t / cut.max;
+  if (rg) {
+    paint = rg;
+    const c = center(f);
+    const s = f.scale;
+    // power gathers in, then bursts off the body
+    const n = k < 0.75 ? 3 : 1;
+    for (let i = 0; i < n && Math.random() < dt * 60; i++) {
+      const an = rand(0, Math.PI * 2), d = rand(120, 220) * s;
+      g.particles.push({ x: c.x + Math.cos(an) * d, y: c.y + Math.sin(an) * d * 0.8, vx: -Math.cos(an) * d * 3, vy: -Math.sin(an) * d * 2.4, life: 0.32, max: 0.32, size: rand(3, 7), color: rageColor(rg), shape: f.def.id === "aero" ? "spark" : FX[f.def.id].shape, grav: 0, add: !rg.dark, rot: an });
+    }
+    if (Math.random() < dt * 30) emit(g, f.def.id, f.x + rand(-20, 20) * s, f.y - rand(0, 110) * s, 1, 90);
+    if (k > 0.72 && !f.ghosts.length) f.ghosts.push({ x: f.x, y: f.y, pose: { ...f.pose }, face: f.facing, life: 0.4 });
+    smoothPose(f, k < 0.62 ? { ...RAGE_POSE, t: RAGE_POSE.t + Math.sin(cut.t * 30) * 0.03 } : ROAR_POSE, dt, k < 0.62 ? 10 : 26);
+    paint = null;
+  }
+  g.shake = Math.max(g.shake, k > 0.62 ? 6 : 2);
+  for (const gh of f.ghosts) gh.life -= dt;
+  f.ghosts = f.ghosts.filter((gh) => gh.life > 0);
+  tickBits(g, dt);
+  if (cut.t >= cut.max) {
+    g.cut = null;
+    if (rg) rageBurst(g, f, rg);
+  }
+}
+
+/** The cutscene ends in a blast that throws nearby enemies back. */
+function rageBurst(g: Game, f: Fighter, rg: Rage) {
+  const c = center(f);
+  const r = 220 * f.scale;
+  paint = rg;
+  g.waves.push({ x: c.x, y: c.y, r: r * 1.3, life: 0.6, max: 0.6, a: rg.b, b: rg.a });
+  emit(g, f.def.id, c.x, c.y, 40, 560);
+  paint = null;
+  for (const o of g.fighters) {
+    if (!o.alive || !foe(f, o)) continue;
+    const d = Math.hypot(center(o).x - c.x, (center(o).y - c.y) * 0.8);
+    if (d > r) continue;
+    const dir = Math.sign(o.x - f.x) || f.facing;
+    o.vx = dir * (o.jugg ? 220 : 480);
+    if (!o.jugg) { o.vy = -260; o.onGround = false; }
+    o.hurtT = Math.max(o.hurtT, 0.3);
+    o.act = null;
+  }
+  f.iframeT = 0.5;
+  sfx(g, { k: "clash" });
+  g.shake = Math.max(g.shake, 16);
+}
+
 function jump(f: Fighter, dir: number) {
   f.vy = f.jugg ? -420 : -760;
   f.vx += dir * 120;
@@ -836,7 +999,17 @@ function jump(f: Fighter, dir: number) {
 }
 
 function updateFighter(g: Game, f: Fighter, dt: number) {
+  paint = rageOf(f);
+  try {
+    tickFighter(g, f, dt);
+  } finally {
+    paint = null;
+  }
+}
+
+function tickFighter(g: Game, f: Fighter, dt: number) {
   const s = f.scale;
+  const rg = rageOf(f);
   f.flash = Math.max(0, f.flash - dt);
   f.hpTrail += (f.hp - f.hpTrail) * Math.min(1, dt * 2.2);
   for (const gh of f.ghosts) gh.life -= dt;
@@ -897,13 +1070,13 @@ function updateFighter(g: Game, f: Fighter, dt: number) {
   if (f.dashT > 0) {
     // dashing: a quick burst of ground (or air) with a moment of invulnerability
     f.dashT -= dt;
-    f.x += f.dashDir * ((DASH_DIST * s * (0.8 + f.def.speed / 450)) / DASH_TIME) * dt;
+    f.x += f.dashDir * ((DASH_DIST * s * (0.8 + f.def.speed / 450) * (rg ? Math.sqrt(rg.speed) : 1)) / DASH_TIME) * dt;
     if (!f.onGround) f.vy = 0;
     if (f.dashDir === f.facing && Math.random() < dt * 40) emit(g, f.def.id, f.x - f.facing * 14 * s, f.y - rand(20, 80) * s, 1, 40);
   } else if (f.act) {
     const a = f.act;
     const m = a.move;
-    a.t += dt * (slowed ? 0.7 : 1);
+    a.t += dt * (slowed ? 0.7 : 1) * (rg?.act ?? 1);
     if (!a.fired && a.t >= m.wind) {
       a.fired = true;
       fire(g, f, a);
@@ -959,7 +1132,7 @@ function updateFighter(g: Game, f: Fighter, dt: number) {
       if (f.think <= 0) {
         f.think = rand(0.08, 0.26) * (1.25 - f.aggro * 0.45);
         const m = bestMove(g, f, target);
-        if (m && (steady(f) || Math.random() < 0.4)) startMove(g, f, m, target);
+        if (m && (steady(f) || Math.random() < 0.4 || (rg && f.def.id === "electro"))) startMove(g, f, m, target);
       }
       if (!f.act && f.dashT <= 0) {
         const low = f.hp / f.maxHp < 0.3;
@@ -987,13 +1160,17 @@ function updateFighter(g: Game, f: Fighter, dt: number) {
         for (const z of g.zones) {
           if (foe(f, g.fighters[z.owner]) && Math.abs(z.x - f.x) < (z.move.radius ?? 100)) { f.walkDir = Math.sign(f.x - z.x) || -f.facing; break; }
         }
-        const sp = f.def.speed * 1.5 * (slowed ? 0.55 : 1) * (f.walkDir === -f.facing ? 0.7 : 1);
+        const sp = f.def.speed * 1.5 * (slowed ? 0.55 : 1) * (f.walkDir === -f.facing ? 0.7 : 1) * (rg?.speed ?? 1);
         f.x += f.walkDir * sp * dt;
         if (f.walkDir) f.walk += dt * (sp / 14);
         if (f.onGround && Math.random() < dt * 0.15) jump(f, f.walkDir);
+        // raging Electro takes the fight into the air
+        if (rg && f.def.id === "electro" && f.onGround && adx < 230 && Math.random() < dt * 2.4) jump(f, f.facing);
       }
     }
   }
+
+  if (rg) rageAura(g, f, rg, dt);
 
   // afterimages while dashing or rushing
   const rushing = f.dashT > 0 || (f.act?.move.kind === "dash" && f.act.fired && f.act.t < f.act.move.wind + f.act.move.act);
@@ -1107,6 +1284,10 @@ function smoothPose(f: Fighter, target: Pose, dt: number, k: number) {
 
 export function step(g: Game, dt: number) {
   g.shake = Math.max(0, g.shake - dt * 40);
+  if (g.cut) {
+    stepCut(g, dt);
+    return;
+  }
   if (g.hitstop > 0) {
     g.hitstop -= dt;
     return;
@@ -1129,9 +1310,17 @@ export function step(g: Game, dt: number) {
     }
   }
 
+  // pushed below a third of their health: Rage Mode (one cutscene at a time)
+  if (!g.preview && g.ending === 0) {
+    for (const f of g.fighters) {
+      if (f.alive && canRage(f) && f.hp <= f.maxHp * RAGE_AT) { startRage(g, f); return; }
+    }
+  }
+
   // projectiles
   const magnetos = g.fighters.filter((f) => f.alive && f.def.id === "magneto");
   for (const p of g.projectiles) {
+    paint = rageOf(g.fighters[p.owner]);
     for (const m of magnetos) {
       if (!foe(m, g.fighters[p.owner])) continue;
       const c = center(m);
@@ -1164,6 +1353,7 @@ export function step(g: Game, dt: number) {
       }
     }
   }
+  paint = null;
   // power clashes: two shots meet, or a shot runs into a beam
   const shots = g.projectiles.filter((p) => p.life > 0 && p.move.kind === "projectile");
   for (let i = 0; i < shots.length; i++) {
@@ -1190,17 +1380,13 @@ export function step(g: Game, dt: number) {
   }
   g.projectiles = g.projectiles.filter((p) => p.life > 0);
 
-  for (const x of g.fx) x.life -= dt;
-  g.fx = g.fx.filter((x) => x.life > 0);
-  for (const w of g.waves) w.life -= dt;
-  g.waves = g.waves.filter((w) => w.life > 0);
-
   for (const b of g.beams) b.life -= dt;
   g.beams = g.beams.filter((b) => b.life > 0);
 
   // eruptions: telegraph, then burst out of the ground
   for (const e of g.eruptions) {
     e.t += dt;
+    paint = rageOf(g.fighters[e.owner]);
     if (!e.fired && e.t >= 0.3) {
       e.fired = true;
       sfx(g, { k: "erupt", power: e.power, move: e.move.id });
@@ -1214,6 +1400,7 @@ export function step(g: Game, dt: number) {
       g.shake = Math.max(g.shake, 8);
     }
   }
+  paint = null;
   g.eruptions = g.eruptions.filter((e) => e.t < 0.85);
 
   // zones
@@ -1221,7 +1408,9 @@ export function step(g: Game, dt: number) {
     z.life -= dt;
     const owner = g.fighters[z.owner];
     const r = z.move.radius ?? 100;
+    paint = rageOf(owner);
     if (Math.random() < dt * 22) emitMove(g, z.move, z.power, z.x + rand(-r, r) * 0.9, GROUND - rand(0, r * 0.5), 1, 30);
+    paint = null;
     for (const o of g.fighters) {
       if (!o.alive || !foe(owner, o) || Math.abs(o.x - z.x) > r || o.y < GROUND - r * 0.9) continue;
       hurt(g, o, z.move.dmg * dt, owner);
@@ -1231,18 +1420,7 @@ export function step(g: Game, dt: number) {
   }
   g.zones = g.zones.filter((z) => z.life > 0);
 
-  for (const p of g.particles) {
-    p.vy += p.grav * dt;
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-    p.vx *= Math.pow(0.15, dt);
-    if (p.grav <= 0) p.vy *= Math.pow(0.15, dt);
-    p.rot += dt * 6;
-    p.life -= dt;
-  }
-  g.particles = g.particles.filter((p) => p.life > 0);
-  for (const t of g.pops) { t.life -= dt; t.y -= dt * 40; }
-  g.pops = g.pops.filter((t) => t.life > 0);
+  tickBits(g, dt);
 
   if (g.preview) return;
   const left = g.fighters.filter((f) => f.alive);
@@ -1255,6 +1433,26 @@ export function step(g: Game, dt: number) {
     g.winnerId = top?.def.id ?? null;
     g.winnerTeam = g.teamMode && top ? top.team : null;
   }
+}
+
+/** Particles, floating numbers, rings and one-off effects. They keep moving through a rage cutscene. */
+function tickBits(g: Game, dt: number) {
+  for (const p of g.particles) {
+    p.vy += p.grav * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= Math.pow(0.15, dt);
+    if (p.grav <= 0) p.vy *= Math.pow(0.15, dt);
+    p.rot += dt * 6;
+    p.life -= dt;
+  }
+  g.particles = g.particles.filter((p) => p.life > 0);
+  for (const t of g.pops) { t.life -= dt; t.y -= dt * 40; }
+  g.pops = g.pops.filter((t) => t.life > 0);
+  for (const w of g.waves) w.life -= dt;
+  g.waves = g.waves.filter((w) => w.life > 0);
+  for (const x of g.fx) x.life -= dt;
+  g.fx = g.fx.filter((x) => x.life > 0);
 }
 
 // ---------- drawing ----------
@@ -1427,7 +1625,7 @@ function drawGhosts(ctx: CanvasRenderingContext2D, f: Fighter) {
   for (const gh of f.ghosts) {
     const r = rig(gh.x, gh.y, gh.pose, s, gh.face);
     ctx.globalAlpha = clamp(gh.life / 0.22, 0, 1) * 0.5;
-    ctx.strokeStyle = f.def.glow;
+    ctx.strokeStyle = rageOf(f)?.glow ?? f.def.glow;
     ctx.lineWidth = 6 * s;
     ctx.beginPath();
     for (const seg of [[r.hip, r.kB, r.fB], [r.shoulder, r.eB, r.hB], [r.hip, r.neck], [r.hip, r.kF, r.fF], [r.shoulder, r.eF, r.hF]]) {
@@ -1435,7 +1633,7 @@ function drawGhosts(ctx: CanvasRenderingContext2D, f: Fighter) {
       for (let i = 1; i < seg.length; i++) ctx.lineTo(seg[i].x, seg[i].y);
     }
     ctx.stroke();
-    ctx.fillStyle = f.def.color;
+    ctx.fillStyle = rageOf(f)?.body ?? f.def.color;
     ctx.beginPath();
     ctx.arc(r.head.x, r.head.y, HEAD * s, 0, Math.PI * 2);
     ctx.fill();
@@ -1488,7 +1686,8 @@ function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter) {
   const { hip, neck, shoulder, head, kF, fF, kB, fB, eF, hF, eB, hB } = rig(f.x, f.y, f.pose, s, face);
 
   const flash = f.flash > 0;
-  const col = f.def.id === "shift" && f.lastHitBy ? DEF_BY_ID[f.lastHitBy].color : f.def.color;
+  const rg = f.alive ? rageOf(f) : null;
+  const col = rg ? rg.body : f.def.id === "shift" && f.lastHitBy ? DEF_BY_ID[f.lastHitBy].color : f.def.color;
   const dark = shade(col, -16);
   const deadFade = !f.alive ? clamp(1 - (f.koT - 1.5) / 1.5, 0.45, 1) : 1;
   ctx.globalAlpha = deadFade;
@@ -1505,6 +1704,7 @@ function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter) {
   const lw = 6 * s;
 
   if (f.jugg) drawWings(ctx, g, f, shoulder, face);
+  if (rg) drawRageAura(ctx, g, f, rg, hip, head);
 
   // scarf trailing from the neck
   const wave = Math.sin(g.t * 12 + f.key) * 4 * s;
@@ -1515,7 +1715,7 @@ function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter) {
   ctx.strokeStyle = INK;
   ctx.lineWidth = 7 * s;
   ctx.stroke();
-  ctx.strokeStyle = f.def.glow;
+  ctx.strokeStyle = rg?.glow ?? f.def.glow;
   ctx.lineWidth = 4 * s;
   ctx.stroke();
 
@@ -1528,7 +1728,7 @@ function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter) {
   // power glow on the hand while acting
   if (f.act && f.alive) {
     const lk = LOOKS[f.act.move.id];
-    const pc = lk ? { glow: lk.b, color: lk.a } : DEF_BY_ID[f.act.power];
+    const pc = rg ? { glow: rg.b, color: rg.a } : lk ? { glow: lk.b, color: lk.a } : DEF_BY_ID[f.act.power];
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     const r = (10 + Math.sin(g.t * 30) * 2) * s;
@@ -1606,6 +1806,73 @@ function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter) {
       star(ctx, head.x + Math.cos(a) * 16 * s, head.y - 16 * s + Math.sin(a) * 5 * s, 5 * s, "hsl(50 100% 65%)");
     }
   }
+}
+
+/** Rage Mode around the body: Pyro's blue flame, Electro's black lightning, Aero's storm. Drawn behind the limbs. */
+function drawRageAura(ctx: CanvasRenderingContext2D, g: Game, f: Fighter, rg: Rage, hip: { x: number; y: number }, head: { x: number; y: number }) {
+  const s = f.scale;
+  const cx = (hip.x + head.x) / 2, cy = (hip.y + head.y) / 2;
+  const t = g.t + (g.cut ? g.cut.t : 0);
+  ctx.save();
+  // soft glow behind the body
+  const grd = ctx.createRadialGradient(cx, cy, 4 * s, cx, cy, 70 * s);
+  grd.addColorStop(0, shade(rg.glow, 0, 0.55));
+  grd.addColorStop(1, shade(rg.glow, 0, 0));
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 70 * s, 0, Math.PI * 2);
+  ctx.fill();
+  if (f.def.id === "pyro") {
+    // tongues of blue fire licking up the body
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 0; i < 7; i++) {
+      const ph = t * 9 + i * 1.7;
+      const x = f.x + (i - 3) * 7 * s + Math.sin(ph) * 3 * s;
+      const h = (34 + 22 * Math.abs(Math.sin(ph * 0.7 + i))) * s;
+      const by = f.y - (8 + Math.abs(i - 3) * 6) * s;
+      ctx.fillStyle = shade(i % 2 ? rg.a : rg.b, 0, 0.55);
+      ctx.beginPath();
+      ctx.moveTo(x - 7 * s, by);
+      ctx.quadraticCurveTo(x - 9 * s, by - h * 0.6, x + Math.sin(ph * 1.3) * 6 * s, by - h - 50 * s);
+      ctx.quadraticCurveTo(x + 9 * s, by - h * 0.6, x + 7 * s, by);
+      ctx.fill();
+    }
+  } else if (f.def.id === "electro") {
+    // black lightning crackling around the body, white sparks inside it
+    ctx.lineCap = "round";
+    for (let i = 0; i < 4; i++) {
+      const a0 = (Math.floor(t * 14) * 2.3 + i * 1.57) % (Math.PI * 2);
+      let x = cx + Math.cos(a0) * 34 * s, y = cy + Math.sin(a0) * 46 * s;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      for (let j = 0; j < 5; j++) {
+        const a = a0 + (j + 1) * 0.35;
+        x = cx + Math.cos(a) * (30 + Math.random() * 16) * s;
+        y = cy + Math.sin(a) * (40 + Math.random() * 20) * s;
+        ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = shade(rg.b, 0, 0.9);
+      ctx.lineWidth = 5 * s;
+      ctx.stroke();
+      ctx.strokeStyle = rg.dark ?? INK;
+      ctx.lineWidth = 2.5 * s;
+      ctx.stroke();
+    }
+  } else if (f.def.id === "aero") {
+    // a ring of storm wind spinning around the fighter
+    ctx.lineCap = "round";
+    for (let i = 0; i < 3; i++) {
+      const ry = cy - 34 * s + i * 32 * s;
+      const rx = (40 + i * 6) * s;
+      const a0 = t * (9 + i * 2) + i * 2;
+      ctx.strokeStyle = shade(i % 2 ? rg.a : rg.b, 0, 0.85);
+      ctx.lineWidth = (4 - i * 0.6) * s;
+      ctx.beginPath();
+      ctx.ellipse(cx, ry, rx, 9 * s, 0, a0, a0 + 2.4);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
 }
 
 /** A pair of feathered wings in the fighter's element colours, flapping from the shoulders. */
@@ -2107,23 +2374,46 @@ function drawTeamRing(ctx: CanvasRenderingContext2D, f: Fighter) {
   ctx.restore();
 }
 
+/** Moves drawn next take their owner's rage colours, if they are raging. */
+function tintBy(f: Fighter | undefined) {
+  const r = rageOf(f);
+  setLookTint(r ? { a: r.a, b: r.b } : null);
+}
+
 export function drawScene(ctx: CanvasRenderingContext2D, g: Game, backdrop: HTMLCanvasElement) {
   ctx.save();
   if (g.shake > 0) ctx.translate(rand(-g.shake, g.shake), rand(-g.shake, g.shake) * 0.6);
+  const cut = g.cut;
+  const hero = cut ? g.fighters[cut.key] : null;
+  const ck = cut ? cut.t / cut.max : 0;
+  // the camera pushes in on the raging fighter, then pulls back out
+  const zoom = cut ? 1 + 0.45 * Math.min(1, ck / 0.18) * Math.min(1, (1 - ck) / 0.12) : 1;
+  if (hero && zoom > 1) {
+    const c = center(hero);
+    const fx = clamp(c.x, W / (2 * zoom), W - W / (2 * zoom));
+    const fy = clamp(c.y, H / (2 * zoom), H - H / (2 * zoom));
+    ctx.translate(W / 2, H / 2);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-fx, -fy);
+  }
   ctx.drawImage(backdrop, -12, -8, W + 24, H + 16);
-  for (const z of g.zones) drawZone(ctx, g, z);
-  for (const e of g.eruptions) if (!e.fired) drawEruption(ctx, e);
+  for (const z of g.zones) { tintBy(g.fighters[z.owner]); drawZone(ctx, g, z); }
+  for (const e of g.eruptions) if (!e.fired) { tintBy(g.fighters[e.owner]); drawEruption(ctx, e); }
+  setLookTint(null);
   for (const f of g.fighters) if (f.alive && f.team >= 0) drawTeamRing(ctx, f);
   for (const f of g.fighters) if (!f.alive) drawFighter(ctx, g, f);
-  for (const f of g.fighters) if (f.alive) drawGhosts(ctx, f);
-  for (const f of g.fighters) if (f.alive) drawFighter(ctx, g, f);
+  for (const f of g.fighters) if (f.alive && f !== hero) drawGhosts(ctx, f);
+  for (const f of g.fighters) if (f.alive && f !== hero) drawFighter(ctx, g, f);
   for (const f of g.fighters) {
     const a = f.act;
-    if (f.alive && a && a.move.kind === "dash" && a.fired && a.t < a.move.wind + a.move.act) drawRushLook(ctx, a.move.id, f.x, f.y, f.scale, f.facing, g.t);
+    if (f.alive && a && a.move.kind === "dash" && a.fired && a.t < a.move.wind + a.move.act) { tintBy(f); drawRushLook(ctx, a.move.id, f.x, f.y, f.scale, f.facing, g.t); }
   }
-  for (const e of g.eruptions) if (e.fired) drawEruption(ctx, e);
-  for (const p of g.projectiles) drawProjectile(ctx, p, g.t);
-  for (const b of g.beams) drawBeam(ctx, b, g.t);
+  for (const e of g.eruptions) if (e.fired) { tintBy(g.fighters[e.owner]); drawEruption(ctx, e); }
+  for (const p of g.projectiles) { tintBy(g.fighters[p.owner]); drawProjectile(ctx, p, g.t); }
+  for (const b of g.beams) { tintBy(g.fighters[b.owner]); drawBeam(ctx, b, g.t); }
+  setLookTint(null);
+  if (hero) drawCutBackdrop(ctx, hero, ck, g.t + (cut?.t ?? 0));
+  if (hero) { drawGhosts(ctx, hero); drawFighter(ctx, g, hero); }
   for (const x of g.fx) drawFx(ctx, x, g.t);
   for (const w of g.waves) drawWave(ctx, w);
   for (const p of g.particles) drawParticle(ctx, p);
@@ -2133,6 +2423,10 @@ export function drawScene(ctx: CanvasRenderingContext2D, g: Game, backdrop: HTML
   }
   ctx.globalAlpha = 1;
   ctx.restore();
+  if (hero && cut) {
+    drawCutTitles(ctx, hero, ck);
+    return;
+  }
   drawHud(ctx, g);
   if (!g.preview && g.t < 1.1) {
     const k = clamp(g.t / 0.2, 0, 1);
@@ -2144,4 +2438,70 @@ export function drawScene(ctx: CanvasRenderingContext2D, g: Game, backdrop: HTML
     ctx.fillRect(0, 0, W, H);
     outlinedText(ctx, "K.O.", W / 2, H / 2 - 40, 70 + 40 * k, "hsl(0 85% 60%)");
   }
+}
+
+/** Behind the raging fighter during the cutscene: the arena darkens and speed lines burst from them. */
+function drawCutBackdrop(ctx: CanvasRenderingContext2D, f: Fighter, k: number, t: number) {
+  const rg = RAGE[f.def.id];
+  if (!rg) return;
+  const fade = Math.min(1, k / 0.12) * Math.min(1, (1 - k) / 0.1);
+  ctx.save();
+  ctx.fillStyle = `hsl(255 45% 7% / ${0.62 * fade})`;
+  ctx.fillRect(-W, -H, W * 3, H * 3);
+  const c = center(f);
+  ctx.globalAlpha = fade;
+  const glow = ctx.createRadialGradient(c.x, c.y, 10, c.x, c.y, 260);
+  glow.addColorStop(0, shade(rg.glow, 0, 0.7));
+  glow.addColorStop(0.4, shade(rg.a, 0, 0.3));
+  glow.addColorStop(1, shade(rg.a, 0, 0));
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, 260, 0, Math.PI * 2);
+  ctx.fill();
+  // speed lines
+  ctx.lineCap = "round";
+  const turn = Math.floor(t * 18);
+  for (let i = 0; i < 28; i++) {
+    const a = (i / 28) * Math.PI * 2 + ((turn * 7 + i * 13) % 10) * 0.02;
+    const r0 = 90 + ((turn + i * 5) % 7) * 12;
+    ctx.strokeStyle = i % 3 === 0 ? (rg.dark ?? shade(rg.a, -10)) : shade(i % 2 ? rg.a : rg.b, 0, 0.75);
+    ctx.lineWidth = 2 + (i % 4);
+    ctx.beginPath();
+    ctx.moveTo(c.x + Math.cos(a) * r0, c.y + Math.sin(a) * r0);
+    ctx.lineTo(c.x + Math.cos(a) * 640, c.y + Math.sin(a) * 640);
+    ctx.stroke();
+  }
+  // flash as the rage breaks loose
+  if (k > 0.6 && k < 0.75) {
+    ctx.globalAlpha = 1 - (k - 0.6) / 0.15;
+    ctx.fillStyle = rg.dark && f.def.id === "electro" && Math.floor(t * 30) % 2 ? rg.dark : "white";
+    ctx.fillRect(-W, -H, W * 3, H * 3);
+  }
+  ctx.restore();
+}
+
+/** Letterbox bars and the fighter's name sliding in over the cutscene. */
+function drawCutTitles(ctx: CanvasRenderingContext2D, f: Fighter, k: number) {
+  const rg = RAGE[f.def.id];
+  if (!rg) return;
+  const bar = 64 * Math.min(1, k / 0.1) * Math.min(1, (1 - k) / 0.08);
+  ctx.fillStyle = INK;
+  ctx.fillRect(0, 0, W, bar);
+  ctx.fillRect(0, H - bar, W, bar);
+  const enter = (from: number) => 1 - Math.pow(1 - clamp((k - from) / 0.14, 0, 1), 3);
+  const leave = clamp((1 - k) / 0.08, 0, 1);
+  const c = center(f);
+  const left = c.x > W / 2;
+  const x = left ? 60 : W - 60;
+  const align: CanvasTextAlign = left ? "left" : "right";
+  const slide = (e: number) => (left ? -1 : 1) * (1 - e) * 360;
+  ctx.globalAlpha = leave;
+  const e1 = enter(0.08), e2 = enter(0.2), e3 = enter(0.62);
+  outlinedText(ctx, f.def.name.toUpperCase(), x + slide(e1), H * 0.3, 56, "white", align);
+  outlinedText(ctx, "RAGE MODE", x + slide(e2), H * 0.3 + 58, 44, rg.glow, align);
+  if (e3 > 0) {
+    ctx.globalAlpha = leave * e3;
+    outlinedText(ctx, rg.title, x, H * 0.3 + 104, 26 + 6 * (1 - e3), f.def.id === "electro" ? "white" : rg.b, align);
+  }
+  ctx.globalAlpha = 1;
 }

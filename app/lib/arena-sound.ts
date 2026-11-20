@@ -9,7 +9,8 @@ export type Sfx =
   | { k: "dash"; air: boolean }
   | { k: "clash" }
   | { k: "m1clash" }
-  | { k: "ko" };
+  | { k: "ko" }
+  | { k: "rage"; power: Power };
 
 /** Stable 0..1 number per move id, so every move keeps its own pitch and variant. */
 function hash(s: string, salt = 0) {
@@ -377,6 +378,17 @@ export class ArenaSound {
           s.noise(6000, 2000, 0.07, 0.7, { type: "highpass" });
           s.tone(180, 60, 0.18, 0.7);
           this.swish(s, 0.8, 0.08);
+          break;
+        case "rage":
+          if (!this.gate("rage", 1)) break;
+          // Rage Mode: a low rumble climbing into a roar with the element's own voice on top; the burst at the end plays as a clash
+          s.gain = 1;
+          s.tone(55, 140, 1.9, 0.5, { type: "sawtooth", lp: 700, attack: 0.6 });
+          s.tone(110, 300, 1.7, 0.18, { type: "square", lp: 1400, attack: 0.9, delay: 0.2 });
+          s.noise(200, 3800, 1.8, 0.4, { type: "bandpass", q: 1.2, attack: 1 });
+          s.gain = 0.9;
+          CAST[e.power](s, 0.7, 1.4, 0);
+          s.gain = 1;
           break;
         case "ko":
           if (!this.gate("ko", 0.2)) break;

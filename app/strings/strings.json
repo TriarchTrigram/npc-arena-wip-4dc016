@@ -70,11 +70,13 @@
       "juggernaut": "{{name}} the juggernaut wins!",
       "challengers": "The challengers win!",
       "stageCleared": "Stage {{n}} cleared!",
-      "chapterCleared": "Chapter 1 complete!",
+      "chapterCleared": "Chapter {{n}} complete!",
       "stageLost": "Defeated on stage {{n}}",
       "nextStage": "Next stage",
       "tryAgain": "Try again",
-      "changePair": "Change pair"
+      "changePair": "Change pair",
+      "storyComplete": "Story complete! The Rift is sealed.",
+      "nextChapter": "Next chapter"
     },
     "idle": "Press Start to begin the battle",
     "teams": {
@@ -113,7 +115,7 @@
     "cta": "Choose how to fight",
     "backAria": "Back to the title screen",
     "modes": {
-      "story": "Ten stages with a fused or teamed-up pair.",
+      "story": "Five chapters with a fused or teamed-up pair.",
       "duel": "One on one, no distractions.",
       "ffa": "Everyone in, free for all.",
       "teams": "Pick sides and fight together.",
@@ -200,6 +202,69 @@
       "s8": "Storm Quarry",
       "s9": "The Rift Gate",
       "s10": "Nullshade's Lair"
+    },
+    "chapterLabel": "Chapter {{n}}",
+    "chapterLocked": "Clear chapter {{n}} to open this one.",
+    "chaptersAria": "Chapters",
+    "ch2": {
+      "title": "Chapter 2: The Storm Coast",
+      "stages": {
+        "s1": "Tide Pools",
+        "s2": "Lighthouse",
+        "s3": "Shipwreck",
+        "s4": "Cliff Path",
+        "s5": "Sea Caves",
+        "s6": "Fog Bank",
+        "s7": "Harbour Market",
+        "s8": "Breakwater",
+        "s9": "Eye of the Storm",
+        "s10": "Maelstrom's Whirlpool"
+      }
+    },
+    "ch3": {
+      "title": "Chapter 3: The Ember Wastes",
+      "stages": {
+        "s1": "Ash Road",
+        "s2": "Glass Dunes",
+        "s3": "Sinkhole",
+        "s4": "Bone Canyon",
+        "s5": "Mirage Oasis",
+        "s6": "Lava Tubes",
+        "s7": "Burnt Orchard",
+        "s8": "Obsidian Steps",
+        "s9": "Caldera Rim",
+        "s10": "Magmaw's Furnace"
+      }
+    },
+    "ch4": {
+      "title": "Chapter 4: The Frozen Clock",
+      "stages": {
+        "s1": "Snowfield",
+        "s2": "Ice Library",
+        "s3": "Hall of Gears",
+        "s4": "Glacier Bridge",
+        "s5": "Silent Chapel",
+        "s6": "Clockwork Vault",
+        "s7": "Aurora Ridge",
+        "s8": "Frozen Throne Room",
+        "s9": "The Stopped Hour",
+        "s10": "Everwinter's Keep"
+      }
+    },
+    "ch5": {
+      "title": "Chapter 5: The Heart of the Rift",
+      "stages": {
+        "s1": "Rift Edge",
+        "s2": "Mirror Void",
+        "s3": "Gravity Well",
+        "s4": "Broken Sky",
+        "s5": "Poison Garden",
+        "s6": "Mind Spiral",
+        "s7": "Elemental Court",
+        "s8": "Hall of Echoes",
+        "s9": "The Last Gate",
+        "s10": "The Riftmaker's Core"
+      }
     }
   }
 }

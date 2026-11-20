@@ -12,7 +12,7 @@ export type Stage = {
 
 export type Chapter = { stages: Stage[] };
 
-/** Chapter 1 of 5. Chapters 2 to 5 are still to come. */
+/** The five chapters, each ten stages ending on a hybrid boss. A chapter opens once the one before it is cleared. */
 export const CHAPTERS: Chapter[] = [
   {
     stages: [
@@ -26,6 +26,66 @@ export const CHAPTERS: Chapter[] = [
       { enemies: ["terra", "electro", "lux"], enemyHp: 0.42 },
       { enemies: ["pyro", "hydro", "aero"], enemyHp: 0.48 },
       { enemies: [], boss: { a: "umbra", b: "gravi", name: "Nullshade", hpBoost: 1.5 } },
+    ],
+  },
+  {
+    // Chapter 2: The Storm Coast
+    stages: [
+      { enemies: ["hydro"] },
+      { enemies: ["electro"] },
+      { enemies: ["magneto"] },
+      { enemies: ["aero", "terra"], enemyHp: 0.8 },
+      { enemies: ["umbra", "hydro"], enemyHp: 0.75 },
+      { enemies: ["psy", "tele"], enemyHp: 0.75 },
+      { enemies: ["toxi", "shift", "vita"], enemyHp: 0.45 },
+      { enemies: ["cryo", "hydro", "electro"], enemyHp: 0.48 },
+      { enemies: ["aero", "electro", "lux"], enemyHp: 0.5 },
+      { enemies: [], boss: { a: "electro", b: "hydro", name: "Maelstrom", hpBoost: 1.65 } },
+    ],
+  },
+  {
+    // Chapter 3: The Ember Wastes
+    stages: [
+      { enemies: ["pyro"] },
+      { enemies: ["lux"] },
+      { enemies: ["gravi"] },
+      { enemies: ["terra", "toxi"], enemyHp: 0.82 },
+      { enemies: ["shift", "psy"], enemyHp: 0.8 },
+      { enemies: ["pyro", "magneto"], enemyHp: 0.7 },
+      { enemies: ["vita", "pyro", "aero"], enemyHp: 0.45 },
+      { enemies: ["terra", "gravi", "chrono"], enemyHp: 0.34 },
+      { enemies: ["pyro", "terra", "lux", "electro"], enemyHp: 0.3 },
+      { enemies: [], boss: { a: "pyro", b: "terra", name: "Magmaw", hpBoost: 1.25 } },
+    ],
+  },
+  {
+    // Chapter 4: The Frozen Clock
+    stages: [
+      { enemies: ["cryo"] },
+      { enemies: ["psy"] },
+      { enemies: ["chrono"] },
+      { enemies: ["cryo", "aero"], enemyHp: 0.85 },
+      { enemies: ["lux", "umbra"], enemyHp: 0.75 },
+      { enemies: ["chrono", "magneto"], enemyHp: 0.65 },
+      { enemies: ["cryo", "lux", "tele"], enemyHp: 0.34 },
+      { enemies: ["gravi", "cryo", "psy"], enemyHp: 0.45 },
+      { enemies: ["chrono", "tele", "shift", "umbra"], enemyHp: 0.23 },
+      { enemies: [], boss: { a: "cryo", b: "chrono", name: "Everwinter", hpBoost: 1.95 } },
+    ],
+  },
+  {
+    // Chapter 5: The Heart of the Rift
+    stages: [
+      { enemies: ["shift"] },
+      { enemies: ["tele"] },
+      { enemies: ["gravi", "umbra"], enemyHp: 0.8 },
+      { enemies: ["electro", "aero", "lux"], enemyHp: 0.46 },
+      { enemies: ["toxi", "vita", "terra"], enemyHp: 0.46 },
+      { enemies: ["psy", "chrono", "shift"], enemyHp: 0.4 },
+      { enemies: ["pyro", "cryo", "hydro", "terra"], enemyHp: 0.27 },
+      { enemies: ["magneto", "gravi", "tele", "umbra"], enemyHp: 0.19 },
+      { enemies: ["pyro", "electro", "aero", "lux", "umbra"], enemyHp: 0.16 },
+      { enemies: [], boss: { a: "psy", b: "tele", name: "The Riftmaker", hpBoost: 2.1 } },
     ],
   },
 ];
@@ -91,6 +151,9 @@ export function loadProgress(): Progress {
   }
   return { cleared: CHAPTERS.map(() => 0) };
 }
+
+/** A chapter opens once every stage of the one before it is cleared. */
+export const chapterOpen = (cleared: number[], ch: number) => ch === 0 || (cleared[ch - 1] ?? 0) >= STAGES_PER_CHAPTER;
 
 export function saveProgress(p: Progress) {
   try {
