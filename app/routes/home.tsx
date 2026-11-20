@@ -225,8 +225,8 @@ export default function Home() {
       last = now;
       const g = gameRef.current;
       if (g && statusRef.current === "running") {
-        // a rage cutscene always plays at normal speed
-        const sub = g.cut ? 1 : speedRef.current;
+        // the entrances and a rage cutscene always play at normal speed
+        const sub = g.cut || g.intro ? 1 : speedRef.current;
         for (let i = 0; i < sub && !g.over; i++) step(g, dt);
         arenaSound.play(g.sfx);
         g.sfx.length = 0;

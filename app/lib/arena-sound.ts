@@ -10,7 +10,8 @@ export type Sfx =
   | { k: "clash" }
   | { k: "m1clash" }
   | { k: "ko" }
-  | { k: "rage"; power: Power };
+  | { k: "rage"; power: Power }
+  | { k: "intro"; power: Power };
 
 /** Stable 0..1 number per move id, so every move keeps its own pitch and variant. */
 function hash(s: string, salt = 0) {
@@ -397,6 +398,17 @@ export class ArenaSound {
           CAST[e.power](s, 0.7, 1.4, 0);
           s.gain = 1;
           break;
+        case "intro": {
+          // a fighter arriving: its element's voice, drawn out, over a low thud
+          if (!this.gate(`i:${e.power}`, 0.12) || !this.gate("intro", 0.06)) break;
+          s.gain = 0.8;
+          CAST[e.power](s, 0.92, 1.25, 1);
+          s.gain = 0.55;
+          IMPACT[e.power](s, 0.85, 1, 2);
+          s.gain = 1;
+          this.boom(s, 0.35);
+          break;
+        }
         case "ko":
           if (!this.gate("ko", 0.2)) break;
           this.boom(s, 1.2);

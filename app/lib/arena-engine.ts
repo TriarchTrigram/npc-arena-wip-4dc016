@@ -1,6 +1,7 @@
 // Side-view stickman fight engine for the arena canvas. Runs entirely in the browser.
 import { DEF_BY_ID, juggernautOf, type Anim, type FighterDef, type Move, type Power, type StatusEffect } from "./fighters";
 import type { Sfx } from "./arena-sound";
+import { INTROS, INTRO_LEN, INTRO_ARRIVED, type IntroBurst, type IntroPose } from "./spawn-intros";
 import { LOOKS, setLookTint, drawFx, drawSpark, drawShotLook, drawBeamLook, drawEruptionLook, drawZoneLook, drawRushLook, eruptionColors, type Fx, type PShape } from "./move-looks";
 
 export const W = 960;
@@ -42,6 +43,15 @@ const CLASHED: Pose = { t: -0.38, aF1: 1.25, aF2: 2.65, aB1: 1.0, aB2: 2.45, lF1
 /** Hovering on wings: legs trailing, guard up. */
 const FLY: Pose = { t: 0.24, aF1: 0.75, aF2: 2.3, aB1: 0.4, aB2: 1.9, lF1: 0.2, lF2: -0.25, lB1: -0.2, lB2: -0.6 };
 const KNEEL: Pose = { t: 0.38, aF1: 0.95, aF2: 0.3, aB1: 0.15, aB2: 0.05, lF1: 1.4, lF2: 0.02, lB1: 0.1, lB2: -1.5 };
+
+// entrance poses (see spawn-intros.ts)
+const RISE: Pose = { t: -0.12, aF1: 2.65, aF2: 2.95, aB1: 3.55, aB2: 3.3, lF1: 0.3, lF2: 0.05, lB1: -0.3, lB2: -0.1 };
+const FLEX: Pose = { t: 0.18, aF1: 1.35, aF2: 2.75, aB1: 0.5, aB2: 2.3, lF1: 0.55, lF2: 0.05, lB1: -0.45, lB2: -0.2 };
+const CROUCH: Pose = { t: 0.5, aF1: 0.9, aF2: 2.2, aB1: 0.3, aB2: 1.7, lF1: 1.2, lF2: -0.2, lB1: -0.3, lB2: -1.0 };
+const LAND: Pose = { t: 0.6, aF1: 0.15, aF2: 0.0, aB1: -1.7, aB2: -1.4, lF1: 1.45, lF2: 0.1, lB1: 0.2, lB2: -1.45 };
+const GUARD: Pose = { t: 0.1, aF1: 1.4, aF2: 3.3, aB1: 1.2, aB2: 3.0, lF1: 0.5, lF2: 0.1, lB1: -0.5, lB2: -0.15 };
+const FLOAT: Pose = { t: 0.0, aF1: 0.9, aF2: 0.25, aB1: 0.6, aB2: 0.1, lF1: 1.55, lF2: -1.4, lB1: 1.35, lB2: -1.6 };
+const INTRO_POSES: Record<IntroPose, Pose> = { stance: STANCE, air: AIR, crouch: CROUCH, rise: RISE, flex: FLEX, land: LAND, guard: GUARD, float: FLOAT };
 
 const DASH_TIME = 0.17;
 /** Juggernaut cruising height (feet above the floor) and swooping height for close fighting. */
@@ -176,6 +186,8 @@ export type Fighter = {
   jugg: boolean; hoverY: number;
   // Rage Mode: on for the rest of the fight once it fires; rageT times Aero's gusts
   rage: boolean; rageT: number;
+  /** Seconds into the entrance phase when this fighter's own entrance starts. */
+  spawnAt: number;
 };
 
 type Projectile = {
@@ -218,6 +230,8 @@ export type Game = {
   winnerTeam: number | null;
   /** A rage cutscene in progress: the match holds still until it ends. */
   cut: { key: number; t: number; max: number } | null;
+  /** Entrances before READY / FIGHT: the match holds until every fighter has arrived. */
+  intro: { t: number; max: number } | null;
 };
 
 let feedId = 0;
@@ -237,21 +251,23 @@ export function newGame(ids: (Power | FighterDef)[], preview = false, teams?: nu
   const order = ids.map((_, i) => i);
   if (teamMode) order.sort((a, b) => teams![a] - teams![b] || a - b);
   const slotOf = new Map(order.map((idx, slot) => [idx, slot]));
+  // entrances run left to right, overlapping; a juggernaut arrives last, on its own
+  const gap = n <= 2 ? 0.5 : Math.min(0.16, 1.3 / (n - 1));
+  const lastSlot = Math.max(0, n - 1);
   const fighters: Fighter[] = ids.map((id, i) => {
     const isJugg = i === jugg;
     const base = typeof id === "string" ? DEF_BY_ID[id] : id;
     const def = isJugg ? juggernautOf(base) : base;
     const slot = slotOf.get(i) ?? i;
     const x = n === 2 ? (slot === 0 ? 270 : W - 270) : 70 + ((W - 140) * (slot + 0.5)) / n;
-    const air = !preview && n > 2;
     // a hybrid stands a little taller than a pure-blooded fighter
     const sc = isJugg ? scale * 1.25 : def.parents ? scale * 1.12 : scale;
     const hoverY = GROUND - HOVER_HIGH * sc;
     return {
       key: i, def,
-      x, y: isJugg ? hoverY : air ? -rand(40, 260) : GROUND, vx: 0, vy: 0,
+      x, y: isJugg ? hoverY : GROUND, vx: 0, vy: 0,
       facing: x < W / 2 ? 1 : -1,
-      onGround: !air && !isJugg,
+      onGround: !isJugg,
       scale: sc,
       hp: def.hp, maxHp: def.hp, hpTrail: def.hp,
       alive: true, kills: 0, koT: 0,
@@ -262,7 +278,7 @@ export function newGame(ids: (Power | FighterDef)[], preview = false, teams?: nu
       hurtT: 0, flash: 0,
       status: { burn: 0, slow: 0, stun: 0, poison: 0, blind: 0, freeze: 0 },
       lastHitBy: null, lastAttacker: null,
-      pose: { ...STANCE },
+      pose: { ...(preview ? STANCE : INTRO_POSES[INTROS[def.id].body(0, sc).pose]) },
       dashT: 0, dashDir: 0, dashCd: rand(0, 0.6), iframeT: 0, airDashed: false,
       ghosts: [], ghostT: 0,
       clashAir: false, kneelT: 0,
@@ -270,12 +286,15 @@ export function newGame(ids: (Power | FighterDef)[], preview = false, teams?: nu
       team: teamMode ? teams![i] : -1,
       jugg: isJugg, hoverY,
       rage: false, rageT: 0,
+      spawnAt: isJugg ? lastSlot * gap + 0.35 : slot * gap,
     };
   });
+  const introEnd = Math.max(0, ...fighters.map((f) => f.spawnAt)) + INTRO_LEN + 0.2;
   return {
     t: 0, fighters, projectiles: [], beams: [], eruptions: [], zones: [], particles: [], pops: [], waves: [], fx: [], feed: [], sfx: [],
     shake: 0, hitstop: 0, ending: 0, over: false, winner: null, preview, duel: n === 2 && !teamMode,
     teamMode, winnerId: null, winnerTeam: null, cut: null,
+    intro: preview || n === 0 ? null : { t: 0, max: introEnd },
   };
 }
 
@@ -992,6 +1011,65 @@ function rageBurst(g: Game, f: Fighter, rg: Rage) {
   g.shake = Math.max(g.shake, 16);
 }
 
+// ---------- entrances ----------
+/** Progress 0..1 of a fighter's entrance (below 0: not started; 1 once the entrance phase is over). */
+const introU = (g: Game, f: Fighter) => (g.intro ? (g.intro.t - f.spawnAt) / INTRO_LEN : 1);
+/** Still on the way in: no health bar or team ring yet. */
+const arriving = (g: Game, f: Fighter) => !!g.intro && introU(g, f) < INTRO_ARRIVED;
+
+function introBurst(g: Game, f: Fighter, b: IntroBurst, n: number) {
+  const s = f.scale;
+  const ox = f.x, oy = b.from === "feet" ? f.y : b.from === "body" ? f.y - 55 * s : rand(-10, 40);
+  const spread = (b.spread ?? 0) * s;
+  for (let i = 0; i < n && g.particles.length < 900; i++) {
+    const life = b.life ?? rand(0.4, 0.8);
+    let x = ox + (spread && b.dir !== "in" ? rand(-spread, spread) : 0), y = oy, vx: number, vy: number;
+    if (b.dir === "in") {
+      // start on a ring and close on the body, arriving as the particle fades (drag is 0.15 per second)
+      const a = rand(0, Math.PI * 2);
+      const r = spread * rand(0.8, 1.1);
+      x = ox + Math.cos(a) * r; y = oy + Math.sin(a) * r * 0.8;
+      const v = (r * Math.log(1 / 0.15)) / (1 - Math.pow(0.15, life));
+      vx = -Math.cos(a) * v; vy = -Math.sin(a) * v * 0.8;
+    } else {
+      // flat: along the floor either way, tipped slightly upwards
+      const a = b.dir === "up" ? -Math.PI / 2 + rand(-0.55, 0.55) : b.dir === "flat" ? (Math.random() < 0.5 ? Math.PI + rand(0, 0.3) : -rand(0, 0.3)) : rand(0, Math.PI * 2);
+      const sp = rand(b.spd * 0.35, b.spd);
+      vx = Math.cos(a) * sp; vy = Math.sin(a) * sp;
+    }
+    const [lo, hi] = b.size ?? [3, 7];
+    g.particles.push({ x, y, vx, vy, life, max: life, size: rand(lo, hi) * Math.max(0.8, s), color: Math.random() < 0.5 ? b.a : b.b, shape: b.shape, grav: b.grav, add: b.add, rot: rand(0, 6) });
+  }
+}
+
+/** Every fighter plays its own entrance; nothing else moves until the last one has arrived. */
+function stepIntro(g: Game, dt: number) {
+  const it = g.intro!;
+  const prev = it.t;
+  it.t += dt;
+  for (const f of g.fighters) {
+    const sp = INTROS[f.def.id];
+    const u0 = (prev - f.spawnAt) / INTRO_LEN, u1 = (it.t - f.spawnAt) / INTRO_LEN;
+    if (u1 < 0) continue;
+    if (u0 >= 1) { smoothPose(f, STANCE, dt, 8); continue; }
+    const crossed = (at: number) => u0 <= at && u1 > at;
+    smoothPose(f, INTRO_POSES[sp.body(clamp(u1, 0, 1), f.scale).pose], dt, 14);
+    for (const b of sp.bursts) if (crossed(b.at)) introBurst(g, f, b, b.n);
+    const tr = sp.trickle;
+    if (tr && u1 < tr.until && Math.random() < dt * tr.rate) introBurst(g, f, { ...tr, at: 0, n: 1 }, 1);
+    if (crossed(sp.hit)) {
+      sfx(g, { k: "intro", power: f.def.id });
+      g.shake = Math.max(g.shake, sp.shake * (g.duel ? 1 : 0.6));
+      if (sp.wave) g.waves.push({ x: f.x, y: f.y - 30 * f.scale, r: 120 * f.scale, life: 0.5, max: 0.5, a: sp.wave[0], b: sp.wave[1] });
+    }
+  }
+  tickBits(g, dt);
+  if (it.t >= it.max) {
+    g.intro = null;
+    for (const f of g.fighters) f.pose = { ...STANCE };
+  }
+}
+
 function jump(f: Fighter, dir: number) {
   f.vy = f.jugg ? -420 : -760;
   f.vx += dir * 120;
@@ -1284,6 +1362,10 @@ function smoothPose(f: Fighter, target: Pose, dt: number, k: number) {
 
 export function step(g: Game, dt: number) {
   g.shake = Math.max(0, g.shake - dt * 40);
+  if (g.intro) {
+    stepIntro(g, dt);
+    return;
+  }
   if (g.cut) {
     stepCut(g, dt);
     return;
@@ -1679,7 +1761,8 @@ function drawWave(ctx: CanvasRenderingContext2D, w: Wave) {
   ctx.restore();
 }
 
-function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter) {
+/** `alpha` fades the whole body, `solid` paints it one flat colour (used by the entrances), `shadow: false` skips the floor shadow. */
+function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter, o: { alpha?: number; solid?: string; shadow?: boolean } = {}) {
   const s = f.scale;
   let face: number = f.facing;
   if (f.act?.move.anim === "spin" && f.act.fired) face = Math.sin(g.t * 40) > 0 ? 1 : -1;
@@ -1687,17 +1770,19 @@ function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter) {
 
   const flash = f.flash > 0;
   const rg = f.alive ? rageOf(f) : null;
-  const col = rg ? rg.body : f.def.id === "shift" && f.lastHitBy ? DEF_BY_ID[f.lastHitBy].color : f.def.color;
-  const dark = shade(col, -16);
+  const col = o.solid ?? (rg ? rg.body : f.def.id === "shift" && f.lastHitBy ? DEF_BY_ID[f.lastHitBy].color : f.def.color);
+  const dark = o.solid ?? shade(col, -16);
   const deadFade = !f.alive ? clamp(1 - (f.koT - 1.5) / 1.5, 0.45, 1) : 1;
-  ctx.globalAlpha = deadFade;
+  ctx.globalAlpha = deadFade * (o.alpha ?? 1);
 
   // ground shadow
-  const air = clamp((GROUND - f.y) / 300, 0, 1);
-  ctx.fillStyle = `hsl(250 40% 15% / ${0.28 * (1 - air * 0.6)})`;
-  ctx.beginPath();
-  ctx.ellipse(f.x, GROUND + 2, 26 * s * (1 - air * 0.4), 6 * s, 0, 0, Math.PI * 2);
-  ctx.fill();
+  if (o.shadow !== false) {
+    const air = clamp((GROUND - f.y) / 300, 0, 1);
+    ctx.fillStyle = `hsl(250 40% 15% / ${0.28 * (1 - air * 0.6)})`;
+    ctx.beginPath();
+    ctx.ellipse(f.x, GROUND + 2, 26 * s * (1 - air * 0.4), 6 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
@@ -1707,7 +1792,7 @@ function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter) {
   if (rg) drawRageAura(ctx, g, f, rg, hip, head);
 
   // scarf trailing from the neck
-  const wave = Math.sin(g.t * 12 + f.key) * 4 * s;
+  const wave = Math.sin((g.t + (g.intro?.t ?? 0)) * 12 + f.key) * 4 * s;
   const sx = -face * (16 + Math.abs(f.vx) * 0.03) * s;
   ctx.beginPath();
   ctx.moveTo(neck.x, neck.y + 2 * s);
@@ -1715,7 +1800,7 @@ function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter) {
   ctx.strokeStyle = INK;
   ctx.lineWidth = 7 * s;
   ctx.stroke();
-  ctx.strokeStyle = rg?.glow ?? f.def.glow;
+  ctx.strokeStyle = o.solid ?? rg?.glow ?? f.def.glow;
   ctx.lineWidth = 4 * s;
   ctx.stroke();
 
@@ -2320,7 +2405,7 @@ function drawHud(ctx: CanvasRenderingContext2D, g: Game) {
     const boss = g.fighters.find((f) => f.jugg);
     if (boss) drawBossBar(ctx, boss);
     for (const f of g.fighters) {
-      if (!f.alive || f.jugg) continue;
+      if (!f.alive || f.jugg || arriving(g, f)) continue;
       const bw = 46 * f.scale, y = f.y - bodyH(f) - 24 * f.scale;
       const tc = f.team >= 0 ? TEAM_COLORS[f.team % TEAM_COLORS.length] : null;
       ctx.fillStyle = INK;
@@ -2400,10 +2485,12 @@ export function drawScene(ctx: CanvasRenderingContext2D, g: Game, backdrop: HTML
   for (const z of g.zones) { tintBy(g.fighters[z.owner]); drawZone(ctx, g, z); }
   for (const e of g.eruptions) if (!e.fired) { tintBy(g.fighters[e.owner]); drawEruption(ctx, e); }
   setLookTint(null);
-  for (const f of g.fighters) if (f.alive && f.team >= 0) drawTeamRing(ctx, f);
+  for (const f of g.fighters) if (f.alive && f.team >= 0 && !arriving(g, f)) drawTeamRing(ctx, f);
+  if (g.intro) for (const f of g.fighters) drawIntroLayer(ctx, g, f, "back");
   for (const f of g.fighters) if (!f.alive) drawFighter(ctx, g, f);
   for (const f of g.fighters) if (f.alive && f !== hero) drawGhosts(ctx, f);
-  for (const f of g.fighters) if (f.alive && f !== hero) drawFighter(ctx, g, f);
+  for (const f of g.fighters) if (f.alive && f !== hero) { if (g.intro) drawIntroFighter(ctx, g, f); else drawFighter(ctx, g, f); }
+  if (g.intro) for (const f of g.fighters) drawIntroLayer(ctx, g, f, "front");
   for (const f of g.fighters) {
     const a = f.act;
     if (f.alive && a && a.move.kind === "dash" && a.fired && a.t < a.move.wind + a.move.act) { tintBy(f); drawRushLook(ctx, a.move.id, f.x, f.y, f.scale, f.facing, g.t); }
@@ -2428,7 +2515,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, g: Game, backdrop: HTML
     return;
   }
   drawHud(ctx, g);
-  if (!g.preview && g.t < 1.1) {
+  if (!g.preview && !g.intro && g.t < 1.1) {
     const k = clamp(g.t / 0.2, 0, 1);
     outlinedText(ctx, g.t < 0.55 ? "READY" : "FIGHT!", W / 2, H / 2 - 40, 60 + 30 * k, g.t < 0.55 ? "white" : "hsl(46 100% 62%)");
   }
@@ -2438,6 +2525,53 @@ export function drawScene(ctx: CanvasRenderingContext2D, g: Game, backdrop: HTML
     ctx.fillRect(0, 0, W, H);
     outlinedText(ctx, "K.O.", W / 2, H / 2 - 40, 70 + 40 * k, "hsl(0 85% 60%)");
   }
+}
+
+/** A fighter during its entrance: moved, squashed, faded or tinted as its entrance says. */
+function drawIntroFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter) {
+  const u = introU(g, f);
+  if (u <= 0) return;
+  const b = INTROS[f.def.id].body(Math.min(1, u), f.scale);
+  if (b.alpha <= 0.001) return;
+  const s = f.scale;
+  // the floor shadow grows as the body comes down to it
+  const lift = clamp(-b.dy / 320, 0, 1);
+  ctx.fillStyle = `hsl(250 40% 15% / ${0.28 * (1 - lift * 0.7) * b.alpha})`;
+  ctx.beginPath();
+  ctx.ellipse(f.x + b.dx, GROUND + 2, 26 * s * (1 - lift * 0.5) * b.sx, 6 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.save();
+  if (b.clip) {
+    ctx.beginPath();
+    ctx.rect(-W, -H, W * 3, GROUND + 3 + H);
+    ctx.clip();
+  }
+  const one = (dx: number, alpha: number) => {
+    ctx.save();
+    ctx.translate(f.x + b.dx + dx, f.y + b.dy);
+    ctx.scale(b.sx, b.sy);
+    ctx.translate(-f.x, -f.y);
+    drawFighter(ctx, g, f, { alpha, shadow: false });
+    const sa = b.solidA ?? 0;
+    if (b.solid && sa > 0.01) drawFighter(ctx, g, f, { alpha: alpha * sa, solid: b.solid, shadow: false });
+    ctx.restore();
+  };
+  if (b.echo && b.echo.alpha > 0.01) for (const d of [-1, 1]) one(d * b.echo.spread, b.echo.alpha);
+  one(0, b.alpha);
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+/** An entrance's own drawing, behind or in front of the body. */
+function drawIntroLayer(ctx: CanvasRenderingContext2D, g: Game, f: Fighter, which: "back" | "front") {
+  const u = introU(g, f);
+  if (u <= 0 || u >= 1 || !g.intro) return;
+  const sp = INTROS[f.def.id];
+  const draw = sp[which];
+  if (!draw) return;
+  ctx.save();
+  draw({ ctx, x: f.x, y: f.y, ground: GROUND, s: f.scale, u, t: g.intro.t - f.spawnAt, face: f.facing, body: sp.body(u, f.scale) });
+  ctx.restore();
 }
 
 /** Behind the raging fighter during the cutscene: the arena darkens and speed lines burst from them. */

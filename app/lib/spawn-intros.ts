@@ -1,0 +1,828 @@
+// How each of the 16 fighters enters a fight. Before READY / FIGHT every fighter plays its own entrance:
+// how its body appears (offset, fade, squash, a solid tint), the pose it holds, the particle bursts it throws
+// and a drawing behind and in front of it. The engine (`arena-engine.ts`) times and plays them; a hybrid,
+// a team-attack fighter or a juggernaut uses the entrance of the element it carries.
+import type { Power } from "./fighters";
+import type { PShape } from "./move-looks";
+
+/** Seconds one entrance lasts. */
+export const INTRO_LEN = 1.5;
+/** Share of the entrance after which the fighter counts as arrived (health bar and team ring show). */
+export const INTRO_ARRIVED = 0.7;
+
+export type IntroPose = "stance" | "air" | "crouch" | "rise" | "flex" | "land" | "guard" | "float";
+
+/** How the body shows at one moment. Offsets and squash are measured from the feet. */
+export type IntroBody = {
+  dx: number; dy: number; alpha: number; sx: number; sy: number;
+  pose: IntroPose;
+  /** A flat colour laid over the body (frozen, glowing, shadow, metal) and how strongly. */
+  solid?: string; solidA?: number;
+  /** Hide anything below the floor line (rising out of the ground). */
+  clip?: boolean;
+  /** Copies of the body either side, closing in (Chrono). */
+  echo?: { spread: number; alpha: number };
+};
+
+export type IntroBurst = {
+  at: number; n: number; spd: number; shape: PShape; a: string; b: string; grav: number; add: boolean;
+  from: "feet" | "body" | "sky";
+  /** up: a cone upwards; out: every way; flat: along the floor; in: from a ring, closing on the body. */
+  dir: "up" | "out" | "flat" | "in";
+  spread?: number; size?: [number, number]; life?: number;
+};
+
+export type IntroDraw = {
+  ctx: CanvasRenderingContext2D;
+  /** Where the fighter will stand, the floor line, its scale, the entrance's progress 0..1, seconds in, facing. */
+  x: number; y: number; ground: number; s: number; u: number; t: number; face: number;
+  body: IntroBody;
+};
+
+export type IntroSpec = {
+  /** The moment it lands: the entrance sound, screen shake and an optional blast ring. */
+  hit: number; shake: number; wave?: [string, string];
+  body(u: number, s: number): IntroBody;
+  bursts: IntroBurst[];
+  /** A steady stream of particles until `until`. */
+  trickle?: Omit<IntroBurst, "at" | "n"> & { rate: number; until: number };
+  back?(d: IntroDraw): void;
+  front?(d: IntroDraw): void;
+};
+
+// ---------- helpers ----------
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+const seg = (u: number, a: number, b: number) => clamp((u - a) / (b - a), 0, 1);
+const easeOut = (k: number) => 1 - Math.pow(1 - k, 3);
+const easeIn = (k: number) => k * k;
+const easeInOut = (k: number) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
+const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
+const hsla = (h: number, s: number, l: number, a: number) => `hsl(${h} ${s}% ${l}% / ${clamp(a, 0, 1)})`;
+const base = (pose: IntroPose, o: Partial<IntroBody> = {}): IntroBody => ({ dx: 0, dy: 0, alpha: 1, sx: 1, sy: 1, pose, ...o });
+/** Stable wobble for a seed, so a drawing does not jitter randomly between frames unless it should. */
+const wob = (seed: number) => Math.sin(seed * 12.9898) * 0.5 + Math.sin(seed * 4.1414) * 0.5;
+/** Rising, ready, then the normal stance: the tail every entrance ends on. */
+const settle = (u: number, held: IntroPose, until: number): IntroPose => (u < until ? held : u < 0.86 ? "flex" : "stance");
+
+function glow(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number, inner: string, outer: string) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(1, ry / rx);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+  g.addColorStop(0, inner);
+  g.addColorStop(1, outer);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(0, 0, rx, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** A jagged line from one point to another; `seed` changes the zigzag. */
+function jag(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, parts: number, amp: number, seed: number) {
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len, ny = dx / len;
+  for (let i = 1; i < parts; i++) {
+    const k = i / parts;
+    const o = wob(seed + i * 3.7) * amp;
+    ctx.lineTo(x0 + dx * k + nx * o, y0 + dy * k + ny * o);
+  }
+  ctx.lineTo(x1, y1);
+}
+
+// ---------- the 16 entrances ----------
+export const INTROS: Record<Power, IntroSpec> = {
+  // Pyro: a column of fire roars up and Pyro steps out of it, still white-hot.
+  pyro: {
+    hit: 0.45, shake: 7, wave: ["hsl(14 95% 55%)", "hsl(45 100% 65%)"],
+    body: (u) => base(settle(u, "rise", 0.62), { alpha: seg(u, 0.18, 0.42), solid: "hsl(42 100% 72%)", solidA: 1 - seg(u, 0.42, 0.72) }),
+    bursts: [
+      { at: 0, n: 12, spd: 220, shape: "ember", a: "hsl(22 95% 55%)", b: "hsl(45 100% 62%)", grav: -200, add: true, from: "feet", dir: "up" },
+      { at: 0.45, n: 34, spd: 560, shape: "ember", a: "hsl(14 95% 55%)", b: "hsl(48 100% 66%)", grav: -160, add: true, from: "body", dir: "out" },
+      { at: 0.45, n: 14, spd: 320, shape: "dot", a: "hsl(30 100% 60%)", b: "hsl(52 100% 80%)", grav: -260, add: true, from: "feet", dir: "flat" },
+    ],
+    trickle: { rate: 45, until: 0.75, spd: 260, shape: "ember", a: "hsl(20 95% 55%)", b: "hsl(46 100% 64%)", grav: -300, add: true, from: "feet", dir: "up", spread: 30 },
+    back: ({ ctx, x, ground, s, u, t }) => {
+      const grow = easeOut(seg(u, 0, 0.32));
+      const fade = 1 - seg(u, 0.5, 0.9);
+      if (grow <= 0 || fade <= 0) return;
+      const h = 290 * s * grow;
+      const w = 44 * s * (1 + 0.35 * seg(u, 0.38, 0.5)) * (0.4 + 0.6 * fade);
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      glow(ctx, x, ground + 2, w * 2.4, 14 * s, hsla(30, 100, 60, 0.7 * fade), hsla(14, 95, 50, 0));
+      for (const [k, h0, l] of [[1, 14, 52], [0.55, 44, 70]] as const) {
+        const ww = w * k;
+        ctx.beginPath();
+        ctx.moveTo(x - ww, ground);
+        for (let i = 1; i <= 8; i++) {
+          const yy = ground - (h * i) / 8;
+          ctx.lineTo(x - ww * (1 - (i / 8) * 0.7) + Math.sin(t * 22 + i * 1.7) * 6 * s, yy);
+        }
+        ctx.lineTo(x + Math.sin(t * 30) * 8 * s, ground - h * 1.08);
+        for (let i = 8; i >= 1; i--) {
+          const yy = ground - (h * i) / 8;
+          ctx.lineTo(x + ww * (1 - (i / 8) * 0.7) + Math.sin(t * 19 + i * 2.3) * 6 * s, yy);
+        }
+        ctx.lineTo(x + ww, ground);
+        ctx.closePath();
+        const g = ctx.createLinearGradient(0, ground, 0, ground - h);
+        g.addColorStop(0, hsla(h0, 100, l, 0.95 * fade));
+        g.addColorStop(0.7, hsla(h0 + 20, 100, l + 8, 0.6 * fade));
+        g.addColorStop(1, hsla(h0 + 30, 100, l + 15, 0));
+        ctx.fillStyle = g;
+        ctx.fill();
+      }
+      ctx.restore();
+    },
+  },
+
+  // Cryo: an ice crystal grows around Cryo, cracks and shatters.
+  cryo: {
+    hit: 0.55, shake: 6, wave: ["hsl(195 85% 75%)", "hsl(0 0% 100%)"],
+    body: (u) => base(u < 0.55 ? "guard" : settle(u, "flex", 0.75), { alpha: seg(u, 0.1, 0.3), solid: "hsl(195 85% 86%)", solidA: u < 0.55 ? 0.65 : 0 }),
+    bursts: [
+      { at: 0, n: 14, spd: 160, shape: "flake", a: "hsl(195 85% 80%)", b: "hsl(0 0% 100%)", grav: -40, add: false, from: "feet", dir: "up" },
+      { at: 0.55, n: 38, spd: 600, shape: "shard", a: "hsl(198 80% 72%)", b: "hsl(190 100% 94%)", grav: 700, add: false, from: "body", dir: "out" },
+      { at: 0.55, n: 18, spd: 300, shape: "flake", a: "hsl(195 85% 85%)", b: "hsl(0 0% 100%)", grav: 60, add: false, from: "body", dir: "out" },
+    ],
+    back: ({ ctx, x, ground, s, u }) => {
+      const k = easeOut(seg(u, 0, 0.3)) * (1 - seg(u, 0.7, 1));
+      if (k <= 0) return;
+      glow(ctx, x, ground + 3, 80 * s * k, 12 * s, hsla(195, 90, 92, 0.75 * k), hsla(200, 80, 80, 0));
+    },
+    front: ({ ctx, x, ground, s, u, t }) => {
+      if (u >= 0.55) return;
+      const h = 132 * s * easeOut(seg(u, 0, 0.36));
+      if (h <= 1) return;
+      const pts: [number, number][] = [[-36, 0], [-42, 0.68], [-14, 1], [18, 0.93], [42, 0.6], [34, 0]];
+      ctx.save();
+      ctx.beginPath();
+      pts.forEach(([px, py], i) => (i ? ctx.lineTo(x + px * s, ground - py * h) : ctx.moveTo(x + px * s, ground - py * h)));
+      ctx.closePath();
+      const g = ctx.createLinearGradient(x - 40 * s, ground - h, x + 40 * s, ground);
+      g.addColorStop(0, hsla(190, 100, 95, 0.55));
+      g.addColorStop(1, hsla(205, 80, 70, 0.4));
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.strokeStyle = hsla(0, 0, 100, 0.9);
+      ctx.lineWidth = 2.5 * s;
+      ctx.stroke();
+      // facets
+      ctx.strokeStyle = hsla(190, 100, 96, 0.6);
+      ctx.lineWidth = 1.5 * s;
+      ctx.beginPath();
+      ctx.moveTo(x - 14 * s, ground - h); ctx.lineTo(x - 4 * s, ground);
+      ctx.moveTo(x + 18 * s, ground - 0.93 * h); ctx.lineTo(x + 12 * s, ground);
+      ctx.stroke();
+      // side crystals
+      for (const [ox, hh, lean] of [[-50, 0.45, -0.3], [48, 0.36, 0.3]] as const) {
+        ctx.beginPath();
+        ctx.moveTo(x + (ox - 9) * s, ground);
+        ctx.lineTo(x + (ox + lean * 40) * s, ground - hh * h);
+        ctx.lineTo(x + (ox + 9) * s, ground);
+        ctx.closePath();
+        ctx.fillStyle = hsla(198, 85, 82, 0.6);
+        ctx.fill();
+        ctx.stroke();
+      }
+      // cracks just before it breaks
+      const c = seg(u, 0.4, 0.55);
+      if (c > 0) {
+        ctx.strokeStyle = hsla(0, 0, 100, 0.95);
+        ctx.lineWidth = 2 * s;
+        for (let i = 0; i < 4; i++) {
+          const a = i * 1.6 + 0.4;
+          const len = 46 * s * c;
+          jag(ctx, x, ground - h * 0.55, x + Math.cos(a) * len, ground - h * 0.55 + Math.sin(a) * len, 4, 5 * s, i);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    },
+  },
+
+  // Electro: a lightning bolt strikes the spot and Electro is crouched in the flash.
+  electro: {
+    hit: 0.3, shake: 11, wave: ["hsl(52 100% 58%)", "hsl(0 0% 100%)"],
+    body: (u) => base(u < 0.62 ? "land" : settle(u, "flex", 0.8), { alpha: u < 0.3 ? 0 : 1, solid: "hsl(0 0% 100%)", solidA: 1 - seg(u, 0.32, 0.5) }),
+    bursts: [
+      { at: 0.3, n: 32, spd: 640, shape: "spark", a: "hsl(52 100% 60%)", b: "hsl(0 0% 100%)", grav: 0, add: true, from: "feet", dir: "out" },
+      { at: 0.3, n: 14, spd: 380, shape: "bolt", a: "hsl(50 100% 58%)", b: "hsl(58 100% 88%)", grav: 0, add: true, from: "body", dir: "out" },
+    ],
+    trickle: { rate: 40, until: 0.28, spd: 200, shape: "spark", a: "hsl(52 100% 60%)", b: "hsl(58 100% 90%)", grav: 0, add: true, from: "feet", dir: "up", spread: 26 },
+    back: ({ ctx, x, ground, s, u, t }) => {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.lineCap = "round";
+      if (u < 0.3) {
+        // charge crackling on the floor
+        const k = seg(u, 0, 0.3);
+        glow(ctx, x, ground, 50 * s * k, 10 * s, hsla(55, 100, 80, 0.6 * k), hsla(50, 100, 60, 0));
+        ctx.strokeStyle = hsla(55, 100, 80, 0.8 * k);
+        ctx.lineWidth = 2 * s;
+        const seed = Math.floor(t * 24);
+        for (let i = 0; i < 2; i++) {
+          jag(ctx, x - 40 * s, ground - 4, x + 40 * s, ground - 4 - 20 * s * (i + 1) * k, 6, 9 * s, seed + i * 11);
+          ctx.stroke();
+        }
+      }
+      const strike = 1 - seg(u, 0.3, 0.52);
+      if (u >= 0.27 && strike > 0) {
+        const seed = Math.floor(t * 30);
+        const top = -20;
+        ctx.strokeStyle = hsla(50, 100, 60, 0.8 * strike);
+        ctx.lineWidth = 22 * s * strike;
+        jag(ctx, x + 40 * s, top, x, ground - 10 * s, 9, 26 * s, seed);
+        ctx.stroke();
+        ctx.strokeStyle = hsla(0, 0, 100, strike);
+        ctx.lineWidth = 7 * s;
+        ctx.stroke();
+        // a branch
+        ctx.lineWidth = 3 * s;
+        jag(ctx, x + 30 * s, (ground + top) * 0.4, x - 70 * s, ground * 0.62, 5, 14 * s, seed + 5);
+        ctx.stroke();
+        glow(ctx, x, ground - 20 * s, 130 * s, 70 * s, hsla(55, 100, 92, 0.7 * strike), hsla(50, 100, 60, 0));
+      }
+      ctx.restore();
+    },
+    front: ({ ctx, x, y, s, u, t }) => {
+      const k = seg(u, 0.3, 0.35) * (1 - seg(u, 0.6, 0.95));
+      if (k <= 0) return;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = hsla(55, 100, 82, 0.9 * k);
+      ctx.lineWidth = 2.2 * s;
+      const seed = Math.floor(t * 18);
+      for (let i = 0; i < 3; i++) {
+        const a0 = wob(seed + i) * Math.PI, a1 = a0 + 1.4;
+        const cy = y - 55 * s;
+        jag(ctx, x + Math.cos(a0) * 34 * s, cy + Math.sin(a0) * 46 * s, x + Math.cos(a1) * 34 * s, cy + Math.sin(a1) * 46 * s, 4, 8 * s, seed * 3 + i);
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+  },
+
+  // Terra: the floor cracks, rock spikes burst up and Terra climbs out of the ground.
+  terra: {
+    hit: 0.3, shake: 13,
+    body: (u, s) => base(settle(u, "rise", 0.66), { clip: true, alpha: u < 0.3 ? 0 : 1, dy: (1 - easeOut(seg(u, 0.3, 0.56))) * 125 * s }),
+    bursts: [
+      { at: 0.04, n: 10, spd: 160, shape: "dust", a: "hsl(34 30% 55%)", b: "hsl(40 40% 75%)", grav: -20, add: false, from: "feet", dir: "flat" },
+      { at: 0.3, n: 30, spd: 660, shape: "chunk", a: "hsl(28 40% 38%)", b: "hsl(36 40% 62%)", grav: 1400, add: false, from: "feet", dir: "up" },
+      { at: 0.3, n: 18, spd: 300, shape: "dust", a: "hsl(34 30% 55%)", b: "hsl(40 45% 78%)", grav: -30, add: false, from: "feet", dir: "flat" },
+    ],
+    back: ({ ctx, x, ground, s, u }) => {
+      const k = easeOut(seg(u, 0, 0.3));
+      const fade = 1 - seg(u, 0.75, 1);
+      if (k <= 0 || fade <= 0) return;
+      ctx.save();
+      ctx.strokeStyle = hsla(28, 45, 16, 0.85 * fade);
+      ctx.lineWidth = 3 * s;
+      ctx.lineCap = "round";
+      for (let i = 0; i < 6; i++) {
+        const dir = i % 2 ? 1 : -1;
+        const len = (60 + (i % 3) * 30) * s * k;
+        const yy = ground + 4 + (i % 3) * 14;
+        jag(ctx, x, ground + 2, x + dir * len, yy + (i > 2 ? 10 : 0), 5, 5 * s, i * 7);
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+    front: ({ ctx, x, ground, s, u }) => {
+      const up = easeOut(seg(u, 0.3, 0.42)) * (1 - seg(u, 0.74, 1));
+      if (up <= 0) return;
+      ctx.save();
+      for (const [ox, hh, w] of [[-58, 52, 16], [-30, 76, 18], [34, 70, 17], [60, 46, 14], [-4, 34, 12]] as const) {
+        const h = hh * s * up;
+        ctx.beginPath();
+        ctx.moveTo(x + (ox - w) * s, ground + 4);
+        ctx.lineTo(x + (ox + w * 0.2) * s, ground - h);
+        ctx.lineTo(x + (ox + w) * s, ground + 4);
+        ctx.closePath();
+        const g = ctx.createLinearGradient(0, ground - h, 0, ground);
+        g.addColorStop(0, "hsl(34 35% 58%)");
+        g.addColorStop(1, "hsl(24 40% 30%)");
+        ctx.fillStyle = g;
+        ctx.fill();
+        ctx.strokeStyle = "hsl(250 32% 14%)";
+        ctx.lineWidth = 3 * s;
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+  },
+
+  // Aero: rides a whirlwind down from the sky and lands lightly.
+  aero: {
+    hit: 0.55, shake: 3,
+    body: (u, s) => base(u < 0.55 ? "air" : settle(u, "crouch", 0.7), { alpha: seg(u, 0, 0.15), dy: -(1 - easeOut(seg(u, 0, 0.55))) * 290 * s }),
+    bursts: [
+      { at: 0.55, n: 26, spd: 420, shape: "dust", a: "hsl(170 40% 80%)", b: "hsl(0 0% 100%)", grav: -20, add: false, from: "feet", dir: "flat" },
+      { at: 0.55, n: 12, spd: 300, shape: "leaf", a: "hsl(150 45% 55%)", b: "hsl(90 50% 60%)", grav: 80, add: false, from: "feet", dir: "out" },
+    ],
+    trickle: { rate: 30, until: 0.55, spd: 220, shape: "leaf", a: "hsl(150 45% 55%)", b: "hsl(170 60% 80%)", grav: -60, add: false, from: "feet", dir: "up", spread: 60 },
+    back: ({ ctx, x, ground, s, u, t }) => {
+      const fade = seg(u, 0, 0.12) * (1 - seg(u, 0.55, 0.88));
+      if (fade <= 0) return;
+      ctx.save();
+      ctx.lineCap = "round";
+      for (let i = 0; i < 11; i++) {
+        const yy = ground - i * 30 * s;
+        const rx = (10 + i * i * 0.75) * s;
+        const ox = Math.sin(t * 7 + i * 0.6) * (4 + i) * s;
+        const spin = t * 14 + i;
+        ctx.strokeStyle = hsla(168, 55, 78 + (i % 2) * 12, 0.55 * fade);
+        ctx.lineWidth = (2 + (i % 3)) * s;
+        ctx.beginPath();
+        ctx.ellipse(x + ox, yy, rx, rx * 0.22 + 3, 0, spin % (Math.PI * 2), (spin % (Math.PI * 2)) + Math.PI * 1.3);
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+  },
+
+  // Hydro: a whirlpool opens, a geyser shoots up and Hydro rides it out, splashing down.
+  hydro: {
+    hit: 0.25, shake: 5,
+    body: (u, s) => {
+      const dy = u < 0.45 ? lerp(70, -175, easeOut(seg(u, 0.25, 0.45))) : -175 * (1 - easeIn(seg(u, 0.45, 0.7)));
+      return base(u < 0.7 ? "air" : settle(u, "crouch", 0.8), { clip: true, alpha: u < 0.25 ? 0 : 1, dy: dy * s });
+    },
+    bursts: [
+      { at: 0.25, n: 30, spd: 720, shape: "drop", a: "hsl(205 90% 58%)", b: "hsl(195 100% 88%)", grav: 1400, add: false, from: "feet", dir: "up" },
+      { at: 0.7, n: 26, spd: 440, shape: "drop", a: "hsl(210 90% 55%)", b: "hsl(195 100% 85%)", grav: 1100, add: false, from: "feet", dir: "flat" },
+    ],
+    trickle: { rate: 26, until: 0.25, spd: 90, shape: "bubble", a: "hsl(205 90% 70%)", b: "hsl(190 100% 92%)", grav: -120, add: false, from: "feet", dir: "up", spread: 40 },
+    back: ({ ctx, x, ground, s, u, t }) => {
+      const pool = easeOut(seg(u, 0, 0.22)) * (1 - seg(u, 0.75, 1));
+      ctx.save();
+      if (pool > 0) {
+        ctx.fillStyle = hsla(210, 85, 45, 0.7 * pool);
+        ctx.beginPath();
+        ctx.ellipse(x, ground + 3, 62 * s * pool, 12 * s * pool, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = hsla(195, 100, 85, 0.8 * pool);
+        ctx.lineWidth = 2 * s;
+        for (let i = 0; i < 3; i++) {
+          const a = t * 9 + i * 2.1;
+          ctx.beginPath();
+          ctx.ellipse(x, ground + 3, (20 + i * 14) * s * pool, (4 + i * 2.6) * s * pool, 0, a, a + 2.2);
+          ctx.stroke();
+        }
+      }
+      const col = seg(u, 0.24, 0.32) * (1 - seg(u, 0.5, 0.68));
+      if (col > 0) {
+        const h = 240 * s * easeOut(seg(u, 0.24, 0.42));
+        const w = 26 * s * col;
+        const g = ctx.createLinearGradient(0, ground, 0, ground - h);
+        g.addColorStop(0, hsla(212, 90, 48, 0.9));
+        g.addColorStop(0.8, hsla(198, 95, 70, 0.85));
+        g.addColorStop(1, hsla(190, 100, 92, 0.2));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(x - w, ground);
+        ctx.quadraticCurveTo(x - w * 0.6 + Math.sin(t * 20) * 4 * s, ground - h * 0.5, x - w * 0.8, ground - h);
+        ctx.lineTo(x + w * 0.8, ground - h);
+        ctx.quadraticCurveTo(x + w * 0.6 + Math.sin(t * 17) * 4 * s, ground - h * 0.5, x + w, ground);
+        ctx.closePath();
+        ctx.fill();
+        // foam crown
+        ctx.fillStyle = hsla(195, 100, 94, 0.9 * col);
+        for (let i = -2; i <= 2; i++) {
+          ctx.beginPath();
+          ctx.arc(x + i * 11 * s, ground - h - Math.abs(Math.sin(t * 16 + i)) * 10 * s, (9 - Math.abs(i) * 1.5) * s, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    },
+  },
+
+  // Umbra: a pool of shadow spreads and Umbra rises out of it as a silhouette, then takes colour.
+  umbra: {
+    hit: 0.58, shake: 2,
+    body: (u, s) => base(settle(u, "crouch", 0.62), { clip: true, alpha: u < 0.18 ? 0 : 1, dy: (1 - easeOut(seg(u, 0.18, 0.56))) * 125 * s, solid: "hsl(268 50% 9%)", solidA: 1 - seg(u, 0.58, 0.82) }),
+    bursts: [
+      { at: 0.58, n: 24, spd: 340, shape: "smoke", a: "hsl(275 55% 20%)", b: "hsl(285 75% 58%)", grav: -60, add: false, from: "body", dir: "out" },
+    ],
+    trickle: { rate: 40, until: 0.72, spd: 120, shape: "smoke", a: "hsl(270 60% 14%)", b: "hsl(285 70% 45%)", grav: -90, add: false, from: "feet", dir: "up", spread: 50 },
+    back: ({ ctx, x, ground, s, u, t }) => {
+      const k = easeOut(seg(u, 0, 0.2)) * (1 - seg(u, 0.72, 1));
+      if (k <= 0) return;
+      ctx.save();
+      glow(ctx, x, ground + 3, 80 * s * k, 16 * s * k, hsla(285, 80, 55, 0.5 * k), hsla(275, 60, 30, 0));
+      ctx.fillStyle = hsla(268, 55, 7, 0.9 * k);
+      ctx.beginPath();
+      ctx.ellipse(x, ground + 3, 64 * s * k, 12 * s * k, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // tendrils curling up out of the pool
+      ctx.strokeStyle = hsla(270, 55, 12, 0.85 * k);
+      ctx.lineCap = "round";
+      for (let i = 0; i < 5; i++) {
+        const bx = x + (i - 2) * 24 * s;
+        const h = (40 + (i % 2) * 30) * s * k;
+        ctx.lineWidth = (6 - Math.abs(i - 2)) * s;
+        ctx.beginPath();
+        ctx.moveTo(bx, ground);
+        ctx.quadraticCurveTo(bx + Math.sin(t * 6 + i) * 18 * s, ground - h * 0.6, bx + Math.sin(t * 4 + i * 2) * 12 * s, ground - h);
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+  },
+
+  // Lux: a beam of light comes down and Lux forms inside it, glowing, then lands.
+  lux: {
+    hit: 0.18, shake: 2,
+    body: (u, s) => base(settle(u, "rise", 0.62), { alpha: seg(u, 0.15, 0.4), dy: -(1 - easeOut(seg(u, 0.15, 0.6))) * 95 * s, solid: "hsl(52 100% 96%)", solidA: 1 - seg(u, 0.5, 0.78) }),
+    bursts: [
+      { at: 0.55, n: 28, spd: 440, shape: "star", a: "hsl(48 100% 70%)", b: "hsl(0 0% 100%)", grav: 0, add: true, from: "body", dir: "out" },
+    ],
+    trickle: { rate: 34, until: 0.55, spd: 60, shape: "star", a: "hsl(50 100% 75%)", b: "hsl(0 0% 100%)", grav: 260, add: true, from: "sky", dir: "out", spread: 34, life: 1.2 },
+    back: ({ ctx, x, ground, s, u, t }) => {
+      const w = 74 * s * easeOut(seg(u, 0, 0.18)) * (1 - seg(u, 0.55, 0.92));
+      if (w <= 0.5) return;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const g = ctx.createLinearGradient(x - w, 0, x + w, 0);
+      g.addColorStop(0, hsla(50, 100, 70, 0));
+      g.addColorStop(0.35, hsla(50, 100, 78, 0.4));
+      g.addColorStop(0.5, hsla(55, 100, 96, 0.85));
+      g.addColorStop(0.65, hsla(50, 100, 78, 0.4));
+      g.addColorStop(1, hsla(50, 100, 70, 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(x - w, -20, w * 2, ground + 20);
+      ctx.strokeStyle = hsla(0, 0, 100, 0.5);
+      ctx.lineWidth = 1.5 * s;
+      for (let i = 0; i < 4; i++) {
+        const ox = Math.sin(t * 3 + i * 1.9) * w * 0.7;
+        ctx.beginPath();
+        ctx.moveTo(x + ox, -20);
+        ctx.lineTo(x + ox, ground);
+        ctx.stroke();
+      }
+      glow(ctx, x, ground + 2, w * 1.8, 14 * s, hsla(52, 100, 90, 0.8), hsla(50, 100, 70, 0));
+      ctx.restore();
+    },
+  },
+
+  // Gravi: drops from far above like a meteor and lands in a crater.
+  gravi: {
+    hit: 0.35, shake: 15, wave: ["hsl(250 80% 62%)", "hsl(250 90% 85%)"],
+    body: (u, s) => {
+      const fall = seg(u, 0, 0.35);
+      const squash = u >= 0.35 && u < 0.45 ? 1 - Math.sin(seg(u, 0.35, 0.45) * Math.PI) * 0.18 : 1;
+      return base(u < 0.35 ? "air" : settle(u, "land", 0.72), {
+        alpha: u < 0.01 ? 0 : 1, dy: -(1 - easeIn(fall)) * 640 * s,
+        sx: u < 0.35 ? 0.88 : 2 - squash, sy: u < 0.35 ? 1.18 : squash,
+      });
+    },
+    bursts: [
+      { at: 0.35, n: 30, spd: 620, shape: "chunk", a: "hsl(250 20% 30%)", b: "hsl(250 30% 55%)", grav: 1300, add: false, from: "feet", dir: "up" },
+      { at: 0.35, n: 16, spd: 360, shape: "ring", a: "hsl(245 80% 65%)", b: "hsl(250 90% 85%)", grav: 0, add: true, from: "feet", dir: "flat" },
+    ],
+    back: ({ ctx, x, y, ground, s, u, body }) => {
+      ctx.save();
+      if (u < 0.35 && u > 0.01) {
+        // a falling streak and warped rings around the body
+        const by = y + body.dy;
+        ctx.globalCompositeOperation = "lighter";
+        const g = ctx.createLinearGradient(0, by - 260 * s, 0, by - 60 * s);
+        g.addColorStop(0, hsla(250, 90, 70, 0));
+        g.addColorStop(1, hsla(250, 90, 75, 0.7));
+        ctx.fillStyle = g;
+        ctx.fillRect(x - 16 * s, by - 260 * s, 32 * s, 200 * s);
+        ctx.strokeStyle = hsla(250, 90, 80, 0.6);
+        ctx.lineWidth = 2.5 * s;
+        for (let i = 0; i < 3; i++) {
+          ctx.beginPath();
+          ctx.ellipse(x, by - (20 + i * 34) * s, (30 + i * 8) * s, 7 * s, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+      const crater = seg(u, 0.35, 0.4) * (1 - seg(u, 0.8, 1));
+      if (crater > 0) {
+        ctx.globalCompositeOperation = "source-over";
+        ctx.fillStyle = hsla(250, 40, 10, 0.75 * crater);
+        ctx.beginPath();
+        ctx.ellipse(x, ground + 4, 80 * s, 14 * s, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = hsla(250, 80, 70, 0.7 * crater);
+        ctx.lineWidth = 2.5 * s;
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+  },
+
+  // Tele: a portal opens and Tele flickers through it, glitching into place.
+  tele: {
+    hit: 0.3, shake: 4,
+    body: (u, s) => {
+      const glitch = u >= 0.3 && u < 0.55;
+      return base(u < 0.55 ? "guard" : settle(u, "flex", 0.75), {
+        alpha: u < 0.3 ? 0 : glitch ? (Math.sin(u * 190) > -0.2 ? 1 : 0.15) : 1,
+        dx: glitch ? Math.sin(u * 97) * 10 * s : 0,
+        solid: "hsl(300 100% 88%)", solidA: 1 - seg(u, 0.45, 0.7),
+      });
+    },
+    bursts: [
+      { at: 0.02, n: 22, spd: 0, shape: "pixel", a: "hsl(312 80% 62%)", b: "hsl(300 100% 88%)", grav: 0, add: true, from: "body", dir: "in", spread: 140, life: 0.4 },
+      { at: 0.55, n: 24, spd: 400, shape: "pixel", a: "hsl(312 80% 62%)", b: "hsl(280 90% 80%)", grav: 0, add: true, from: "body", dir: "out" },
+    ],
+    back: ({ ctx, x, y, s, u, t }) => {
+      const open = easeOut(seg(u, 0, 0.25)) * (1 - seg(u, 0.55, 0.75));
+      if (open <= 0) return;
+      const cy = y - 55 * s;
+      ctx.save();
+      glow(ctx, x, cy, 34 * s * open, 78 * s * open, hsla(285, 60, 12, 0.85), hsla(300, 80, 40, 0.1));
+      ctx.globalCompositeOperation = "lighter";
+      ctx.lineWidth = 4 * s;
+      for (let i = 0; i < 3; i++) {
+        const a = t * (6 + i * 3) * (i % 2 ? -1 : 1);
+        ctx.strokeStyle = hsla(305 - i * 15, 100, 70 + i * 8, 0.8 * open);
+        ctx.beginPath();
+        ctx.ellipse(x, cy, (36 + i * 6) * s * open, (80 + i * 8) * s * open, 0, a, a + Math.PI * 1.4);
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+    front: ({ ctx, x, y, s, u, t }) => {
+      if (u < 0.3 || u >= 0.55) return;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = hsla(300, 100, 80, 0.5);
+      const seed = Math.floor(t * 25);
+      for (let i = 0; i < 4; i++) {
+        const yy = y - (10 + ((wob(seed + i) + 1) / 2) * 100) * s;
+        ctx.fillRect(x - 30 * s + wob(seed * 2 + i) * 12 * s, yy, 60 * s, 3 * s);
+      }
+      ctx.restore();
+    },
+  },
+
+  // Vita: a sprout grows into a closed bud that blooms open around Vita.
+  vita: {
+    hit: 0.5, shake: 1,
+    body: (u) => base(settle(u, "rise", 0.7), { alpha: seg(u, 0.4, 0.5) }),
+    bursts: [
+      { at: 0.5, n: 26, spd: 400, shape: "petal", a: "hsl(330 80% 75%)", b: "hsl(345 90% 88%)", grav: 120, add: false, from: "body", dir: "out" },
+      { at: 0.5, n: 14, spd: 320, shape: "leaf", a: "hsl(140 58% 44%)", b: "hsl(110 70% 65%)", grav: 160, add: false, from: "body", dir: "out" },
+      { at: 0.55, n: 10, spd: 160, shape: "plus", a: "hsl(140 70% 60%)", b: "hsl(110 80% 80%)", grav: -140, add: false, from: "feet", dir: "up" },
+    ],
+    back: ({ ctx, x, ground, s, u, t }) => {
+      const grow = easeOut(seg(u, 0, 0.3));
+      const fade = 1 - seg(u, 0.55, 0.85);
+      if (grow <= 0 || fade <= 0) return;
+      ctx.save();
+      ctx.globalAlpha = fade;
+      ctx.strokeStyle = "hsl(130 50% 34%)";
+      ctx.lineCap = "round";
+      ctx.lineWidth = 5 * s;
+      const h = 70 * s * grow;
+      ctx.beginPath();
+      ctx.moveTo(x, ground);
+      ctx.bezierCurveTo(x - 20 * s, ground - h * 0.3, x + 20 * s + Math.sin(t * 3) * 3 * s, ground - h * 0.7, x, ground - h);
+      ctx.stroke();
+      ctx.fillStyle = "hsl(125 55% 45%)";
+      for (const [ox, oy, a] of [[-14, 0.35, -0.9], [14, 0.62, 0.9]] as const) {
+        ctx.save();
+        ctx.translate(x + ox * s * grow, ground - h * oy);
+        ctx.rotate(a);
+        ctx.beginPath();
+        ctx.ellipse(0, -10 * s * grow, 6 * s, 13 * s * grow, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.restore();
+    },
+    front: ({ ctx, x, ground, s, u }) => {
+      const grow = easeOut(seg(u, 0.18, 0.42));
+      const open = easeOut(seg(u, 0.45, 0.68));
+      const fade = 1 - seg(u, 0.6, 0.9);
+      if (grow <= 0 || fade <= 0) return;
+      ctx.save();
+      ctx.globalAlpha = fade;
+      for (let i = 0; i < 6; i++) {
+        const off = i - 2.5;
+        const a = off * (0.1 + 0.6 * open);
+        const len = 64 * s * grow;
+        ctx.save();
+        ctx.translate(x + off * 6 * s, ground + 2);
+        ctx.rotate(a);
+        ctx.beginPath();
+        ctx.ellipse(0, -len * 0.55, 15 * s, len * 0.6, 0, 0, Math.PI * 2);
+        const g = ctx.createLinearGradient(0, 0, 0, -len);
+        g.addColorStop(0, "hsl(135 50% 40%)");
+        g.addColorStop(0.45, "hsl(330 75% 70%)");
+        g.addColorStop(1, "hsl(345 90% 88%)");
+        ctx.fillStyle = g;
+        ctx.fill();
+        ctx.strokeStyle = "hsl(250 32% 14% / 0.5)";
+        ctx.lineWidth = 2 * s;
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.restore();
+    },
+  },
+
+  // Toxi: a bubbling puddle belches a green cloud and Toxi steps out as it clears.
+  toxi: {
+    hit: 0.5, shake: 2,
+    body: (u) => base(settle(u, "crouch", 0.68), { alpha: seg(u, 0.3, 0.55) }),
+    bursts: [
+      { at: 0.5, n: 26, spd: 320, shape: "bubble", a: "hsl(86 78% 46%)", b: "hsl(80 100% 72%)", grav: -100, add: false, from: "body", dir: "out" },
+      { at: 0.5, n: 12, spd: 260, shape: "ring", a: "hsl(95 70% 40%)", b: "hsl(80 100% 65%)", grav: -60, add: false, from: "feet", dir: "flat" },
+    ],
+    trickle: { rate: 34, until: 0.5, spd: 110, shape: "bubble", a: "hsl(86 78% 46%)", b: "hsl(80 100% 72%)", grav: -160, add: false, from: "feet", dir: "up", spread: 46 },
+    back: ({ ctx, x, ground, s, u }) => {
+      const k = easeOut(seg(u, 0, 0.18)) * (1 - seg(u, 0.75, 1));
+      if (k <= 0) return;
+      ctx.save();
+      ctx.fillStyle = hsla(95, 70, 28, 0.8 * k);
+      ctx.beginPath();
+      ctx.ellipse(x, ground + 3, 60 * s * k, 11 * s * k, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = hsla(80, 100, 60, 0.5 * k);
+      ctx.beginPath();
+      ctx.ellipse(x - 10 * s, ground + 1, 30 * s * k, 4 * s * k, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    },
+    front: ({ ctx, x, ground, s, u, t }) => {
+      const grow = easeOut(seg(u, 0.1, 0.36));
+      const clear = seg(u, 0.48, 0.9);
+      const a = 0.82 * (1 - clear);
+      if (grow <= 0 || a <= 0) return;
+      ctx.save();
+      for (let i = 0; i < 10; i++) {
+        const ang = i * 0.63 + 0.3;
+        const dist = (18 + (i % 3) * 14) * s * (1 + clear * 1.6);
+        const r = (24 + (i % 3) * 8) * s * grow * (1 + clear * 0.5);
+        const cx = x + Math.cos(ang) * dist + Math.sin(t * 2 + i) * 4 * s;
+        const cy = ground - 55 * s + Math.sin(ang) * dist * 0.8 - clear * 30 * s;
+        ctx.fillStyle = i % 3 === 0 ? hsla(100, 60, 26, a) : hsla(86, 70, 42 + (i % 2) * 10, a * 0.9);
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    },
+  },
+
+  // Chrono: a clock face spins backwards while echoes of Chrono close in to one body.
+  chrono: {
+    hit: 0.5, shake: 3, wave: ["hsl(38 94% 55%)", "hsl(45 100% 82%)"],
+    body: (u, s) => base(settle(u, "rise", 0.66), {
+      alpha: seg(u, 0.12, 0.5),
+      echo: { spread: 70 * s * (1 - easeOut(seg(u, 0.08, 0.5))), alpha: 0.4 * seg(u, 0, 0.12) * (1 - seg(u, 0.42, 0.52)) },
+    }),
+    bursts: [
+      { at: 0.5, n: 22, spd: 380, shape: "glyph", a: "hsl(38 94% 55%)", b: "hsl(45 100% 80%)", grav: 0, add: true, from: "body", dir: "out" },
+    ],
+    trickle: { rate: 20, until: 0.5, spd: 70, shape: "glyph", a: "hsl(38 94% 55%)", b: "hsl(45 100% 80%)", grav: -80, add: true, from: "feet", dir: "up", spread: 50 },
+    back: ({ ctx, x, y, s, u, t }) => {
+      const open = easeOut(seg(u, 0, 0.2)) * (1 - seg(u, 0.7, 0.95));
+      if (open <= 0) return;
+      const cx = x, cy = y - 62 * s, r = 88 * s * open;
+      ctx.save();
+      ctx.fillStyle = hsla(40, 80, 50, 0.12 * open);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = hsla(42, 100, 65, 0.85 * open);
+      ctx.lineWidth = 3 * s;
+      ctx.stroke();
+      ctx.lineWidth = 2 * s;
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        const r0 = r * (i % 3 === 0 ? 0.8 : 0.88);
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
+        ctx.lineTo(cx + Math.cos(a) * r * 0.96, cy + Math.sin(a) * r * 0.96);
+        ctx.stroke();
+      }
+      // hands race backwards, then stop at twelve when Chrono arrives
+      const run = 1 - seg(u, 0.38, 0.5);
+      const m = -Math.PI / 2 - t * 22 * run - (1 - run) * Math.PI * 2;
+      const h = -Math.PI / 2 - t * 4 * run;
+      ctx.lineCap = "round";
+      ctx.lineWidth = 4 * s;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(m) * r * 0.75, cy + Math.sin(m) * r * 0.75);
+      ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(h) * r * 0.5, cy + Math.sin(h) * r * 0.5);
+      ctx.stroke();
+      ctx.restore();
+    },
+  },
+
+  // Magneto: shards of metal fly in from every side and lock together into Magneto.
+  magneto: {
+    hit: 0.45, shake: 5,
+    body: (u) => base(u < 0.45 ? "guard" : settle(u, "flex", 0.72), { alpha: seg(u, 0.15, 0.45), solid: "hsl(210 14% 72%)", solidA: 1 - seg(u, 0.45, 0.7) }),
+    bursts: [
+      { at: 0, n: 26, spd: 0, shape: "shard", a: "hsl(210 15% 70%)", b: "hsl(0 70% 55%)", grav: 0, add: false, from: "body", dir: "in", spread: 230, life: 0.4 },
+      { at: 0.15, n: 22, spd: 0, shape: "shard", a: "hsl(210 20% 82%)", b: "hsl(0 70% 50%)", grav: 0, add: false, from: "body", dir: "in", spread: 170, life: 0.35 },
+      { at: 0.45, n: 22, spd: 460, shape: "spark", a: "hsl(0 70% 55%)", b: "hsl(210 20% 90%)", grav: 0, add: true, from: "body", dir: "out" },
+    ],
+    back: ({ ctx, x, y, s, u, t }) => {
+      const k = seg(u, 0, 0.15) * (1 - seg(u, 0.6, 0.9));
+      if (k <= 0) return;
+      const cy = y - 55 * s;
+      ctx.save();
+      ctx.lineWidth = 2.5 * s;
+      ctx.setLineDash([10 * s, 8 * s]);
+      ctx.lineDashOffset = -t * 120;
+      for (let i = 1; i <= 3; i++) {
+        ctx.strokeStyle = i % 2 ? hsla(0, 70, 55, 0.7 * k) : hsla(210, 20, 85, 0.7 * k);
+        ctx.beginPath();
+        ctx.ellipse(x, cy, (40 + i * 22) * s, (18 + i * 18) * s, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+  },
+
+  // Psy: floats down cross-legged with stones orbiting, then plants both feet.
+  psy: {
+    hit: 0.62, shake: 2, wave: ["hsl(330 84% 66%)", "hsl(320 100% 88%)"],
+    body: (u, s) => base(u < 0.62 ? "float" : settle(u, "flex", 0.75), {
+      alpha: seg(u, 0, 0.25),
+      dy: (-(1 - easeInOut(seg(u, 0, 0.62))) * 130 - (u < 0.62 ? 14 : 0) * (1 - seg(u, 0.5, 0.62)) - Math.sin(u * 14) * 4 * (1 - seg(u, 0.5, 0.62))) * s,
+    }),
+    bursts: [
+      { at: 0.62, n: 22, spd: 380, shape: "ring", a: "hsl(330 84% 66%)", b: "hsl(320 100% 88%)", grav: 0, add: true, from: "body", dir: "out" },
+    ],
+    trickle: { rate: 14, until: 0.6, spd: 60, shape: "star", a: "hsl(330 84% 70%)", b: "hsl(320 100% 90%)", grav: -40, add: true, from: "body", dir: "out" },
+    back: ({ ctx, x, y, s, u, t, body }) => {
+      const k = seg(u, 0, 0.2) * (1 - seg(u, 0.62, 0.9));
+      if (k <= 0) return;
+      const by = y + body.dy;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 3; i++) {
+        const p = (t * 1.6 + i / 3) % 1;
+        ctx.strokeStyle = hsla(325, 100, 75, 0.7 * k * (1 - p));
+        ctx.lineWidth = 3 * s;
+        ctx.beginPath();
+        ctx.ellipse(x, by, (20 + p * 60) * s, (5 + p * 14) * s, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.globalCompositeOperation = "source-over";
+      // stones circling, dropping when Psy lands
+      const drop = easeIn(seg(u, 0.62, 0.85));
+      for (let i = 0; i < 4; i++) {
+        const a = t * 2.6 + (i * Math.PI) / 2;
+        const sx = x + Math.cos(a) * 54 * s;
+        const sy = by - 60 * s + Math.sin(a) * 14 * s + drop * 80 * s;
+        ctx.fillStyle = hsla(28, 30, 40 + (i % 2) * 12, k + drop * 0.2);
+        ctx.strokeStyle = "hsl(250 32% 14%)";
+        ctx.lineWidth = 2 * s;
+        ctx.beginPath();
+        ctx.moveTo(sx - 7 * s, sy);
+        ctx.lineTo(sx - 2 * s, sy - 7 * s);
+        ctx.lineTo(sx + 7 * s, sy - 3 * s);
+        ctx.lineTo(sx + 5 * s, sy + 6 * s);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+  },
+
+  // Shift: a puddle of colour stretches and wobbles up, cycling through forms, and snaps into Shift.
+  shift: {
+    hit: 0.5, shake: 3,
+    body: (u) => {
+      const k = easeOut(seg(u, 0, 0.48));
+      const morph = u < 0.5;
+      return base(morph ? "guard" : settle(u, "flex", 0.72), {
+        alpha: seg(u, 0, 0.1),
+        sx: morph ? lerp(1.9, 1, k) + Math.sin(u * 42) * 0.14 * (1 - k) : 1,
+        sy: morph ? lerp(0.12, 1, k) + Math.cos(u * 42) * 0.14 * (1 - k) : 1,
+        solid: `hsl(${Math.round((u * 1100) % 360)} 85% 60%)`,
+        solidA: 1 - seg(u, 0.48, 0.58),
+      });
+    },
+    bursts: [
+      { at: 0.5, n: 30, spd: 460, shape: "dot", a: "hsl(186 84% 50%)", b: "hsl(300 90% 70%)", grav: 0, add: true, from: "body", dir: "out" },
+      { at: 0.5, n: 12, spd: 300, shape: "star", a: "hsl(46 100% 66%)", b: "hsl(180 100% 82%)", grav: 0, add: true, from: "body", dir: "out" },
+    ],
+    back: ({ ctx, x, ground, s, u }) => {
+      const k = seg(u, 0, 0.08) * (1 - seg(u, 0.45, 0.65));
+      if (k <= 0) return;
+      ctx.save();
+      ctx.fillStyle = `hsl(${Math.round((u * 1100) % 360)} 80% 50% / ${0.6 * k})`;
+      ctx.beginPath();
+      ctx.ellipse(x, ground + 3, 56 * s, 10 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    },
+  },
+};
