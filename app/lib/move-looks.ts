@@ -104,6 +104,43 @@ export const LOOKS: Record<string, Look> = {
   "mimic": L("hsl(200 80% 60%)", "hsl(320 90% 70%)", "pixel", true, 0, undefined, "body", 0.6),
   "blade-arm": L("hsl(160 30% 70%)", "hsl(0 0% 100%)", "shard", false, 400, "cross", "hand", 0.26),
   "slime-shot": L("hsl(120 75% 50%)", "hsl(90 100% 80%)", "drop", false, 700, "splat"),
+
+  // ----- Story bosses (bosses.ts): their own moves, no fighter's -----
+  // Nullshade, antimatter
+  "positron-palm": L("hsl(186 100% 70%)", "hsl(0 0% 100%)", "ring", true, 0, "implode"),
+  "antimatter-lance": L("hsl(268 70% 14%)", "hsl(186 100% 78%)", "spark", true, 0, "implode"),
+  "annihilation": L("hsl(0 0% 100%)", "hsl(268 70% 22%)", "spark", true, 0, "starburst"),
+  "null-field": L("hsl(268 70% 8%)", "hsl(186 100% 76%)", "ring", true, 0),
+  "pair-burst": L("hsl(0 0% 100%)", "hsl(268 60% 25%)", "spark", true, 0, "implode"),
+  "zero-point": L("hsl(186 100% 70%)", "hsl(0 0% 100%)", "ring", true, 0, "implode"),
+  // Maelstrom, the storm at sea
+  "trident-rake": L("hsl(190 90% 62%)", "hsl(54 100% 75%)", "drop", false, 700, "splash"),
+  "tidal-wall": L("hsl(212 80% 40%)", "hsl(186 100% 85%)", "drop", false, 800, "splash"),
+  "eye-of-the-storm": L("hsl(214 50% 30%)", "hsl(186 100% 80%)", "drop", false, -40),
+  "thunderhead": L("hsl(220 30% 40%)", "hsl(54 100% 75%)", "bolt", true, 0, "fork"),
+  "riptide": L("hsl(205 90% 50%)", "hsl(186 100% 82%)", "drop", false, 700, "ripple"),
+  "waterspout": L("hsl(205 85% 45%)", "hsl(186 100% 88%)", "drop", false, 900, "splash"),
+  // Magmaw, the living volcano
+  "magma-bite": L("hsl(20 100% 50%)", "hsl(44 100% 66%)", "ember", true, -200, "bite"),
+  "fault-line": L("hsl(14 100% 48%)", "hsl(44 100% 64%)", "ember", true, -260, "crater"),
+  "lava-bombs": L("hsl(12 60% 22%)", "hsl(30 100% 58%)", "ember", true, -120, "crater"),
+  "magma-lake": L("hsl(16 100% 46%)", "hsl(44 100% 66%)", "ember", true, -200),
+  "volcanic-roar": L("hsl(10 90% 45%)", "hsl(40 100% 62%)", "ember", true, -300, "flare"),
+  "obsidian-hide": L("hsl(260 15% 18%)", "hsl(28 100% 60%)", "chunk", false, 600),
+  // Everwinter, frozen time
+  "rime-sickle": L("hsl(200 80% 78%)", "hsl(44 90% 76%)", "flake", false, 60, "shatter"),
+  "time-stop": L("hsl(44 90% 66%)", "hsl(200 90% 90%)", "glyph", true, 0, "clock"),
+  "hourglass-icicles": L("hsl(198 80% 80%)", "hsl(44 90% 80%)", "flake", false, 300, "shatter"),
+  "frost-lance": L("hsl(200 85% 70%)", "hsl(0 0% 100%)", "flake", false, 100, "shatter"),
+  "rime-step": L("hsl(200 70% 85%)", "hsl(44 90% 76%)", "flake", false, 80, "clock"),
+  "glacial-age": L("hsl(205 70% 80%)", "hsl(44 85% 75%)", "flake", false, 20),
+  // The Riftmaker, reality warping
+  "fold-strike": L("hsl(318 100% 62%)", "hsl(186 100% 72%)", "pixel", true, 0, "portal"),
+  "reality-warp": L("hsl(318 100% 60%)", "hsl(186 100% 80%)", "pixel", true, 0),
+  "dimension-tear": L("hsl(252 40% 8%)", "hsl(318 100% 72%)", "shard", true, 100, "portal"),
+  "fold-space": L("hsl(186 100% 60%)", "hsl(318 100% 78%)", "pixel", true, 0, "portal"),
+  "mirror-shards": L("hsl(186 60% 85%)", "hsl(318 100% 80%)", "shard", true, 200, "cross"),
+  "unmake": L("hsl(318 100% 55%)", "hsl(0 0% 100%)", "pixel", true, 0, "portal"),
 };
 
 /** A one-off effect: a move's signature when it fires (hit = false) or its mark on whoever it struck (hit = true). */
@@ -1591,6 +1628,78 @@ export function drawShotLook(ctx: CanvasRenderingContext2D, id: string, p: Shot,
       ctx.stroke();
       break;
     }
+    // ----- boss shots -----
+    case "pair-burst": {
+      // one shot is matter (white), the next antimatter (black with a cyan rim)
+      const anti = Math.sin(ang) * dir > 0;
+      ctx.globalCompositeOperation = anti ? "source-over" : "lighter";
+      if (anti) {
+        glow(ctx, p.x, p.y, r * 2.4, "hsl(268 70% 20%)", 0.5);
+        ctx.fillStyle = "hsl(268 70% 6%)";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r, 0, TAU);
+        ctx.fill();
+        ctx.strokeStyle = "hsl(186 100% 72%)";
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      } else {
+        glow(ctx, p.x, p.y, r * 2.6, "hsl(186 100% 80%)", 0.7);
+        glow(ctx, p.x, p.y, r * 1.1, "hsl(0 0% 100%)", 1);
+      }
+      ctx.strokeStyle = al(anti ? "hsl(186 100% 72%)" : "hsl(0 0% 100%)", 0.6);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, r * 1.8, r * 0.6, p.rot, 0, TAU);
+      ctx.stroke();
+      break;
+    }
+    case "tidal-wall": {
+      // a curling wall of water rolling along the floor
+      const h = r * 3.4;
+      const base = p.y + r;
+      const gr = ctx.createLinearGradient(0, base - h, 0, base);
+      gr.addColorStop(0, b);
+      gr.addColorStop(0.35, "hsl(200 85% 55%)");
+      gr.addColorStop(1, a);
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.moveTo(p.x - dir * r * 3.2, base);
+      ctx.quadraticCurveTo(p.x - dir * r * 2.4, base - h * 0.7, p.x - dir * r * 0.4, base - h);
+      ctx.quadraticCurveTo(p.x + dir * r * 1.2, base - h * 1.04, p.x + dir * r * 1.3, base - h * 0.62);
+      ctx.quadraticCurveTo(p.x + dir * r * 0.5, base - h * 0.72, p.x + dir * r * 0.7, base - h * 0.45);
+      ctx.quadraticCurveTo(p.x + dir * r * 1.2, base - h * 0.15, p.x + dir * r * 1.6, base);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      // foam along the crest
+      ctx.fillStyle = "hsl(0 0% 100% / 0.9)";
+      for (let i = 0; i < 7; i++) {
+        const u = i / 6;
+        const fx = p.x - dir * r * 0.4 + dir * u * r * 1.6;
+        const fy = base - h * (1 - u * 0.4) + Math.sin(t * 14 + i) * 2;
+        ctx.beginPath();
+        ctx.arc(fx, fy, r * 0.16, 0, TAU);
+        ctx.fill();
+      }
+      ctx.strokeStyle = "hsl(0 0% 100% / 0.5)";
+      ctx.lineWidth = 2;
+      for (let i = 1; i < 4; i++) {
+        ctx.beginPath();
+        ctx.moveTo(p.x - dir * r * (2.8 - i * 0.5), base - h * 0.15 * i);
+        ctx.quadraticCurveTo(p.x - dir * r * (1.8 - i * 0.4), base - h * 0.2 * i - 6, p.x - dir * r * (0.8 - i * 0.3), base - h * 0.18 * i);
+        ctx.stroke();
+      }
+      break;
+    }
+    case "thunderhead": {
+      ctx.globalCompositeOperation = "lighter";
+      glow(ctx, p.x, p.y, r * 2.4, b, 0.6);
+      boltStroke(ctx, p.x - p.vx * 0.12, p.y - p.vy * 0.12, p.x, p.y, 7, al(b, 0.9), r * 0.7);
+      glow(ctx, p.x, p.y, r * 0.8, "hsl(0 0% 100%)", 1);
+      break;
+    }
     default:
       ctx.restore();
       return false;
@@ -1718,6 +1827,90 @@ export function drawBeamLook(ctx: CanvasRenderingContext2D, id: string, bm: Beam
         ctx.beginPath();
         ctx.ellipse(x, 0, 8, i % 2 ? 2.5 : 5, 0, 0, TAU);
         ctx.stroke();
+      }
+      break;
+    }
+    // ----- boss beams -----
+    case "antimatter-lance": {
+      // a black core with a white and cyan skin: light bending around nothing
+      ctx.globalCompositeOperation = "lighter";
+      glow(ctx, 0, 0, w * 2.2, b, 0.9);
+      ctx.strokeStyle = al(b, 0.55);
+      ctx.lineWidth = w * 1.6;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(len, 0); ctx.stroke();
+      ctx.strokeStyle = "hsl(0 0% 100%)";
+      ctx.lineWidth = w * 0.95;
+      ctx.stroke();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.strokeStyle = a;
+      ctx.lineWidth = w * 0.55;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(len, 0); ctx.stroke();
+      ctx.strokeStyle = al(b, 0.9);
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 2; i++) {
+        ctx.beginPath();
+        for (let x = 0; x <= len; x += 12) ctx.lineTo(x, Math.sin(x * 0.05 + t * 30 + i * Math.PI) * w * 0.7);
+        ctx.stroke();
+      }
+      ctx.fillStyle = a;
+      ctx.beginPath(); ctx.arc(len, 0, w * 0.7, 0, TAU); ctx.fill();
+      break;
+    }
+    case "dimension-tear": {
+      // reality cracks open: a black jagged rift edged in magenta and cyan, with stars inside
+      const pts: [number, number][] = [];
+      const n = Math.max(6, Math.floor(len / 26));
+      for (let i = 0; i <= n; i++) {
+        const u = i / n;
+        const wv = Math.sin(u * Math.PI) * w * (0.9 + 0.3 * Math.sin(i * 7.3 + t * 8));
+        pts.push([u * len, wv]);
+      }
+      const shape = (k: number) => {
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        for (const [x, y] of pts) ctx.lineTo(x, -y * k);
+        for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(pts[i][0], pts[i][1] * k * 0.8);
+        ctx.closePath();
+      };
+      ctx.globalCompositeOperation = "lighter";
+      ctx.translate(-2, 0);
+      shape(1.25); ctx.fillStyle = al(b, 0.7); ctx.fill();
+      ctx.translate(4, 0);
+      shape(1.25); ctx.fillStyle = al("hsl(186 100% 60%)", 0.7); ctx.fill();
+      ctx.translate(-2, 0);
+      ctx.globalCompositeOperation = "source-over";
+      shape(1); ctx.fillStyle = a; ctx.fill();
+      ctx.fillStyle = "hsl(0 0% 100%)";
+      for (let i = 0; i < 10; i++) ctx.fillRect((i / 10) * len + Math.sin(t * 3 + i) * 6, Math.sin(i * 2.1) * w * 0.4, 2, 2);
+      break;
+    }
+    case "frost-lance": {
+      // a long spear of ice with a faceted tip
+      const gr = ctx.createLinearGradient(0, -w, 0, w);
+      gr.addColorStop(0, b);
+      gr.addColorStop(0.5, a);
+      gr.addColorStop(1, "hsl(205 60% 55%)");
+      ctx.fillStyle = gr;
+      ctx.strokeStyle = "hsl(205 60% 45%)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, -w * 0.25);
+      ctx.lineTo(len - w * 2.2, -w * 0.45);
+      ctx.lineTo(len, 0);
+      ctx.lineTo(len - w * 2.2, w * 0.45);
+      ctx.lineTo(0, w * 0.25);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = "hsl(0 0% 100% / 0.8)";
+      ctx.beginPath();
+      ctx.moveTo(w, -w * 0.1); ctx.lineTo(len - w * 2.4, -w * 0.2);
+      ctx.stroke();
+      ctx.fillStyle = "hsl(44 90% 80%)";
+      for (let i = 1; i < 6; i++) {
+        const x = (i / 6) * (len - w * 2);
+        poly(ctx, x, (i % 2 ? -1 : 1) * w * 0.55, 3, 6, t * 2 + i);
+        ctx.fill();
       }
       break;
     }
@@ -1878,6 +2071,34 @@ export function drawEruptionLook(ctx: CanvasRenderingContext2D, id: string, x: n
       }
       break;
     }
+    // ----- boss eruptions -----
+    case "fault-line": {
+      // the floor splits and magma fountains up between broken slabs
+      ctx.globalCompositeOperation = "lighter";
+      glow(ctx, x, gy - h * 0.35, r * 1.8, a, 0.55);
+      for (let i = 0; i < 5; i++) flame(ctx, x + (i - 2) * r * 0.22, gy, r * 0.32, h * (0.55 + 0.25 * Math.sin(i * 1.7 + t * 9)), -Math.PI / 2 + (i - 2) * 0.12, t, i, a, b);
+      ctx.globalCompositeOperation = "source-over";
+      for (const sd of [-1, 1]) {
+        ctx.fillStyle = "hsl(12 25% 18%)";
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(x + sd * r * 0.3, gy + 4);
+        ctx.lineTo(x + sd * r * 0.5, gy - h * 0.22);
+        ctx.lineTo(x + sd * r * 1.05, gy - h * 0.12);
+        ctx.lineTo(x + sd * r * 1.15, gy + 4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.strokeStyle = b;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x + sd * r * 0.55, gy - h * 0.18);
+        ctx.lineTo(x + sd * r * 0.8, gy - h * 0.05);
+        ctx.stroke();
+      }
+      break;
+    }
     default:
       ctx.restore();
       return false;
@@ -2028,12 +2249,166 @@ export function drawZoneLook(ctx: CanvasRenderingContext2D, id: string, x: numbe
       dial(ctx, x, gy - r * 0.45, r * 0.38, b, a, -Math.PI / 2 + tick, tick * 0.2, 3);
       break;
     }
+    // ----- boss fields -----
+    case "null-field": {
+      // a dome of nothing: black inside, a cyan event horizon, rings falling inward
+      const cy = gy - r * 0.45;
+      const dome = ctx.createRadialGradient(x, gy, 0, x, gy, r);
+      dome.addColorStop(0, al(a, 0.85));
+      dome.addColorStop(0.75, al(a, 0.55));
+      dome.addColorStop(1, al(a, 0));
+      ctx.fillStyle = dome;
+      ctx.beginPath();
+      ctx.ellipse(x, gy, r, r * 0.95, 0, Math.PI, 0);
+      ctx.fill();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = b;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.ellipse(x, gy, r, r * 0.95, 0, Math.PI, 0);
+      ctx.stroke();
+      for (let i = 0; i < 3; i++) {
+        const k = 1 - ((t * 0.7 + i / 3) % 1);
+        ctx.strokeStyle = al(b, 0.7 * (1 - k));
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(x, cy, r * 0.9 * k, r * 0.22 * k, 0, 0, TAU);
+        ctx.stroke();
+      }
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = "hsl(0 0% 0%)";
+      ctx.beginPath();
+      ctx.arc(x, cy, 14, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = "hsl(0 0% 100%)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      break;
+    }
+    case "eye-of-the-storm": {
+      // a whirlpool on the floor under a spinning cloud, with lightning down the middle
+      for (let i = 0; i < 6; i++) {
+        const k = i / 5;
+        ctx.strokeStyle = i % 2 ? al(b, 0.8) : al("hsl(210 80% 45%)", 0.85);
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(x, gy - 2, r * (1 - k * 0.8), r * 0.16 * (1 - k * 0.8), 0, t * 6 + i, t * 6 + i + 4.4);
+        ctx.stroke();
+      }
+      const top = gy - r * 1.6;
+      ctx.fillStyle = al("hsl(215 25% 28%)", 0.9);
+      for (let i = 0; i < 6; i++) {
+        const an = t * 2 + (i / 6) * TAU;
+        ctx.beginPath();
+        ctx.arc(x + Math.cos(an) * r * 0.55, top + Math.sin(an) * 10, 20, 0, TAU);
+        ctx.fill();
+      }
+      for (let i = 0; i < 4; i++) {
+        const an = (i / 4) * TAU - t * 3;
+        ctx.strokeStyle = al(b, 0.35);
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(x + Math.cos(an) * r * 0.5, top + 14);
+        ctx.quadraticCurveTo(x + Math.cos(an + 1) * r * 0.7, (top + gy) / 2, x + Math.cos(an + 2) * r * 0.9, gy - 4);
+        ctx.stroke();
+      }
+      if (Math.sin(t * 13) > 0.55) {
+        ctx.globalCompositeOperation = "lighter";
+        boltStroke(ctx, x, top + 10, x + Math.sin(t * 40) * 16, gy - 6, 14, al("hsl(54 100% 70%)", 0.9), 4);
+      }
+      break;
+    }
+    case "magma-lake": {
+      // a pool of lava with a black crust and bubbles that pop
+      ctx.globalCompositeOperation = "lighter";
+      glow(ctx, x, gy - 10, r * 1.1, a, 0.5);
+      ctx.globalCompositeOperation = "source-over";
+      const gr = ctx.createRadialGradient(x, gy, 0, x, gy, r);
+      gr.addColorStop(0, b);
+      gr.addColorStop(0.6, a);
+      gr.addColorStop(1, "hsl(10 60% 22%)");
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.ellipse(x, gy + 2, r, 15, 0, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = "hsl(12 30% 14%)";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.fillStyle = "hsl(12 25% 16% / 0.8)";
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath();
+        ctx.ellipse(x + (i - 1.5) * r * 0.45 + Math.sin(t + i) * 4, gy + 2 + (i % 2 ? 4 : -3), r * 0.14, 3, 0.2, 0, TAU);
+        ctx.fill();
+      }
+      for (let i = 0; i < 5; i++) {
+        const k = (t * 0.9 + i * 0.37) % 1;
+        const bx = x + Math.sin(i * 12.9) * r * 0.75;
+        ctx.strokeStyle = al(b, 1 - k);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(bx, gy - 2 - k * 26, 3 + k * 7, Math.PI, 0);
+        ctx.stroke();
+      }
+      break;
+    }
     default:
       ctx.restore();
       return false;
   }
   ctx.restore();
   return true;
+}
+
+// ---------- annihilation (Nullshade) ----------
+/** Matter (white) and antimatter (black) orbs slide in from both sides of the spot; at k = 1 they meet and cancel out in a flash. */
+export function drawAnnihilation(ctx: CanvasRenderingContext2D, id: string, x: number, y: number, r: number, k: number, t: number) {
+  const lk = lookOf(id);
+  const b = lk?.b ?? "hsl(268 70% 22%)";
+  ctx.save();
+  if (k < 1) {
+    const e = out3(Math.min(1, k));
+    const gap = (1 - e) * (r * 3.2);
+    // the target line
+    ctx.strokeStyle = al("hsl(186 100% 72%)", 0.35 + 0.3 * Math.sin(t * 30));
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // matter
+    ctx.globalCompositeOperation = "lighter";
+    glow(ctx, x - gap, y, 28, "hsl(186 100% 80%)", 0.8);
+    glow(ctx, x - gap, y, 12, "hsl(0 0% 100%)", 1);
+    // antimatter
+    ctx.globalCompositeOperation = "source-over";
+    glow(ctx, x + gap, y, 30, b, 0.6);
+    ctx.fillStyle = "hsl(268 70% 5%)";
+    ctx.beginPath();
+    ctx.arc(x + gap, y, 11, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = "hsl(186 100% 72%)";
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+  } else {
+    const u = Math.min(1, (k - 1) / 0.55);
+    const e = out3(u);
+    ctx.globalAlpha = 1 - u;
+    ctx.globalCompositeOperation = "lighter";
+    glow(ctx, x, y, r * (0.6 + e * 1.4), "hsl(0 0% 100%)", 1);
+    ctx.strokeStyle = "hsl(186 100% 80%)";
+    ctx.lineWidth = 6 * (1 - u) + 1;
+    ctx.beginPath();
+    ctx.arc(x, y, r * (0.3 + e * 1.5), 0, TAU);
+    ctx.stroke();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.strokeStyle = "hsl(268 70% 10%)";
+    ctx.lineWidth = 8 * (1 - u) + 1;
+    ctx.beginPath();
+    ctx.arc(x, y, r * (0.15 + e * 1.1), 0, TAU);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 // ---------- rushing moves ----------

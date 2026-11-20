@@ -1,20 +1,21 @@
 // Story mode: chapters of stages. The player brings two fighters into each stage and either fuses
 // them into one hybrid or sends them in side by side with team attacks. Progress lives in the browser.
 import { DEF_BY_ID, fusionOrder, hybridOf, withTeamAttack, type FighterDef, type Power } from "./fighters";
+import { BOSSES, type BossId } from "./bosses";
 
 export { fusionOrder };
 
 export type Stage = {
-  /** Enemies on the other side. A boss is a hybrid fused from two fighters with extra health. */
+  /** Enemies on the other side. A boss is its own fighter from bosses.ts, with its own moves and design. */
   enemies: Power[];
   /** Share of their normal health the enemies bring, so a crowd stays beatable for a pair. */
   enemyHp?: number;
-  boss?: { a: Power; b: Power; name: string; hpBoost: number };
+  boss?: BossId;
 };
 
 export type Chapter = { stages: Stage[] };
 
-/** The five chapters, each ten stages ending on a hybrid boss. A chapter opens once the one before it is cleared. */
+/** The five chapters, each ten stages ending on a boss. A chapter opens once the one before it is cleared. */
 export const CHAPTERS: Chapter[] = [
   {
     stages: [
@@ -27,7 +28,7 @@ export const CHAPTERS: Chapter[] = [
       { enemies: ["vita", "toxi", "umbra"], enemyHp: 0.4 },
       { enemies: ["terra", "electro", "lux"], enemyHp: 0.42 },
       { enemies: ["pyro", "hydro", "aero"], enemyHp: 0.48 },
-      { enemies: [], boss: { a: "umbra", b: "gravi", name: "Nullshade", hpBoost: 1.5 } },
+      { enemies: [], boss: "nullshade" },
     ],
   },
   {
@@ -42,7 +43,7 @@ export const CHAPTERS: Chapter[] = [
       { enemies: ["toxi", "shift", "vita"], enemyHp: 0.45 },
       { enemies: ["cryo", "hydro", "electro"], enemyHp: 0.48 },
       { enemies: ["aero", "electro", "lux"], enemyHp: 0.5 },
-      { enemies: [], boss: { a: "electro", b: "hydro", name: "Maelstrom", hpBoost: 1.65 } },
+      { enemies: [], boss: "maelstrom" },
     ],
   },
   {
@@ -57,7 +58,7 @@ export const CHAPTERS: Chapter[] = [
       { enemies: ["vita", "pyro", "aero"], enemyHp: 0.45 },
       { enemies: ["terra", "gravi", "chrono"], enemyHp: 0.34 },
       { enemies: ["pyro", "terra", "lux", "electro"], enemyHp: 0.3 },
-      { enemies: [], boss: { a: "pyro", b: "terra", name: "Magmaw", hpBoost: 1.25 } },
+      { enemies: [], boss: "magmaw" },
     ],
   },
   {
@@ -72,7 +73,7 @@ export const CHAPTERS: Chapter[] = [
       { enemies: ["cryo", "lux", "tele"], enemyHp: 0.34 },
       { enemies: ["gravi", "cryo", "psy"], enemyHp: 0.45 },
       { enemies: ["chrono", "tele", "shift", "umbra"], enemyHp: 0.23 },
-      { enemies: [], boss: { a: "cryo", b: "chrono", name: "Everwinter", hpBoost: 1.95 } },
+      { enemies: [], boss: "everwinter" },
     ],
   },
   {
@@ -87,7 +88,7 @@ export const CHAPTERS: Chapter[] = [
       { enemies: ["pyro", "cryo", "hydro", "terra"], enemyHp: 0.27 },
       { enemies: ["magneto", "gravi", "tele", "umbra"], enemyHp: 0.19 },
       { enemies: ["pyro", "electro", "aero", "lux", "umbra"], enemyHp: 0.16 },
-      { enemies: [], boss: { a: "psy", b: "tele", name: "The Riftmaker", hpBoost: 2.1 } },
+      { enemies: [], boss: "riftmaker" },
     ],
   },
 ];
@@ -109,11 +110,7 @@ export function playerSide(p: Pair): FighterDef[] {
 }
 
 export function enemySide(stage: Stage): FighterDef[] {
-  if (stage.boss) {
-    const { a, b, name, hpBoost } = stage.boss;
-    const h = hybridOf(a, b, name);
-    return [{ ...h, hp: Math.round(h.hp * hpBoost) }];
-  }
+  if (stage.boss) return [BOSSES[stage.boss]];
   const share = stage.enemyHp ?? 1;
   return stage.enemies.map((id) => {
     const d = DEF_BY_ID[id];

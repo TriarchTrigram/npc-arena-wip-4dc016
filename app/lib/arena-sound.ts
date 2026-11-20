@@ -223,7 +223,7 @@ const IMPACT: Record<Power, Voice> = {
 /** How long each kind of move sounds, relative to its fighter's voice. */
 const KIND_LEN: Record<MoveKind, number> = {
   melee: 0.5, projectile: 0.75, beam: 1.5, burst: 1.15, dash: 0.9, eruption: 0.6,
-  rain: 1.1, blink: 0.55, heal: 1.2, zone: 1.3, pull: 0.8, mimic: 0.8,
+  rain: 1.1, blink: 0.55, heal: 1.2, zone: 1.3, pull: 0.8, mimic: 0.8, warp: 2, annihilate: 1.3,
 };
 
 const KICK_ANIMS: Anim[] = ["kick", "spin"];

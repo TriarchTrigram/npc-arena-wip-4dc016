@@ -19,7 +19,9 @@ export type MoveKind =
   | "heal"       // restore own health
   | "zone"       // lingering field on the ground
   | "pull"       // yank the target in
-  | "mimic";     // borrow a move from the last power that hit
+  | "mimic"      // borrow a move from the last power that hit
+  | "warp"       // boss only: tear reality and move the whole fight to another realm
+  | "annihilate"; // boss only: matter and antimatter close in on the target from both sides and cancel out
 
 /** Body animation the stickman plays for a move. */
 export type Anim = "jab" | "kick" | "cast" | "thrust" | "raise" | "slam" | "uppercut" | "spin" | "lunge";
@@ -63,7 +65,16 @@ export type Move = {
   below?: number;
   /** Element the move is drawn in, when it is not the fighter's own (a hybrid's second parent). */
   power?: Power;
+  /** A shot that rolls along the floor instead of leaving the hand (a tidal wall). */
+  ground?: boolean;
+  /** A field that deletes enemy shots flying into it. */
+  erase?: boolean;
+  /** Reaches every enemy on the field, wherever they stand. */
+  world?: boolean;
 };
+
+/** A Story boss's own body design, drawn by the engine on top of the stickman. */
+export type BossDesign = "antimatter" | "maelstrom" | "magmaw" | "everwinter" | "riftmaker";
 
 export type FighterDef = {
   id: Power;
@@ -78,6 +89,8 @@ export type FighterDef = {
   moves: Move[];
   /** Set on a hybrid: the two fighters it was fused from. */
   parents?: [Power, Power];
+  /** Set on a Story boss: its own body design. A boss is no fighter's mix; `id` is only the voice and entrance it borrows. */
+  boss?: BossDesign;
 };
 
 const M = (m: Omit<Move, "wind" | "act" | "rec"> & Partial<Pick<Move, "wind" | "act" | "rec">>): Move => ({

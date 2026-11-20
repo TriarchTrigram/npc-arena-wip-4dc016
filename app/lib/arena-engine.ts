@@ -2,7 +2,8 @@
 import { DEF_BY_ID, juggernautOf, rosterIdOf, type Anim, type FighterDef, type Move, type Power, type StatusEffect } from "./fighters";
 import type { Sfx } from "./arena-sound";
 import { INTROS, INTRO_LEN, INTRO_ARRIVED, type IntroBurst, type IntroPose } from "./spawn-intros";
-import { LOOKS, setLookTint, drawFx, drawSpark, drawShotLook, drawBeamLook, drawEruptionLook, drawZoneLook, drawRushLook, eruptionColors, type Fx, type PShape } from "./move-looks";
+import { LOOKS, setLookTint, drawFx, drawSpark, drawShotLook, drawBeamLook, drawEruptionLook, drawZoneLook, drawRushLook, drawAnnihilation, eruptionColors, type Fx, type PShape } from "./move-looks";
+import { drawBossDesign } from "./boss-designs";
 
 export const W = 960;
 export const H = 600;
@@ -148,7 +149,7 @@ const RAGE_POSE: Pose = { t: -0.22, aF1: 0.5, aF2: 0.2, aB1: -0.5, aB2: -0.2, lF
 const ROAR_POSE: Pose = { ...RAGE_POSE, t: -0.3, ...ANIMS.raise.strike };
 const rageOf = (f?: Fighter | null) => (f?.rage ? RAGE[f.def.id] ?? null : null);
 /** Rage only belongs to the pure fighters, not to a hybrid carrying their power. */
-const canRage = (f: Fighter) => !!RAGE[f.def.id] && !f.def.parents && !f.rage;
+const canRage = (f: Fighter) => !!RAGE[f.def.id] && !f.def.parents && !f.def.boss && !f.rage;
 /** Whose rage colours new particles and effects take while a fighter acts. */
 let paint: Rage | null = null;
 
@@ -203,6 +204,20 @@ type Wave = { x: number; y: number; r: number; life: number; max: number; a: str
 
 export type FeedItem = { id: number; killer: string | null; victim: string };
 
+// ---------- realms (The Riftmaker's Reality Warp) ----------
+export type Realm = "moon" | "desert";
+const REALMS: Realm[] = ["moon", "desert"];
+const REALM_TIME = 11;
+const REALM_FADE = 0.45;
+/** How strongly things fall in each realm. */
+const REALM_GRAV: Record<Realm, number> = { moon: 0.36, desert: 1 };
+const REALM_NAME: Record<Realm, string> = { moon: "THE MOON", desert: "THE DESERT" };
+/** Gravity now, set each frame from the realm the fight is in. */
+let gravK = 1;
+/** Matter and antimatter closing in on a spot before they cancel out. */
+type Anni = { owner: number; power: Power; move: Move; x: number; y: number; t: number; done: boolean };
+const ANNI_TIME = 0.6;
+
 export type Game = {
   t: number;
   fighters: Fighter[];
@@ -233,6 +248,15 @@ export type Game = {
   cut: { key: number; t: number; max: number } | null;
   /** Entrances before READY / FIGHT: the match holds until every fighter has arrived. */
   intro: { t: number; max: number } | null;
+  /** Where reality has been moved to, for how long, and who moved it. */
+  realm: { id: Realm; t: number; left: number; by: number; heat: number } | null;
+  /** A realm just ended: the old one fades out over the arena. */
+  realmOut: { id: Realm; t: number } | null;
+  annis: Anni[];
+  /** Everwinter's Time Stop: the arena stays grey and still until this time. */
+  stopUntil: number;
+  /** White flash over everything, in seconds left. */
+  flash: number;
 };
 
 let feedId = 0;
@@ -262,7 +286,7 @@ export function newGame(ids: (Power | FighterDef)[], preview = false, teams?: nu
     const slot = slotOf.get(i) ?? i;
     const x = n === 2 ? (slot === 0 ? 270 : W - 270) : 70 + ((W - 140) * (slot + 0.5)) / n;
     // a hybrid stands a little taller than a pure-blooded fighter
-    const sc = isJugg ? scale * 1.25 : def.parents ? scale * 1.12 : scale;
+    const sc = isJugg ? scale * 1.25 : def.boss ? scale * 1.22 : def.parents ? scale * 1.12 : scale;
     const hoverY = GROUND - HOVER_HIGH * sc;
     return {
       key: i, def,
@@ -291,11 +315,13 @@ export function newGame(ids: (Power | FighterDef)[], preview = false, teams?: nu
     };
   });
   const introEnd = Math.max(0, ...fighters.map((f) => f.spawnAt)) + INTRO_LEN + 0.2;
+  gravK = 1;
   return {
     t: 0, fighters, projectiles: [], beams: [], eruptions: [], zones: [], particles: [], pops: [], waves: [], fx: [], feed: [], sfx: [],
     shake: 0, hitstop: 0, ending: 0, over: false, winner: null, preview, duel: n === 2 && !teamMode,
     teamMode, winnerId: null, winnerTeam: null, cut: null,
     intro: preview || n === 0 ? null : { t: 0, max: introEnd },
+    realm: null, realmOut: null, annis: [], stopUntil: 0, flash: 0,
   };
 }
 
@@ -634,6 +660,12 @@ function fire(g: Game, f: Fighter, act: Action) {
           const ang = base + clamp(d, -lim, lim) + spread;
           vx = Math.cos(ang) * sp; vy = Math.sin(ang) * sp;
         }
+        if (m.ground) {
+          // a wall of water rolls along the floor from the feet
+          const r = (m.size ?? 10) * s;
+          g.projectiles.push({ x: f.x + f.facing * 30 * s, y: GROUND - r, vx: f.facing * sp, vy: 0, r, grav: 0, rot: 0, owner: f.key, power, move: m, life: 4, hits: [], shape: m.shape ?? "wave" });
+          continue;
+        }
         g.projectiles.push({ x: h.x, y: h.y, vx, vy, r: (m.size ?? 10) * s, grav, rot: 0, owner: f.key, power, move: m, life: 3, hits: [], shape: m.shape ?? "orb" });
       }
       emitMove(g, m, power, h.x, h.y, 10, 200);
@@ -677,7 +709,14 @@ function fire(g: Game, f: Fighter, act: Action) {
       const r = (m.radius ?? 120) * s;
       for (const o of enemies) {
         const oc = center(o);
-        if (Math.hypot(oc.x - c.x, (oc.y - c.y) * 0.8) < r) hit(g, f, o, m, power, Math.sign(o.x - f.x) || f.facing);
+        if (m.world || Math.hypot(oc.x - c.x, (oc.y - c.y) * 0.8) < r) hit(g, f, o, m, power, Math.sign(o.x - f.x) || f.facing);
+      }
+      if (m.world) {
+        // every enemy on the field is caught at once; the arena goes still
+        g.stopUntil = g.t + (m.statusDur ?? 1.5);
+        g.flash = Math.max(g.flash, 0.25);
+        pop(g, W / 2, 150, m.name.toUpperCase(), LOOKS[m.id]?.b ?? def.glow, 44, 1.6);
+        sfx(g, { k: "rage", power });
       }
       if (m.heal) { f.hp = Math.min(f.maxHp, f.hp + m.heal); pop(g, c.x, c.y - 70 * s, `+${m.heal}`, DEF_BY_ID.vita.glow, 18); }
       if (!LOOKS[m.id]) {
@@ -695,6 +734,18 @@ function fire(g: Game, f: Fighter, act: Action) {
       break; // handled while active
     case "eruption": {
       const tx = target ? clamp(target.x + target.vx * 0.15, 30, W - 30) : f.x + f.facing * 200;
+      const n = m.count ?? 1;
+      if (n > 1) {
+        // a fault line: the ground splits from the caster's feet to past the target, one pillar after another
+        const dir = Math.sign(tx - f.x) || f.facing;
+        const step = Math.max(70, (Math.abs(tx - f.x) + 60) / n);
+        for (let i = 0; i < n; i++) {
+          const x = f.x + dir * (60 * s + step * i);
+          if (x < 20 || x > W - 20) break;
+          g.eruptions.push({ owner: f.key, power, move: m, x, t: -i * 0.13, fired: false });
+        }
+        break;
+      }
       g.eruptions.push({ owner: f.key, power, move: m, x: tx, t: 0, fired: false });
       break;
     }
@@ -759,7 +810,109 @@ function fire(g: Game, f: Fighter, act: Action) {
     }
     case "mimic":
       break;
+    case "warp":
+      warpReality(g, f, m);
+      break;
+    case "annihilate": {
+      if (!target) break;
+      const tc = center(target);
+      g.annis.push({ owner: f.key, power, move: m, x: target.x + target.vx * 0.2, y: tc.y, t: 0, done: false });
+      break;
+    }
   }
+}
+
+/** The Riftmaker tears reality: a white flash, everyone lands somewhere new, and the fight goes on in another realm. */
+function warpReality(g: Game, f: Fighter, m: Move) {
+  const opts = REALMS.filter((r) => r !== g.realm?.id);
+  const id = pick(opts);
+  if (g.realm) g.realmOut = { id: g.realm.id, t: 0 };
+  g.realm = { id, t: 0, left: REALM_TIME, by: f.key, heat: 0 };
+  g.flash = 0.55;
+  g.shake = Math.max(g.shake, 16);
+  g.hitstop = Math.max(g.hitstop, 0.12);
+  // everyone is thrown to a new spot in the new place
+  const alive = g.fighters.filter((o) => o.alive);
+  const spots = alive.map((_, i) => 90 + ((W - 180) * (i + 0.5)) / alive.length).sort(() => Math.random() - 0.5);
+  alive.forEach((o, i) => {
+    const c0 = center(o);
+    emitMove(g, m, m.power ?? f.def.id, c0.x, c0.y, 14, 300);
+    o.x = spots[i];
+    o.vx = 0;
+    if (!o.jugg) { o.y = GROUND - 140; o.vy = -120; o.onGround = false; }
+    o.act = o === f ? o.act : null;
+    o.dashT = 0;
+    o.facing = o.x < W / 2 ? 1 : -1;
+    const c1 = center(o);
+    emitMove(g, m, m.power ?? f.def.id, c1.x, c1.y, 14, 300);
+  });
+  pop(g, W / 2, 130, "REALITY WARP", LOOKS[m.id]?.b ?? f.def.glow, 40, 1.6);
+  pop(g, W / 2, 180, REALM_NAME[id], "white", 30, 1.8);
+  sfx(g, { k: "rage", power: m.power ?? f.def.id });
+}
+
+/** Realm upkeep: the desert's sun burns whoever is not the one who brought everyone there; the realm wears off after a while. */
+function stepRealm(g: Game, dt: number) {
+  if (g.realmOut) {
+    g.realmOut.t += dt;
+    if (g.realmOut.t > REALM_FADE) g.realmOut = null;
+  }
+  const rl = g.realm;
+  gravK = rl ? REALM_GRAV[rl.id] : 1;
+  if (!rl) return;
+  rl.t += dt;
+  rl.left -= dt;
+  const owner = g.fighters[rl.by];
+  if (rl.left <= 0 || !owner?.alive) {
+    g.realmOut = { id: rl.id, t: 0 };
+    g.realm = null;
+    gravK = 1;
+    g.flash = Math.max(g.flash, 0.35);
+    pop(g, W / 2, 150, "REALITY RESTORED", "white", 30, 1.4);
+    return;
+  }
+  if (rl.id === "desert") {
+    rl.heat += dt;
+    if (rl.heat >= 1.6) {
+      rl.heat = 0;
+      for (const o of g.fighters) if (o.alive && foe(owner, o)) o.status.burn = Math.max(o.status.burn, g.t + 0.6 * (o.jugg ? 0.33 : 1));
+    }
+    if (Math.random() < dt * 30 && g.particles.length < 900) {
+      const y = rand(GROUND - 260, GROUND - 4);
+      g.particles.push({ x: -10, y, vx: rand(260, 520), vy: rand(-20, 20), life: 2.2, max: 2.2, size: rand(2, 4), color: Math.random() < 0.5 ? "hsl(36 70% 72%)" : "hsl(28 60% 60%)", shape: "dust", grav: 0, add: false, rot: 0 });
+    }
+  } else if (Math.random() < dt * 6 && g.particles.length < 900) {
+    // moon dust drifts up off the surface
+    g.particles.push({ x: rand(0, W), y: GROUND - 2, vx: rand(-10, 10), vy: -rand(10, 30), life: 2.5, max: 2.5, size: rand(2, 4), color: "hsl(220 10% 82%)", shape: "dot", grav: -2, add: false, rot: 0 });
+  }
+}
+
+/** Matter and antimatter orbs close in on a spot from both sides, then cancel out in a blast. */
+function stepAnnis(g: Game, dt: number) {
+  for (const a of g.annis) {
+    a.t += dt;
+    if (a.done || a.t < ANNI_TIME) continue;
+    a.done = true;
+    const owner = g.fighters[a.owner];
+    const r = (a.move.radius ?? 70) * (owner?.scale ?? 1);
+    const prev = paint;
+    paint = null;
+    for (const o of g.fighters) {
+      if (!o.alive || !owner || !foe(owner, o)) continue;
+      const c = center(o);
+      if (Math.hypot(c.x - a.x, (c.y - a.y) * 0.8) < r + 14 * o.scale) hit(g, owner, o, a.move, a.power, Math.sign(o.x - a.x) || 1);
+    }
+    for (let i = 0; i < 24; i++) {
+      const an = (i / 24) * Math.PI * 2;
+      g.particles.push({ x: a.x, y: a.y, vx: Math.cos(an) * 700, vy: Math.sin(an) * 700, life: 0.35, max: 0.35, size: 5, color: i % 2 ? "white" : "hsl(268 60% 30%)", shape: "spark", grav: 0, add: i % 2 === 1, rot: 0 });
+    }
+    paint = prev;
+    pop(g, a.x, a.y - 70, "ANNIHILATED", "white", 22, 0.9);
+    sfx(g, { k: "erupt", power: a.power, move: a.move.id });
+    g.shake = Math.max(g.shake, 14);
+    g.hitstop = Math.max(g.hitstop, 0.08);
+  }
+  g.annis = g.annis.filter((a) => a.t < ANNI_TIME + 0.35);
 }
 
 /** Picks who to fight: close, hurt, open to a punish, or whoever hit last. Sticks with a target unless a better one shows up. */
@@ -796,7 +949,8 @@ function usableMoves(g: Game, f: Fighter, target: Fighter) {
     adx <= reachOf(m, s) + 10 &&
     adx >= (m.minRange ?? 0) &&
     Math.abs(target.y - f.y) < (m.kind === "melee" ? 70 * s : 400) &&
-    (m.kind !== "heal" || f.hp / f.maxHp < (m.below ?? 0.6)),
+    (m.kind !== "heal" || f.hp / f.maxHp < (m.below ?? 0.6)) &&
+    (m.kind !== "warp" || !g.realm || g.realm.left < 3),
   );
 }
 
@@ -816,6 +970,9 @@ function scoreMove(g: Game, f: Fighter, m: Move, target: Fighter) {
   if (!target.onGround && (m.kind === "eruption" || m.kind === "zone")) sc -= target.jugg ? 14 : 8;
   if (m.kind === "heal") sc = 34 * (1 - f.hp / f.maxHp);
   if (m.kind === "mimic") sc = f.lastHitBy ? 12 : 5;
+  if (m.kind === "warp") sc = 40;
+  if (m.world) sc = g.fighters.some((o) => o.alive && foe(f, o) && o.status.freeze > g.t) ? -10 : 32;
+  if (m.kind === "annihilate") sc += 8;
   if (f.comboT > 0 && m.kind === "melee") sc += 14;
   return sc + rand(0, 5);
 }
@@ -1343,7 +1500,7 @@ function physics(f: Fighter, dt: number) {
   if (f.jugg && f.alive) {
     f.onGround = false;
     f.vy += ((f.hoverY - f.y) * 5 - f.vy) * Math.min(1, dt * 6);
-  } else if (!f.onGround) f.vy += GRAV * dt;
+  } else if (!f.onGround) f.vy += GRAV * gravK * dt;
   f.x += f.vx * dt;
   f.y += f.vy * dt;
   if (f.y >= GROUND) {
@@ -1376,6 +1533,8 @@ export function step(g: Game, dt: number) {
     return;
   }
   g.t += dt;
+  g.flash = Math.max(0, g.flash - dt);
+  stepRealm(g, dt);
   const alive = g.fighters.filter((f) => f.alive);
   for (const f of g.fighters) updateFighter(g, f, dt);
 
@@ -1410,7 +1569,7 @@ export function step(g: Game, dt: number) {
       const d = Math.hypot(p.x - c.x, p.y - c.y);
       if (d < 100 && d > 0) { p.vx += ((p.x - c.x) / d) * 1100 * dt; p.vy += ((p.y - c.y) / d) * 1100 * dt; }
     }
-    p.vy += p.grav * dt;
+    p.vy += p.grav * gravK * dt;
     p.x += p.vx * dt;
     p.y += p.vy * dt;
     p.rot += dt * 10;
@@ -1438,7 +1597,7 @@ export function step(g: Game, dt: number) {
   }
   paint = null;
   // power clashes: two shots meet, or a shot runs into a beam
-  const shots = g.projectiles.filter((p) => p.life > 0 && p.move.kind === "projectile");
+  const shots = g.projectiles.filter((p) => p.life > 0 && p.move.kind === "projectile" && !p.move.ground);
   for (let i = 0; i < shots.length; i++) {
     const p = shots[i];
     if (p.life <= 0) continue;
@@ -1501,7 +1660,21 @@ export function step(g: Game, dt: number) {
       if (z.move.pullIn) o.x += Math.sign(z.x - o.x) * Math.min(Math.abs(z.x - o.x), z.move.pullIn * dt);
     }
   }
+  // fields that erase matter: enemy shots flying in are deleted
+  for (const z of g.zones) {
+    if (!z.move.erase) continue;
+    const owner = g.fighters[z.owner];
+    const r = z.move.radius ?? 100;
+    for (const p of g.projectiles) {
+      if (p.life <= 0 || !foe(owner, g.fighters[p.owner]) || Math.abs(p.x - z.x) > r || p.y < GROUND - r * 1.3) continue;
+      p.life = 0;
+      g.particles.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 0.3, max: 0.3, size: 26, color: "white", shape: "ring", grav: 0, add: true, rot: 0 });
+      pop(g, p.x, p.y - 24, "erased", LOOKS[z.move.id]?.b ?? "white", 15, 0.6);
+    }
+  }
+  g.projectiles = g.projectiles.filter((p) => p.life > 0);
   g.zones = g.zones.filter((z) => z.life > 0);
+  stepAnnis(g, dt);
 
   tickBits(g, dt);
 
@@ -1539,6 +1712,207 @@ function tickBits(g: Game, dt: number) {
 }
 
 // ---------- drawing ----------
+const realmArt: Partial<Record<Realm, HTMLCanvasElement>> = {};
+
+/** The realm the fight was warped into, faded in over the home arena (and faded out once it ends). */
+function drawRealm(ctx: CanvasRenderingContext2D, g: Game) {
+  const show = (id: Realm, a: number) => {
+    if (a <= 0) return;
+    const art = (realmArt[id] ??= buildRealmBackdrop(id));
+    ctx.globalAlpha = clamp(a, 0, 1);
+    ctx.drawImage(art, -12, -8, W + 24, H + 16);
+    ctx.globalAlpha = 1;
+  };
+  if (g.realmOut) show(g.realmOut.id, 1 - g.realmOut.t / REALM_FADE);
+  if (g.realm) {
+    show(g.realm.id, Math.min(g.realm.t, g.realm.left) / REALM_FADE);
+    if (g.realm.id === "desert") {
+      // heat shimmer low over the sand
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      ctx.strokeStyle = "hsl(40 100% 92%)";
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 6; i++) {
+        const y = GROUND - 30 - i * 26;
+        ctx.beginPath();
+        for (let x = 0; x <= W; x += 24) ctx.lineTo(x, y + Math.sin(x * 0.03 + g.t * 5 + i) * 4);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+}
+
+/** A whole-arena painting for a realm: the Moon with Earth in a black sky, or dunes under a white-hot sun. */
+function buildRealmBackdrop(id: Realm): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext("2d")!;
+  let seed = id === "moon" ? 7 : 3;
+  const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+  if (id === "moon") {
+    const sky = ctx.createLinearGradient(0, 0, 0, GROUND);
+    sky.addColorStop(0, "hsl(235 45% 5%)");
+    sky.addColorStop(1, "hsl(240 30% 14%)");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 160; i++) {
+      ctx.fillStyle = `hsl(${rnd() < 0.2 ? 210 : 45} 60% 92% / ${0.3 + rnd() * 0.7})`;
+      const r = rnd() < 0.08 ? 1.8 : 1;
+      ctx.fillRect(rnd() * W, rnd() * (GROUND - 80), r, r);
+    }
+    // Earth
+    const ex = 730, ey = 140, er = 62;
+    const glowE = ctx.createRadialGradient(ex, ey, er * 0.8, ex, ey, er * 1.6);
+    glowE.addColorStop(0, "hsl(205 90% 70% / 0.35)");
+    glowE.addColorStop(1, "hsl(205 90% 70% / 0)");
+    ctx.fillStyle = glowE;
+    ctx.fillRect(ex - er * 2, ey - er * 2, er * 4, er * 4);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(ex, ey, er, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = "hsl(212 75% 46%)";
+    ctx.fillRect(ex - er, ey - er, er * 2, er * 2);
+    ctx.fillStyle = "hsl(118 38% 42%)";
+    for (const [dx, dy, rx, ry, rot] of [[-22, -18, 22, 14, 0.4], [14, 8, 18, 24, -0.3], [-8, 30, 14, 9, 0.2], [30, -30, 10, 7, 0.8]] as const) {
+      ctx.beginPath();
+      ctx.ellipse(ex + dx, ey + dy, rx, ry, rot, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "hsl(0 0% 100% / 0.55)";
+    for (const [dx, dy, rx] of [[-30, 4, 26], [20, -14, 20], [6, 40, 22]] as const) {
+      ctx.beginPath();
+      ctx.ellipse(ex + dx, ey + dy, rx, 4, -0.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // night side
+    const sh = ctx.createLinearGradient(ex - er, 0, ex + er, 0);
+    sh.addColorStop(0, "hsl(235 50% 4% / 0)");
+    sh.addColorStop(0.55, "hsl(235 50% 4% / 0.1)");
+    sh.addColorStop(1, "hsl(235 50% 4% / 0.85)");
+    ctx.fillStyle = sh;
+    ctx.fillRect(ex - er, ey - er, er * 2, er * 2);
+    ctx.restore();
+    // grey hills and the cratered floor
+    ctx.fillStyle = "hsl(230 8% 34%)";
+    ctx.beginPath();
+    ctx.moveTo(0, GROUND - 60);
+    for (let x = 0; x <= W; x += 40) ctx.lineTo(x, GROUND - 60 - Math.abs(Math.sin(x * 0.011)) * 50 - rnd() * 10);
+    ctx.lineTo(W, GROUND);
+    ctx.lineTo(0, GROUND);
+    ctx.fill();
+    const fl = ctx.createLinearGradient(0, GROUND - 20, 0, H);
+    fl.addColorStop(0, "hsl(225 6% 66%)");
+    fl.addColorStop(1, "hsl(225 8% 42%)");
+    ctx.fillStyle = fl;
+    ctx.fillRect(0, GROUND - 18, W, H - GROUND + 18);
+    for (let i = 0; i < 14; i++) {
+      const x = rnd() * W, y = GROUND - 8 + rnd() * (H - GROUND), r = 8 + rnd() * 26;
+      ctx.fillStyle = "hsl(225 8% 46%)";
+      ctx.beginPath();
+      ctx.ellipse(x, y, r, r * 0.28, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "hsl(225 10% 76%)";
+      ctx.beginPath();
+      ctx.ellipse(x, y + r * 0.06, r * 0.85, r * 0.2, 0, 0, Math.PI);
+      ctx.fill();
+    }
+  } else {
+    const sky = ctx.createLinearGradient(0, 0, 0, GROUND);
+    sky.addColorStop(0, "hsl(204 70% 62%)");
+    sky.addColorStop(0.6, "hsl(40 80% 82%)");
+    sky.addColorStop(1, "hsl(30 90% 74%)");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+    const sun = ctx.createRadialGradient(240, 110, 10, 240, 110, 200);
+    sun.addColorStop(0, "hsl(55 100% 98%)");
+    sun.addColorStop(0.18, "hsl(50 100% 88% / 0.9)");
+    sun.addColorStop(1, "hsl(40 100% 80% / 0)");
+    ctx.fillStyle = sun;
+    ctx.fillRect(0, 0, 520, 360);
+    // far dunes, a mesa, near dunes
+    const dune = (base: number, amp: number, col: string, k: number) => {
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.moveTo(0, GROUND);
+      for (let x = 0; x <= W; x += 10) ctx.lineTo(x, base - Math.sin(x * k + base) * amp - Math.sin(x * k * 2.3) * amp * 0.35);
+      ctx.lineTo(W, GROUND);
+      ctx.fill();
+    };
+    ctx.fillStyle = "hsl(18 45% 52%)";
+    ctx.beginPath();
+    ctx.moveTo(600, GROUND - 120);
+    ctx.lineTo(630, GROUND - 210); ctx.lineTo(760, GROUND - 214); ctx.lineTo(790, GROUND - 120);
+    ctx.fill();
+    dune(GROUND - 120, 26, "hsl(32 60% 66%)", 0.008);
+    dune(GROUND - 60, 22, "hsl(30 62% 58%)", 0.012);
+    const fl = ctx.createLinearGradient(0, GROUND - 20, 0, H);
+    fl.addColorStop(0, "hsl(36 70% 64%)");
+    fl.addColorStop(1, "hsl(28 60% 46%)");
+    ctx.fillStyle = fl;
+    ctx.fillRect(0, GROUND - 14, W, H - GROUND + 14);
+    ctx.strokeStyle = "hsl(30 50% 50% / 0.5)";
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 9; i++) {
+      const y = GROUND + 6 + i * 7, x0 = rnd() * W;
+      ctx.beginPath();
+      ctx.moveTo(x0, y);
+      ctx.quadraticCurveTo(x0 + 60, y - 4, x0 + 130, y);
+      ctx.stroke();
+    }
+    // a bleached rock and a cactus silhouette
+    ctx.fillStyle = "hsl(25 40% 38%)";
+    ctx.beginPath();
+    ctx.ellipse(110, GROUND - 6, 44, 18, 0, Math.PI, 0);
+    ctx.fill();
+    ctx.strokeStyle = "hsl(120 25% 30%)";
+    ctx.lineCap = "round";
+    ctx.lineWidth = 14;
+    ctx.beginPath();
+    ctx.moveTo(870, GROUND - 4); ctx.lineTo(870, GROUND - 110);
+    ctx.moveTo(870, GROUND - 60); ctx.lineTo(892, GROUND - 60); ctx.lineTo(892, GROUND - 90);
+    ctx.moveTo(870, GROUND - 46); ctx.lineTo(850, GROUND - 46); ctx.lineTo(850, GROUND - 70);
+    ctx.stroke();
+  }
+  return c;
+}
+
+/** Everwinter's Time Stop: the arena drains to a cold grey and a frozen clock face hangs over it. */
+function drawTimeStop(ctx: CanvasRenderingContext2D, g: Game) {
+  const left = g.stopUntil - g.t;
+  const a = clamp(Math.min(left, 0.3) / 0.3, 0, 1);
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.globalCompositeOperation = "saturation";
+  ctx.fillStyle = "hsl(0 0% 50%)";
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = "hsl(205 60% 70% / 0.16)";
+  ctx.fillRect(0, 0, W, H);
+  const cx = W / 2, cy = 250, r = 170;
+  ctx.strokeStyle = "hsl(44 90% 80% / 0.55)";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.lineWidth = 3;
+  for (let i = 0; i < 12; i++) {
+    const an = (i / 12) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(an) * r * 0.86, cy + Math.sin(an) * r * 0.86);
+    ctx.lineTo(cx + Math.cos(an) * r * 0.97, cy + Math.sin(an) * r * 0.97);
+    ctx.stroke();
+  }
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy); ctx.lineTo(cx, cy - r * 0.7);
+  ctx.moveTo(cx, cy); ctx.lineTo(cx + r * 0.45, cy + r * 0.12);
+  ctx.stroke();
+  ctx.restore();
+}
+
 export function buildBackdrop(): HTMLCanvasElement {
   const c = document.createElement("canvas");
   c.width = W;
@@ -1791,9 +2165,13 @@ function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter, o: { al
 
   if (f.jugg) drawWings(ctx, g, f, shoulder, face);
   if (rg) drawRageAura(ctx, g, f, rg, hip, head);
+  const bt = g.t + (g.intro?.t ?? 0) + f.key;
+  const bossPts = { hip, neck, shoulder, head, kF, fF, kB, fB, eF, hF, eB, hB };
+  if (f.def.boss && !o.solid) drawBossDesign(ctx, f.def.boss, "back", bossPts, s, face, bt, f.alive, f.vx);
 
-  // scarf trailing from the neck
+  // scarf trailing from the neck (a boss wears its own design instead)
   const wave = Math.sin((g.t + (g.intro?.t ?? 0)) * 12 + f.key) * 4 * s;
+  if (!f.def.boss) {
   const sx = -face * (16 + Math.abs(f.vx) * 0.03) * s;
   ctx.beginPath();
   ctx.moveTo(neck.x, neck.y + 2 * s);
@@ -1804,6 +2182,7 @@ function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter, o: { al
   ctx.strokeStyle = o.solid ?? rg?.glow ?? f.def.glow;
   ctx.lineWidth = 4 * s;
   ctx.stroke();
+  }
 
   limb(ctx, [hip, kB, fB], dark, lw, flash);
   limb(ctx, [shoulder, eB, hB], dark, lw, flash);
@@ -1871,6 +2250,7 @@ function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter, o: { al
     ctx.arc(ex + face * 1.3 * s, ey + 0.5 * s, 2 * s, 0, Math.PI * 2);
     ctx.fill();
   }
+  if (f.def.boss && !o.solid) drawBossDesign(ctx, f.def.boss, "front", bossPts, s, face, bt, f.alive, f.vx);
   ctx.globalAlpha = 1;
 
   if (!f.alive) return;
@@ -2042,9 +2422,15 @@ function glowDot(ctx: CanvasRenderingContext2D, x: number, y: number, r: number,
   ctx.fill();
 }
 
+/** A move's colours for the plain drawings: its own look's when it has one, else its element's. */
+function colsOf(id: string | undefined, power: Power) {
+  const lk = id ? LOOKS[id] : undefined;
+  return lk ? { color: lk.a, glow: lk.b } : DEF_BY_ID[power];
+}
+
 function drawProjectile(ctx: CanvasRenderingContext2D, p: Projectile, t: number) {
   if (drawShotLook(ctx, p.move.id, p, t)) return;
-  const def = DEF_BY_ID[p.power];
+  const def = colsOf(p.move.id, p.power);
   const ang = Math.atan2(p.vy, p.vx);
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
@@ -2147,7 +2533,7 @@ function drawProjectile(ctx: CanvasRenderingContext2D, p: Projectile, t: number)
 }
 
 function drawBeam(ctx: CanvasRenderingContext2D, b: Beam, t: number) {
-  const def = DEF_BY_ID[b.power];
+  const def = colsOf(b.look, b.power);
   const a = clamp(b.life / b.max, 0, 1);
   if (b.look && drawBeamLook(ctx, b.look, b, a, t)) return;
   const ex = b.x + Math.cos(b.ang) * b.len, ey = b.y + Math.sin(b.ang) * b.len;
@@ -2185,7 +2571,7 @@ function drawBeam(ctx: CanvasRenderingContext2D, b: Beam, t: number) {
 }
 
 function drawZone(ctx: CanvasRenderingContext2D, g: Game, z: Zone) {
-  const def = DEF_BY_ID[z.power];
+  const def = colsOf(z.move.id, z.power);
   const r = z.move.radius ?? 100;
   const a = clamp(Math.min(z.life, z.max - z.life) * 4, 0, 1);
   if (drawZoneLook(ctx, z.move.id, z.x, GROUND, r, a, g.t)) return;
@@ -2483,6 +2869,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, g: Game, backdrop: HTML
     ctx.translate(-fx, -fy);
   }
   ctx.drawImage(backdrop, -12, -8, W + 24, H + 16);
+  drawRealm(ctx, g);
   for (const z of g.zones) { tintBy(g.fighters[z.owner]); drawZone(ctx, g, z); }
   for (const e of g.eruptions) if (!e.fired) { tintBy(g.fighters[e.owner]); drawEruption(ctx, e); }
   setLookTint(null);
@@ -2502,6 +2889,10 @@ export function drawScene(ctx: CanvasRenderingContext2D, g: Game, backdrop: HTML
   setLookTint(null);
   if (hero) drawCutBackdrop(ctx, hero, ck, g.t + (cut?.t ?? 0));
   if (hero) { drawGhosts(ctx, hero); drawFighter(ctx, g, hero); }
+  for (const a of g.annis) {
+    const owner = g.fighters[a.owner];
+    drawAnnihilation(ctx, a.move.id, a.x, a.y, (a.move.radius ?? 70) * (owner?.scale ?? 1), a.t / ANNI_TIME, g.t);
+  }
   for (const x of g.fx) drawFx(ctx, x, g.t);
   for (const w of g.waves) drawWave(ctx, w);
   for (const p of g.particles) drawParticle(ctx, p);
@@ -2511,6 +2902,11 @@ export function drawScene(ctx: CanvasRenderingContext2D, g: Game, backdrop: HTML
   }
   ctx.globalAlpha = 1;
   ctx.restore();
+  if (g.stopUntil > g.t) drawTimeStop(ctx, g);
+  if (g.flash > 0) {
+    ctx.fillStyle = `hsl(0 0% 100% / ${clamp(g.flash / 0.4, 0, 0.9)})`;
+    ctx.fillRect(0, 0, W, H);
+  }
   if (hero && cut) {
     drawCutTitles(ctx, hero, ck);
     return;
