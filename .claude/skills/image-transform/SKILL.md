@@ -1,6 +1,6 @@
 ---
 name: image-transform
-description: Resizing, cropping (centre or an exact app-user-chosen region), compressing, rotating, format-converting, or removing the background of an existing image server-side — thumbnails, avatar crops, print crops, downscaling before an AI vision call, WebP/AVIF conversion, transparent cut-outs of the product, clothing and profile photos app users upload. Uses createImage(env).transform from ~stencil/image (Cloudflare Images binding, keyless, server-side). Load whenever the brief needs server-side image processing on uploaded or stored images — note that *displaying* a stored image at a different size needs no transform-and-store: the serving route resizes by URL (see the storage skill). For stamping a watermark/logo onto pictures (`transform`'s `watermark` option), load the `watermark` skill. Do NOT reach for Sharp, jimp, or any native/npm image library — they can't run on Cloudflare Workers.
+description: Resizing, cropping (centre, around the face, around a chosen point, or an exact app-user-chosen region), compressing, rotating, format-converting, or removing the background of an existing image server-side — thumbnails, avatar crops, print crops, downscaling before an AI vision call, WebP/AVIF conversion, transparent cut-outs of the product, clothing and profile photos app users upload. Uses createImage(env).transform from ~stencil/image (Cloudflare Images binding, keyless, server-side). Load whenever the brief needs server-side image processing on uploaded or stored images — note that *displaying* a stored image at a different size needs no transform-and-store: the serving route resizes by URL (see the storage skill). For stamping a watermark/logo onto pictures (`transform`'s `watermark` option), load the `watermark` skill. Do NOT reach for Sharp, jimp, or any native/npm image library — they can't run on Cloudflare Workers.
 metadata:
   agents: [chat, builder]
 ---
@@ -40,6 +40,12 @@ const { body, contentType } = await createImage(env).transform(source, {
   `squeeze`, `cover`, `crop`. `cover` and `crop` throw part of the picture away:
   use them for avatars, icons and uniform tiles the app builder asked for, never as
   the default for photos (see "Photos keep their shape" in the `storage` skill).
+- `gravity` — which part of the picture a `cover` or `crop` keeps: `"face"` centres on
+  the faces in the photo, `"auto"` on its most notable area, and `{ x, y }` (each 0–1
+  of the source, from its top-left) on a point. A point may carry `mode`: `"box-center"`
+  (default) centres the kept area on it, `"remainder"` shifts the cut the way CSS
+  `object-position` does. Default: the centre. See "Keep the face or a chosen point in
+  the crop" below.
 - `rotate` — `90`, `180`, or `270`.
 - `trim` — `{ top, right, bottom, left }`, pixels to cut off each edge of the source
   before any resize: the exact region an app user chose with a crop frame (offset and
@@ -144,6 +150,35 @@ const { body } = await createImage(env).transform(file, { trim, ...size, fit: "c
 A circle is stored as its square and shown with `rounded-full`. A phone photo saved
 sideways needs nothing extra: the browser's pixel size, `area` and `trim` all measure
 the photo as it is displayed, so never swap the axes or add `rotate` for it.
+
+## Keep the face or a chosen point in the crop
+
+A fixed-shape frame (an avatar circle, a card photo, a cover or hero band) cut from
+the centre takes heads off. Never write face-finding, a "head-safe" crop rule or
+`object-position` maths for it — say what to keep, on `<StoredPhoto>` or in `transform`:
+
+```tsx
+{/* a person: keep the face */}
+<StoredPhoto ratio="16/9" gravity="face" src={`/api/files/${photo.key}`} alt="…" width={640} height={360} className="w-full h-auto" />
+{/* a spot the app user picked, stored on the record as two 0–1 numbers */}
+<StoredPhoto ratio="16/9" gravity={`${photo.focusX}x${photo.focusY}`} src={`/api/files/${photo.key}`} alt="…" width={640} height={360} className="w-full h-auto" />
+```
+
+- `gravity="face"` needs nothing stored and works on every photo already uploaded; a
+  photo with no face is cut from the centre. Use it by default wherever a `ratio`
+  frame shows people. `gravity="auto"` is the same for a subject that is not a person.
+- A point is for "let me choose what shows": store `focus_x` and `focus_y` (numbers,
+  0–1, default 0.5) beside the image key, set them from where the app user clicks or
+  drags on the photo, and pass them as `<x>x<y>`. One stored point serves every frame
+  shape, so never store a crop per screen. The point is where the middle of the frame
+  goes; add `-remainder` (`0.3x0.2-remainder`) to place it as `object-position` would.
+- `<StoredPhoto>` writes `gravity` into the link as `?gravity=`, which `/api/files/` and
+  `/assets/` both read; write it by hand (`?width=640&height=360&fit=cover&gravity=face`)
+  only where a place takes an address and no element. `transform` takes the same values
+  as `gravity: "face"` or `gravity: { x: 0.3, y: 0.2 }` for a stored or printed copy.
+- It only has an effect on a fixed-shape crop: a `ratio`, or both `width` and `height`
+  with `fit=cover` or `fit=crop`. For an exact rectangle (offset and zoom from a crop
+  frame) use `trim`.
 
 ## Downscale before an AI vision call
 

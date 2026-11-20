@@ -267,6 +267,8 @@ export interface ServeImageTransform {
   height?: number;
   /** How the image fills the target box. Default `scale-down`. */
   fit?: "scale-down" | "contain" | "pad" | "squeeze" | "cover" | "crop";
+  /** Which part a `cover` or `crop` keeps, in link form: `face`, `auto` or a point such as `0.5x0.2`. Default: the centre. */
+  gravity?: string;
   /** Output format. Default `image/webp`. */
   format?: "image/jpeg" | "image/png" | "image/gif" | "image/webp" | "image/avif";
   /** Output quality 1–100 for lossy formats. */
@@ -275,10 +277,10 @@ export interface ServeImageTransform {
 
 /**
  * Read a serve-time image transform from the request's query string —
- * `?width=` / `?height=` (pixels), `?fit=`, `?format=` (`webp` or `image/webp`),
- * `?quality=` — for a file route to pass straight to `serveR2Object`'s
- * `transform` option. Returns undefined when the URL asks for no transform,
- * so a plain request serves the object as-is.
+ * `?width=` / `?height=` (pixels), `?fit=`, `?gravity=` (`face`, `auto` or a point
+ * such as `0.5x0.2` or `0.5x0.2-remainder`), `?format=` (`webp` or `image/webp`), `?quality=` — for a file
+ * route to pass straight to `serveR2Object`'s `transform` option. Returns undefined
+ * when the URL asks for no transform, so a plain request serves the object as-is.
  */
 export function imageTransformFromRequest(
   request: Request,
@@ -300,6 +302,7 @@ export function imageTransformFromRequest(
   if (fit && SERVE_TRANSFORM_FITS.has(fit)) {
     transform.fit = fit as ServeImageTransform["fit"];
   }
+  transform.gravity = query.get("gravity") ?? undefined;
   const rawFormat = query.get("format")?.toLowerCase();
   const format =
     rawFormat && !rawFormat.includes("/")
@@ -332,6 +335,7 @@ async function renderImageVariant(
       width: clamp(transform.width, TRANSFORM_MAX_DIMENSION),
       height: clamp(transform.height, TRANSFORM_MAX_DIMENSION),
       fit: transform.fit,
+      gravity: transform.gravity,
       format: transform.format,
       quality: clamp(transform.quality, 100),
     });

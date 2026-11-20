@@ -88,7 +88,7 @@ The app can send at any server-side moment: a welcome email on signup, an order 
 An email the app sends is signed by the app, so whatever is inside it is trusted by whoever reads it. Any value that came from someone other than the app builder — a visitor's name or message on a public form, an app user's display name, a product title, a subject typed into a field, a stored record a stranger could have created — is **content, never markup**:
 
 - **In `html`, wrap every such value in `escapeHtml`** from `~stencil/email`. No exceptions for "it's just a name": a name can carry a link, a fake button or a hidden image.
-- **`subject` is one line.** The platform replaces line breaks with spaces, so a visitor cannot smuggle extra headers in — but keep visitor text short and labelled (`New enquiry from ${name}`), never the whole message.
+- **`subject` never carries a visitor's raw text.** The platform replaces line breaks with spaces, removes anything that looks like a link and cuts the subject at 150 characters — but bots fill public forms with scam text, and the subject is the first thing a reader trusts. Put at most a cut-short piece of one field in it (a name, to about 40 characters), labelled (`New enquiry from …`), and never a whole field the visitor controls. The full name and the message go in the body, through `escapeHtml`.
 - **`to` is never the visitor's choice on a public route.** A public form notifies the app builder or admins at an address the app owns; it does not email "a friend" or "the address you typed". A recipient containing a line break or no `@` is refused with a 400 — let that surface, don't retry.
 - **Text an app builder authored** (a template they edit in the app's own admin) may go in as HTML. Only their text — not a placeholder filled from someone else's record, which still gets `escapeHtml`.
 
@@ -98,7 +98,7 @@ import { createEmail, escapeHtml } from "~stencil/email";
 const email = createEmail(context.cloudflare.env);
 await email.send({
   to: OWNER_EMAIL, // an address the app owns, not one from the form
-  subject: `New enquiry from ${name}`,
+  subject: `New enquiry from ${name.trim().slice(0, 40)}`, // a cut-short name, never the whole field
   html: `<p><strong>${escapeHtml(name)}</strong> (${escapeHtml(fromAddress)}) wrote:</p>
          <p>${escapeHtml(message)}</p>`,
 });

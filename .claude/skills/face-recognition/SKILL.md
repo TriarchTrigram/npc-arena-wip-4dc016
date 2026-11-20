@@ -21,7 +21,9 @@ configure anything. Two doors, same output:
 
 Both return, per face: a bounding box and five landmarks in pixels of the orientation-corrected
 image, a detection `score`, `quality` signals (`sharpness`, `brightness`, `relativeSize`) and a
-128-float unit-length `embedding`, plus `models.preprocessingVersion`. The platform keeps nothing:
+128-float unit-length `embedding`, plus `models.preprocessingVersion`. Cropping a photo so the
+face stays in the frame is not this skill: that is `gravity=face` on the image URL (the
+`image-transform` skill), with nothing to detect or store. The platform keeps nothing:
 no gallery, no person registry. The app owns its records.
 
 ## Store embeddings, compare in code

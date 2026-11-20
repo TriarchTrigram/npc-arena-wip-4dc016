@@ -344,8 +344,9 @@ already ships everything; an app only needs a link.
 
 **Enrolment page — `/auth/two-factor/setup`.** Platform-owned, registered by the auth route
 pack. A signed-in app user scans a QR code, confirms one code, and gets ten backup codes to
-download or copy. Add the link to the app's account settings; do not build a QR screen, a
-secret table, or a verify form:
+download or copy. Add the link to the app's account settings; do not build a two-factor QR
+screen (the enrolment page ships one; a QR code for any other link is the `qr-code` skill),
+a secret table, or a verify form:
 
 ```tsx
 import { useAuth } from "~stencil/ui/auth/context";

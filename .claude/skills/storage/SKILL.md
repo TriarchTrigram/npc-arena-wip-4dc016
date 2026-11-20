@@ -282,8 +282,9 @@ copy sized for its slot and the screen, and loads only when scrolled into view:
 <StoredPhoto src={`/api/files/${photo.key}`} alt="…" width={photo.width} height={photo.height} className="w-full h-auto" />
 {/* visible on load (a cover, a header logo): fetched first, not lazily */}
 <StoredPhoto priority src={`/api/files/${cover.key}`} alt="…" width={cover.width} height={cover.height} className="w-full h-auto" />
-{/* a fixed square is a deliberate choice: avatars, icons, or uniform tiles the app builder asked for */}
-<StoredPhoto ratio="1/1" src={`/api/files/${avatarKey}`} alt="…" width={128} height={128} className="size-16 rounded-full" />
+{/* a fixed square is a deliberate choice: avatars, icons, or uniform tiles the app builder asked for;
+    gravity="face" keeps the face in the crop */}
+<StoredPhoto ratio="1/1" gravity="face" src={`/api/files/${avatarKey}`} alt="…" width={128} height={128} className="size-16 rounded-full" />
 ```
 
 A hand-written size (`/api/files/<key>?width=800`, about twice the displayed width) is

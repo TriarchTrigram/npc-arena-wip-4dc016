@@ -196,7 +196,7 @@ export const TEAM_COLORS = ["hsl(0 82% 60%)", "hsl(212 90% 62%)", "hsl(46 100% 5
 const foe = (a: Fighter | undefined, b: Fighter | undefined) => !!a && !!b && a !== b && (a.team < 0 || a.team !== b.team);
 
 /** `teams` (same length as `ids`) puts fighters on sides; each side spawns together. `jugg` is the index of the juggernaut, if any. */
-export function newGame(ids: Power[], preview = false, teams?: number[], jugg = -1): Game {
+export function newGame(ids: (Power | FighterDef)[], preview = false, teams?: number[], jugg = -1): Game {
   const n = ids.length;
   const scale = n <= 2 ? 1.25 : n <= 4 ? 1.1 : n <= 8 ? 0.95 : 0.82;
   const teamMode = !!teams && teams.length === n;
@@ -206,11 +206,13 @@ export function newGame(ids: Power[], preview = false, teams?: number[], jugg = 
   const slotOf = new Map(order.map((idx, slot) => [idx, slot]));
   const fighters: Fighter[] = ids.map((id, i) => {
     const isJugg = i === jugg;
-    const def = isJugg ? juggernautOf(DEF_BY_ID[id]) : DEF_BY_ID[id];
+    const base = typeof id === "string" ? DEF_BY_ID[id] : id;
+    const def = isJugg ? juggernautOf(base) : base;
     const slot = slotOf.get(i) ?? i;
     const x = n === 2 ? (slot === 0 ? 270 : W - 270) : 70 + ((W - 140) * (slot + 0.5)) / n;
     const air = !preview && n > 2;
-    const sc = isJugg ? scale * 1.25 : scale;
+    // a hybrid stands a little taller than a pure-blooded fighter
+    const sc = isJugg ? scale * 1.25 : def.parents ? scale * 1.12 : scale;
     const hoverY = GROUND - HOVER_HIGH * sc;
     return {
       key: i, def,
@@ -738,7 +740,7 @@ function bestMove(g: Game, f: Fighter, target: Fighter, only?: (m: Move) => bool
 
 function startMove(g: Game, f: Fighter, move: Move, target: Fighter) {
   let m = move;
-  let power: Power = f.def.id;
+  let power: Power = move.power ?? f.def.id;
   let label = move.name;
   if (move.kind === "mimic") {
     const src = f.lastHitBy ?? "psy";

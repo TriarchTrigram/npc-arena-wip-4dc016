@@ -1,5 +1,5 @@
 {
-  "hash": "7d807dedd478f90d44efbb700c234ddf250bd422",
+  "hash": "16136d946d2c6dec62f8799afe244befd26e2c8e",
   "files": [
     "app/entry.server.tsx",
     "app/entry.client.tsx",
@@ -2570,6 +2570,25 @@
       "date": "2026-11-18",
       "notes": [
         "react-router/auth/account.tsx: the account page draws the app user's photo through <StoredPhoto> at its 64px slot instead of downloading the full upload.",
+        "Non-breaking; nothing in app code changes."
+      ],
+      "breaking": []
+    },
+    {
+      "hash": "9442c8cae932f297c5c3905926c0f16ff8c1b016",
+      "date": "2026-11-19",
+      "notes": [
+        "image: transform takes gravity (face, auto, or an { x, y } point with an optional mode) so a cover or crop keeps the face or a chosen spot.",
+        "storage: imageTransformFromRequest passes ?gravity= (face, auto or a point such as 0.5x0.2) through for served files.",
+        "ui/photo/stored: <StoredPhoto> takes gravity, which says what a ratio crop keeps."
+      ],
+      "breaking": []
+    },
+    {
+      "hash": "16136d946d2c6dec62f8799afe244befd26e2c8e",
+      "date": "2026-11-19",
+      "notes": [
+        "react-router/auth/account.tsx: Sign out other devices deletes every other session of the app user in one statement, so sign-ins past the first 100 stored ones no longer stay live behind a success message.",
         "Non-breaking; nothing in app code changes."
       ],
       "breaking": []

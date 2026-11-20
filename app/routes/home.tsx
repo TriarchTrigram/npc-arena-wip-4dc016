@@ -19,6 +19,8 @@ import { W, H, TEAM_COLORS, newGame, step, drawScene, buildBackdrop, type Game, 
 import { drawBracket, recordWinner, nextMatch, champion, progress, started, entrants, type Bracket, type MatchRef } from "~/lib/bracket";
 import { BracketView } from "~/components/bracket-view";
 import { TitleScreen } from "~/components/title-screen";
+import { StoryPanel } from "~/components/story-panel";
+import { CHAPTERS, STAGES_PER_CHAPTER, canTeam, fusionOrder, loadProgress, rememberHybrid, saveProgress, stageLineup, type Pair } from "~/lib/story";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -28,19 +30,20 @@ export function meta({}: Route.MetaArgs) {
 }
 
 type Status = "ready" | "running" | "paused" | "finished";
-type Mode = "duel" | "ffa" | "teams" | "tournament" | "juggernaut";
+type Mode = "story" | "duel" | "ffa" | "teams" | "tournament" | "juggernaut";
 type Result = { name: string | null; id: Power | null; team: number | null };
 
 type Snapshot = { alive: { key: number; name: string; color: string; hp: number; maxHp: number; kills: number; team: number; jugg: boolean }[]; feed: FeedItem[] };
 
 const SPEEDS = [1, 2, 4] as const;
-const MODES: Mode[] = ["duel", "ffa", "teams", "tournament", "juggernaut"];
+const MODES: Mode[] = ["story", "duel", "ffa", "teams", "tournament", "juggernaut"];
 /** Juggernaut mode: five challengers (team 0) against one juggernaut (team 1), which goes last. */
 const CHALLENGERS = 5;
 const JUGG_TEAMS = [...Array(CHALLENGERS).fill(0), 1] as number[];
 const TEAM_COUNTS = [2, 3, 4] as const;
 const TEAM_KEYS: StringKey[] = ["arena.teams.name0", "arena.teams.name1", "arena.teams.name2", "arena.teams.name3"];
 const HINTS: Record<Mode, StringKey> = {
+  story: "arena.pick.storyHint",
   duel: "arena.pick.duelHint",
   ffa: "arena.pick.ffaHint",
   teams: "arena.pick.teamsHint",
@@ -71,6 +74,16 @@ export default function Home() {
   const [teamCount, setTeamCount] = useState<number>(2);
   const [bracket, setBracket] = useState<Bracket | null>(null);
   const [jugg, setJugg] = useState<Power>("pyro");
+  // Story mode: chapter 1's cleared count is read from this browser after the first render.
+  const [cleared, setCleared] = useState(0);
+  const [stage, setStage] = useState(0);
+  const [pair, setPair] = useState<Pair>({ a: "pyro", b: "hydro", fuse: true });
+  const stageRef = useRef<number | null>(null);
+  useEffect(() => {
+    const c = loadProgress().cleared[0] ?? 0;
+    setCleared(c);
+    setStage(Math.min(c, STAGES_PER_CHAPTER - 1));
+  }, []);
   const canvasAria = useString("arena.canvasAria");
   const titleBackAria = useString("title.backAria");
   const speedAria = useString("arena.controls.speedAria");
@@ -87,7 +100,7 @@ export default function Home() {
   speedRef.current = speed;
 
   const validFor = (m: Mode, n: number) =>
-    m === "duel" ? n === 2 : m === "teams" ? n >= teamCount * 2 && n <= 16 : m === "juggernaut" ? n === CHALLENGERS && !picked.includes(jugg) : n >= 3 && n <= 16;
+    m === "story" ? stage <= cleared : m === "duel" ? n === 2 : m === "teams" ? n >= teamCount * 2 && n <= 16 : m === "juggernaut" ? n === CHALLENGERS && !picked.includes(jugg) : n >= 3 && n <= 16;
   const valid = validFor(mode, picked.length);
   const teamsFor = (ids: Power[]) => ids.map((_, i) => i % teamCount);
   const upNext = mode === "tournament" && bracket ? nextMatch(bracket) : null;
@@ -105,6 +118,16 @@ export default function Home() {
       setBracket((b) => (b ? recordWinner(b, at, id) : b));
     }
     matchRef.current = null;
+    const cleared0 = stageRef.current;
+    if (mode === "story" && cleared0 != null && g.winnerTeam === 0) {
+      setCleared((c) => {
+        const next = Math.max(c, cleared0 + 1);
+        const saved = loadProgress();
+        saved.cleared[0] = next;
+        saveProgress(saved);
+        return next;
+      });
+    }
     setStatus("finished");
   };
 
@@ -149,7 +172,8 @@ export default function Home() {
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [readSnap]);
+    // The canvas only exists on the arena screen, so the loop restarts when it appears.
+  }, [readSnap, screen]);
 
   // A fresh bracket whenever the picks change, unless a tournament is already under way.
   useEffect(() => {
@@ -163,11 +187,14 @@ export default function Home() {
   const upB = upNext && bracket ? bracket[upNext.r][upNext.i].b : null;
   useEffect(() => {
     if (mode === "tournament") previewRef.current = newGame(upA && upB ? [upA, upB] : [], true);
-    else if (mode === "juggernaut") {
+    else if (mode === "story") {
+      const { defs, teams } = stageLineup(pair, CHAPTERS[0].stages[stage]);
+      previewRef.current = newGame(defs, true, teams);
+    } else if (mode === "juggernaut") {
       const ids = [...picked.filter((id) => id !== jugg), jugg];
       previewRef.current = newGame(ids, true, ids.map((_, i) => (i === ids.length - 1 ? 1 : 0)), ids.length - 1);
     } else previewRef.current = newGame(picked, true, mode === "teams" ? picked.map((_, i) => i % teamCount) : undefined);
-  }, [picked, mode, teamCount, upA, upB, jugg]);
+  }, [picked, mode, teamCount, upA, upB, jugg, pair, stage]);
 
   const begin = (g: Game) => {
     gameRef.current = g;
@@ -176,7 +203,19 @@ export default function Home() {
     setStatus("running");
   };
 
+  const startStage = (i: number) => {
+    const { defs, teams } = stageLineup(pair, CHAPTERS[0].stages[i]);
+    if (pair.fuse || !canTeam(pair)) rememberHybrid(...fusionOrder(pair.a, pair.b));
+    stageRef.current = i;
+    setStage(i);
+    begin(newGame(defs, false, teams));
+  };
+
   const start = () => {
+    if (mode === "story") {
+      if (stage <= cleared) startStage(stage);
+      return;
+    }
     if (mode === "tournament") {
       const at = bracket ? nextMatch(bracket) : null;
       const m = at && bracket ? bracket[at.r][at.i] : null;
@@ -310,12 +349,25 @@ export default function Home() {
                 />
                 {status === "ready" && (
                   <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
-                    <Text id={mode === "tournament" ? "arena.idleTournament" : "arena.idle"} as="p" className="rounded-full bg-card px-6 py-3 text-center font-display text-lg text-foreground" />
+                    {mode === "story" ? (
+                      <Text id="arena.idleStory" vars={{ n: stage + 1 }} as="p" className="rounded-full bg-card px-6 py-3 text-center font-display text-lg text-foreground" />
+                    ) : (
+                      <Text id={mode === "tournament" ? "arena.idleTournament" : "arena.idle"} as="p" className="rounded-full bg-card px-6 py-3 text-center font-display text-lg text-foreground" />
+                    )}
                   </div>
                 )}
                 {status === "finished" && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6">
                     <div className="rounded-2xl border-4 border-foreground bg-card px-8 py-6 text-center">
+                      {mode === "story" ? (
+                        <StoryBanner
+                          stage={stageRef.current ?? stage}
+                          won={result?.team === 0}
+                          onRetry={() => startStage(stageRef.current ?? stage)}
+                          onNext={() => startStage(Math.min((stageRef.current ?? stage) + 1, STAGES_PER_CHAPTER - 1))}
+                          onBack={() => { setStage(Math.min((stageRef.current ?? stage) + 1, STAGES_PER_CHAPTER - 1)); restart(); }}
+                        />
+                      ) : (
                       <WinnerBanner
                         mode={mode}
                         result={result}
@@ -325,6 +377,7 @@ export default function Home() {
                         onAgain={start}
                         onNewTournament={newTournament}
                       />
+                      )}
                     </div>
                   </div>
                 )}
@@ -354,8 +407,8 @@ export default function Home() {
 
           <section>
             <SectionHeading
-              title={<Text id="arena.pick.title" />}
-              action={
+              title={<Text id={mode === "story" ? "story.title" : "arena.pick.title"} />}
+              action={mode === "story" ? undefined :
                 <div className="flex gap-2">
                   {mode !== "duel" && mode !== "juggernaut" && (
                     <Button size="sm" variant="ghost" disabled={locked} onClick={() => setPicked(ALL)}><Text id="arena.pick.all" /></Button>
@@ -374,7 +427,7 @@ export default function Home() {
                 ))}
               </div>
               <Text id={tourLive ? "arena.pick.lockedHint" : HINTS[mode]} className={cn("text-sm", valid ? "text-muted-foreground" : "text-error")} />
-              <Text id="arena.pick.count" vars={{ count: picked.length }} className="ml-auto text-sm text-muted-foreground tabular-nums" />
+              {mode !== "story" && <Text id="arena.pick.count" vars={{ count: picked.length }} className="ml-auto text-sm text-muted-foreground tabular-nums" />}
             </div>
             {mode === "teams" && (
               <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -408,6 +461,11 @@ export default function Home() {
                 <Text id="arena.jugg.perks" className="text-sm text-muted-foreground" />
               </div>
             )}
+            {mode === "story" ? (
+              <div className="mt-6">
+                <StoryPanel cleared={cleared} stage={stage} onStage={setStage} pair={pair} onPair={setPair} locked={fighting} />
+              </div>
+            ) : (
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
               {FIGHTERS.map((f) => (
                 <FighterChip
@@ -421,6 +479,7 @@ export default function Home() {
                 />
               ))}
             </div>
+            )}
           </section>
         </div>
 
@@ -490,6 +549,30 @@ export default function Home() {
         </>
       )}
     </PageContainer>
+  );
+}
+
+function StoryBanner({ stage, won, onRetry, onNext, onBack }: { stage: number; won: boolean; onRetry: () => void; onNext: () => void; onBack: () => void }) {
+  const title = "font-display text-3xl text-foreground";
+  const last = stage >= STAGES_PER_CHAPTER - 1;
+  if (!won) {
+    return (
+      <>
+        <Text id="arena.winner.stageLost" vars={{ n: stage + 1 }} as="p" className={title} />
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          <Button onClick={onRetry}><Text id="arena.winner.tryAgain" /></Button>
+        </div>
+      </>
+    );
+  }
+  return (
+    <>
+      <Text id={last ? "arena.winner.chapterCleared" : "arena.winner.stageCleared"} vars={{ n: stage + 1 }} as="p" className={title} />
+      <div className="mt-4 flex flex-wrap justify-center gap-2">
+        {!last && <Button onClick={onNext}><Text id="arena.winner.nextStage" /></Button>}
+        <Button variant="outline" onClick={last ? onRetry : onBack}><Text id={last ? "arena.winner.again" : "arena.winner.changePair"} /></Button>
+      </div>
+    </>
   );
 }
 

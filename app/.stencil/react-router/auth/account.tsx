@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { Form, data, useActionData, useLoaderData, useNavigation } from "react-router";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import { and, eq, ne } from "drizzle-orm";
 import { ACCOUNT_PHOTO_PREFIX, ACCOUNT_PHOTO_ROUTE } from "../../auth/account-photos";
 import { closeAccount, forgetSession, requireAuth, safeReturnTo } from "../../auth/server";
+import { session as sessionTable } from "../../auth/schema";
 import { createAuth } from "../../auth/utils";
 import { forwardCookies, postToAuth } from "../../auth/two-factor";
 import { getSubscription, isComplimentary, manageSubscription } from "../../payments/server";
+import { createDb } from "../../db";
 import { createStorage } from "../../storage";
 import { SignOutButton } from "../../ui/auth/sign-out-button";
 import { StoredPhoto } from "../../ui/photo/stored";
@@ -51,7 +54,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = context.cloudflare.env;
-  const { user } = await requireAuth(request, env);
+  const { user, session } = await requireAuth(request, env);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "") as Intent;
   const auth = createAuth(env, false, undefined, request);
@@ -132,8 +135,12 @@ export async function action({ request, context }: ActionFunctionArgs) {
       return fromAuth(res, "Password changed.");
     }
     case "devices": {
-      const res = await postToAuth(auth, request, "/revoke-other-sessions", {});
-      return fromAuth(res, "Signed out everywhere except this device.");
+      // Deleted here in one statement: Better Auth's own endpoint only looks at the
+      // first 100 session rows, so sign-ins past that stayed live behind a success.
+      await createDb(env)
+        .delete(sessionTable)
+        .where(and(eq(sessionTable.userId, user.id), ne(sessionTable.id, session.id)));
+      return reply(true, "Signed out everywhere except this device.");
     }
     case "billing": {
       // Always leaves by redirect: to the billing portal, or back here when there is nothing to manage.

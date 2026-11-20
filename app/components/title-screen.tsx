@@ -3,10 +3,11 @@ import type { StringKey } from "~stencil/types/strings";
 import { cn } from "~/lib/utils";
 import { DEF_BY_ID, type FighterDef } from "~/lib/fighters";
 
-type Mode = "duel" | "ffa" | "teams" | "tournament" | "juggernaut";
+type Mode = "story" | "duel" | "ffa" | "teams" | "tournament" | "juggernaut";
 
-const MODE_ORDER: Mode[] = ["duel", "ffa", "teams", "tournament", "juggernaut"];
+const MODE_ORDER: Mode[] = ["story", "duel", "ffa", "teams", "tournament", "juggernaut"];
 const MODE_NAME_KEYS: Record<Mode, StringKey> = {
+  story: "arena.mode.story",
   duel: "arena.mode.duel",
   ffa: "arena.mode.ffa",
   teams: "arena.mode.teams",
@@ -14,6 +15,7 @@ const MODE_NAME_KEYS: Record<Mode, StringKey> = {
   juggernaut: "arena.mode.juggernaut",
 };
 const MODE_DESC_KEYS: Record<Mode, StringKey> = {
+  story: "title.modes.story",
   duel: "title.modes.duel",
   ffa: "title.modes.ffa",
   teams: "title.modes.teams",

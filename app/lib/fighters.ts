@@ -61,6 +61,8 @@ export type Move = {
   crit?: number;
   /** Only used below this share of health (heals). */
   below?: number;
+  /** Element the move is drawn in, when it is not the fighter's own (a hybrid's second parent). */
+  power?: Power;
 };
 
 export type FighterDef = {
@@ -74,6 +76,8 @@ export type FighterDef = {
   hp: number;
   speed: number;
   moves: Move[];
+  /** Set on a hybrid: the two fighters it was fused from. */
+  parents?: [Power, Power];
 };
 
 const M = (m: Omit<Move, "wind" | "act" | "rec"> & Partial<Pick<Move, "wind" | "act" | "rec">>): Move => ({
@@ -306,4 +310,67 @@ export function wingMoves(id: Power): Move[] {
 /** The fighter as a juggernaut: double health and 10 moves. */
 export function juggernautOf(def: FighterDef): FighterDef {
   return { ...def, hp: def.hp * 2, moves: [...def.moves, ...wingMoves(def.id)] };
+}
+
+// ---------- Hybrids and team attacks (Story mode) ----------
+// A hybrid keeps both parents' moves (each drawn in its parent's element) and gains two mixed moves.
+// Two fighters who stay separate each gain one team attack that mixes both powers.
+
+/** Umbra plus Lux is always Equinox; every other pair gets a blended name. */
+const NAMED_HYBRIDS: Record<string, string> = { "lux+umbra": "Equinox" };
+
+const VOWELS = /[aeiouy]/i;
+
+export function hybridName(a: Power, b: Power): string {
+  const named = NAMED_HYBRIDS[[a, b].sort().join("+")];
+  if (named) return named;
+  const A = DEF_BY_ID[a].name, B = DEF_BY_ID[b].name;
+  if (a === b) return `${A} Prime`;
+  let head = A.match(/^[^aeiouy]*[aeiouy]+/i)?.[0] ?? A.slice(0, 2);
+  if (head.length < 2) head = A.slice(0, 2);
+  const lower = B.toLowerCase();
+  let tail = lower.match(/[^aeiouy]*[aeiouy]+[^aeiouy]*$/i)?.[0] ?? lower.slice(-3);
+  if (tail === lower) tail = lower.slice(1);
+  if (VOWELS.test(head.slice(-1)) && VOWELS.test(tail[0] ?? "")) tail = tail.slice(1) || tail;
+  return head + tail;
+}
+
+function mixedMoves(a: Power, b: Power): Move[] {
+  const wa = WINGS[a], wb = WINGS[b];
+  const stB = wb.status ? { status: wb.status, statusDur: wb.statusDur } : {};
+  const stA = wa.status ? { status: wa.status, statusDur: wa.statusDur } : {};
+  return [
+    M({ id: `mix-comet-${a}-${b}`, name: `${wa.word} ${wb.word} Comet`, kind: "projectile", anim: "cast", power: a, range: 580, minRange: 80, cd: 3.2, dmg: 13, speed: 560, size: 16, shape: wb.shape, pierce: true, kb: 260, wind: 0.25, ...stB }),
+    M({ id: `mix-nova-${a}-${b}`, name: `${wb.word} ${wa.word} Nova`, kind: "burst", anim: "slam", power: b, range: 150, cd: 6.5, dmg: 15, radius: 165, kb: 400, lift: -320, heal: wa.heal ?? wb.heal, wind: 0.3, rec: 0.35, ...stA }),
+  ];
+}
+
+/** Two fighters fused into one: both move sets plus two mixed moves, and close to the pair's health. */
+export function hybridOf(a: Power, b: Power, name = hybridName(a, b)): FighterDef {
+  const A = DEF_BY_ID[a], B = DEF_BY_ID[b];
+  const parentMoves = a === b ? A.moves : [...A.moves, ...B.moves.map((m) => ({ ...m, power: b }))];
+  return {
+    ...A,
+    name,
+    power: a === b ? `${A.power}, doubled` : `${A.power} and ${B.power}`,
+    ability: a === b ? `${A.name} fused with itself.` : `${A.name} and ${B.name} fused into one body.`,
+    color: A.color,
+    glow: B.glow,
+    hp: Math.round((A.hp + B.hp) * 0.85),
+    speed: Math.round((A.speed + B.speed) / 2),
+    moves: [...parentMoves, ...mixedMoves(a, b)],
+    parents: [a, b],
+  };
+}
+
+/** The fighter with its team attack for fighting beside a partner. */
+export function withTeamAttack(self: Power, partner: Power): FighterDef {
+  const D = DEF_BY_ID[self];
+  const ws = WINGS[self], wp = WINGS[partner];
+  const st = wp.status ? { status: wp.status, statusDur: wp.statusDur } : {};
+  const first = [self, partner].sort()[0] === self;
+  const move = first
+    ? M({ id: `duo-rush-${self}-${partner}`, name: `${ws.word} ${wp.word} Duo Rush`, kind: "dash", anim: "lunge", range: 320, cd: 5, dmg: 14, dist: 320, act: 0.35, kb: 380, lift: -260, ...st })
+    : M({ id: `duo-barrage-${self}-${partner}`, name: `${ws.word} ${wp.word} Duo Barrage`, kind: "rain", anim: "raise", range: 500, cd: 5.5, dmg: 8, count: 6, radius: 140, wind: 0.3, ...st });
+  return { ...D, moves: [...D.moves, move] };
 }

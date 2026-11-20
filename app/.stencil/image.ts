@@ -40,6 +40,29 @@ export interface GeneratedImage {
   contentType: string;
 }
 
+export type ImageGravity =
+  | "auto"
+  | "face"
+  | {
+      x: number;
+      y: number;
+      /**
+       * How the point places the crop. `"box-center"` (default) centres the kept area on it;
+       * `"remainder"` shifts the cut like CSS `object-position` (0 keeps one edge, 1 the other).
+       */
+      mode?: "remainder" | "box-center";
+    };
+
+/**
+ * A `gravity` value in its link form, the one the image routes read: `auto`, `face`,
+ * or a point such as `0.5x0.2` (`0.5x0.2-remainder` with a mode). A string is passed as given.
+ */
+function gravityParam(gravity: ImageGravity | string): string {
+  if (typeof gravity === "string") return gravity;
+  const fraction = (n: number) => Math.min(1, Math.max(0, n)).toFixed(4);
+  return `${fraction(gravity.x)}x${fraction(gravity.y)}${gravity.mode ? `-${gravity.mode}` : ""}`;
+}
+
 export interface TransformImageParams {
   /** Target width in pixels. Omit one dimension to scale by the other. */
   width?: number;
@@ -47,6 +70,12 @@ export interface TransformImageParams {
   height?: number;
   /** How the image fills the target box. Default `scale-down`. */
   fit?: "scale-down" | "contain" | "pad" | "squeeze" | "cover" | "crop";
+  /**
+   * What a `cover` or `crop` resize keeps: `"face"`, `"auto"` (the most notable area), or a
+   * point `{ x, y }` (each 0–1 of the source, from its top-left), also as a link value
+   * (`"0.5x0.2"`). Anything else is ignored. Default: the centre.
+   */
+  gravity?: ImageGravity | string;
   /** Right-angle rotation applied before resizing. */
   rotate?: 90 | 180 | 270;
   /**
@@ -150,7 +179,7 @@ export function createImage(env: Env) {
       source: Blob | ArrayBuffer | Uint8Array,
       params: TransformImageParams = {},
     ): Promise<GeneratedImage> {
-      const { watermark, removeBackground, trim, ...options } = params;
+      const { watermark, removeBackground, trim, gravity, ...options } = params;
       const query = new URLSearchParams();
       for (const [key, value] of Object.entries(options)) {
         if (value !== undefined) query.set(key, String(value));
@@ -159,6 +188,7 @@ export function createImage(env: Env) {
       else for (const [edge, value] of Object.entries(trim ?? {})) {
         if (value !== undefined) query.set(`trim.${edge}`, String(value));
       }
+      if (gravity) query.set("gravity", gravityParam(gravity));
       if (removeBackground) query.set("segment", "foreground");
       // The current TS lib's generic Uint8Array<ArrayBufferLike> no longer widens to BodyInit - requires casting.
       let body: BodyInit = source as BodyInit;

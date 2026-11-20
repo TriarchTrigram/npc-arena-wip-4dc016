@@ -5,6 +5,7 @@
     "subtitle": "Pick your fighters, press Start and watch them battle it out on their own.",
     "mode": {
       "label": "Mode",
+      "story": "Story",
       "duel": "Duel",
       "ffa": "Free for all",
       "teams": "Teams",
@@ -21,7 +22,8 @@
       "teamsHint": "Pick at least 2 fighters for each team. Fighters join teams in the order you pick them.",
       "tournamentHint": "Pick 3 to 16 fighters for the bracket.",
       "lockedHint": "Picks are locked until this tournament ends.",
-      "juggHint": "Pick five challengers to face the juggernaut."
+      "juggHint": "Pick five challengers to face the juggernaut.",
+      "storyHint": "Pick a stage, then the pair you bring into it."
     },
     "controls": {
       "start": "Start",
@@ -62,7 +64,13 @@
       "rematch": "Replay match",
       "newTournament": "New tournament",
       "juggernaut": "{{name}} the juggernaut wins!",
-      "challengers": "The challengers win!"
+      "challengers": "The challengers win!",
+      "stageCleared": "Stage {{n}} cleared!",
+      "chapterCleared": "Chapter 1 complete!",
+      "stageLost": "Defeated on stage {{n}}",
+      "nextStage": "Next stage",
+      "tryAgain": "Try again",
+      "changePair": "Change pair"
     },
     "idle": "Press Start to begin the battle",
     "teams": {
@@ -92,7 +100,8 @@
       "label": "Juggernaut",
       "perks": "Flies on wings, has 10 moves and double health.",
       "badge": "Boss"
-    }
+    },
+    "idleStory": "Press Start to begin stage {{n}}"
   },
   "title": {
     "eyebrow": "Sixteen powers. One arena.",
@@ -100,6 +109,7 @@
     "cta": "Choose how to fight",
     "backAria": "Back to the title screen",
     "modes": {
+      "story": "Ten stages with a fused or teamed-up pair.",
       "duel": "One on one, no distractions.",
       "ffa": "Everyone in, free for all.",
       "teams": "Pick sides and fight together.",
@@ -156,6 +166,36 @@
       "zone": "Field",
       "pull": "Pull",
       "mimic": "Copy"
+    }
+  },
+  "story": {
+    "title": "Story",
+    "chapterTitle": "Chapter 1: The Rift Opens",
+    "chapterIntro": "Bring two fighters into each stage. Fuse them into one hybrid that keeps both move sets, or send them in side by side with team attacks.",
+    "progress": "{{count}} of {{total}} stages cleared",
+    "stageNumber": "Stage {{n}}",
+    "locked": "Locked",
+    "cleared": "Cleared",
+    "boss": "Boss",
+    "pairTitle": "Your pair",
+    "first": "First fighter",
+    "second": "Second fighter",
+    "fuse": "Fuse into a hybrid",
+    "team": "Fight as a team",
+    "fuseHint": "One fighter with {{count}} moves: both move sets plus two mixed moves (in bold).",
+    "teamHint": "Both fight side by side. Each one gets a team attack that mixes your two powers:",
+    "sameHint": "The same fighter twice can only fuse.",
+    "stages": {
+      "s1": "Training Grounds",
+      "s2": "Clock Tower",
+      "s3": "Mirror Alley",
+      "s4": "Windy Rooftops",
+      "s5": "Scrapyard",
+      "s6": "Frozen Lake",
+      "s7": "Overgrown Ruins",
+      "s8": "Storm Quarry",
+      "s9": "The Rift Gate",
+      "s10": "Nullshade's Lair"
     }
   }
 }
