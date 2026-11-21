@@ -1,9 +1,9 @@
-// The five Story bosses. Each is its own fighter, not a fusion: its own moves (several with mechanics no
+// The Story bosses. Each is its own fighter, not a fusion: its own moves (several with mechanics no
 // roster fighter has), its own body design drawn by the engine, and its own colours. `id` is only the
 // voice and entrance it borrows from the roster.
 import type { FighterDef, Move } from "./fighters";
 
-export type BossId = "nullshade" | "maelstrom" | "magmaw" | "everwinter" | "riftmaker";
+export type BossId = "nullshade" | "maelstrom" | "magmaw" | "everwinter" | "riftmaker" | "hollowking" | "blacksun";
 
 const M = (m: Omit<Move, "wind" | "act" | "rec"> & Partial<Pick<Move, "wind" | "act" | "rec">>): Move => ({
   wind: 0.2,
@@ -81,6 +81,34 @@ export const BOSSES: Record<BossId, FighterDef> = {
       M({ id: "fold-space", name: "Fold Space", kind: "blink", anim: "uppercut", range: 520, minRange: 140, cd: 4, dmg: 12, lift: -560, kb: 160 }),
       M({ id: "mirror-shards", name: "Mirror Shards", kind: "projectile", anim: "cast", range: 580, minRange: 80, cd: 2.4, dmg: 5, speed: 640, size: 9, count: 4, spread: 0.2, shape: "shard" }),
       M({ id: "unmake", name: "Unmake", kind: "burst", anim: "slam", range: 140, cd: 7, dmg: 17, radius: 165, kb: 460, lift: -320, status: "blind", statusDur: 1.5, wind: 0.34, rec: 0.36 }),
+    ],
+  },
+  // Chapter 6. A crowned reaper that feeds on souls: most of what it lands gives it health back.
+  hollowking: {
+    id: "umbra", boss: "hollow", name: "The Hollow King", power: "Soul Reaping", role: "attacker",
+    ability: "Reaps souls. Its scythe and its graveyard drain health back into it, and Soul Harvest tears a soul out of every enemy at once.",
+    color: "hsl(170 14% 16%)", glow: "hsl(152 92% 64%)", hp: 450, speed: 90,
+    moves: [
+      M({ id: "reaper-scythe", name: "Reaper's Scythe", kind: "melee", anim: "spin", range: 100, cd: 1.05, dmg: 10, kb: 260, heal: 3, wind: 0.22 }),
+      M({ id: "soul-chains", name: "Soul Chains", kind: "pull", anim: "thrust", range: 440, minRange: 120, cd: 4.5, dmg: 7, status: "slow", statusDur: 1.2, wind: 0.24 }),
+      M({ id: "grave-hands", name: "Grave Hands", kind: "eruption", anim: "slam", range: 560, minRange: 40, cd: 5.5, dmg: 11, radius: 44, count: 3, lift: -520, status: "stun", statusDur: 0.35, wind: 0.36 }),
+      M({ id: "wailing-souls", name: "Wailing Souls", kind: "projectile", anim: "cast", range: 560, minRange: 80, cd: 2.8, dmg: 6, speed: 430, size: 11, count: 3, spread: 0.22, status: "blind", statusDur: 1 }),
+      M({ id: "graveyard", name: "Graveyard", kind: "zone", anim: "raise", range: 380, cd: 9, dmg: 6, radius: 130, dur: 4.5, heal: 2, status: "slow", statusDur: 0.6, wind: 0.35 }),
+      M({ id: "soul-harvest", name: "Soul Harvest", kind: "burst", anim: "raise", range: 2000, cd: 12, dmg: 9, heal: 6, harvest: true, wind: 0.5, rec: 0.3 }),
+    ],
+  },
+  // Chapter 7. A sun gone dark: its corona burns, and Total Eclipse plunges the arena into night.
+  blacksun: {
+    id: "lux", boss: "blacksun", name: "The Black Sun", power: "Eclipse", role: "control",
+    ability: "A sun swallowed by its own shadow. Solar flares burn, and Total Eclipse blacks out the sky so its enemies swing blind.",
+    color: "hsl(30 30% 10%)", glow: "hsl(40 100% 64%)", hp: 420, speed: 92,
+    moves: [
+      M({ id: "corona-edge", name: "Corona Edge", kind: "melee", anim: "kick", range: 82, cd: 0.95, dmg: 10, kb: 240, status: "burn", statusDur: 1.2 }),
+      M({ id: "solar-flare", name: "Solar Flare", kind: "beam", anim: "cast", range: 500, minRange: 70, cd: 3.2, dmg: 14, act: 0.34, status: "burn", statusDur: 1.5, wind: 0.32 }),
+      M({ id: "sunspot-rain", name: "Sunspot Rain", kind: "rain", anim: "raise", range: 540, cd: 5.5, dmg: 8, count: 6, radius: 160, size: 12, status: "burn", statusDur: 1.5, wind: 0.35, rec: 0.3 }),
+      M({ id: "eclipse-disc", name: "Eclipse Disc", kind: "projectile", anim: "thrust", range: 620, minRange: 90, cd: 3.4, dmg: 11, speed: 460, size: 16, pierce: true, shape: "disc", status: "blind", statusDur: 1.2 }),
+      M({ id: "prominence", name: "Prominence", kind: "eruption", anim: "uppercut", range: 480, minRange: 50, cd: 4.8, dmg: 13, radius: 50, lift: -720, status: "burn", statusDur: 2, wind: 0.34 }),
+      M({ id: "total-eclipse", name: "Total Eclipse", kind: "burst", anim: "raise", range: 2000, cd: 14, dmg: 6, eclipse: true, status: "blind", statusDur: 4, wind: 0.55, rec: 0.3 }),
     ],
   },
 };

@@ -57,29 +57,27 @@ Restyle or extend it (more toolbar buttons, different `accept` filter) by editin
 
 ## 4. Create the upload and file routes
 
-The image button, paste, and drop all POST a multipart `file` to `uploadUrl` and expect `{ url }` back. App R2 objects are private, so the URL must go through the app's own routes — one to upload, one to serve (the `storage` skill covers both in depth).
+The image button, paste, and drop all send the file to `uploadUrl` with `uploadFile` from `~stencil/upload/client` and insert the `url` it returns; a refusal (too big, wrong type) shows under the editor in the route's own words. App R2 objects are private, so the URL must go through the app's own routes — one to upload, one to serve (the `storage` skill covers both in depth).
 
-**`app/routes/api.upload.tsx`** — store the file, return the serving URL:
+**`app/routes/api.upload.tsx`** — check and store the file, return the serving URL (skip if the app already has an upload route on `handleUpload` that takes these types):
 
 ```ts
 import type { Route } from "./+types/api.upload";
 import { requireAuth } from "~stencil/auth/server";
 import { createStorage } from "~stencil/storage";
+import { handleUpload } from "~stencil/upload/server";
 
 export async function action({ request, context }: Route.ActionArgs) {
   await requireAuth(request, context.cloudflare.env);
-  const file = (await request.formData()).get("file");
-  if (!(file instanceof File)) {
-    return Response.json({ error: "No file" }, { status: 400 });
-  }
-  const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const key = `editor/${crypto.randomUUID()}-${safe}`;
-  await createStorage(context.cloudflare.env).put(key, file, {
-    httpMetadata: { contentType: file.type },
+  return handleUpload(request, createStorage(context.cloudflare.env), {
+    key: (file) => `editor/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`,
+    maxBytes: 25 * 1024 * 1024,
+    accept: ["image/*", "application/pdf"],
   });
-  return Response.json({ url: `/api/files/${key}` });
 }
 ```
+
+`maxBytes` and `accept` are the server's rules and are never left out: without them the route stores a file of any size and type. `handleUpload` reads the type from the file's first bytes, measures the stored size, and answers with `/api/files/<key>`. Never replace it with `request.formData()` and a plain `createStorage(env).put(...)`. If the app builder asks for other file types, change `accept` here and the editor's `accept` prop together.
 
 The upload action and the file loader carry the same gate as the screen that holds the editor: when that screen is admin-only (`requireRole(request, env, "admin")` in its loader and action), call `requireRole` in both routes too, not `requireAuth`. A notes screen only the admin can open, whose uploads any signed-in app user can post and whose images anyone can fetch by address, is a hole the app builder never sees from the locked screen. Drop the check entirely only if the app is public-only.
 
@@ -120,5 +118,5 @@ Uploaded images come out as standard markdown image syntax pointing at `/api/fil
 - Packages added with `bun add`, every `@tiptap/*` pinned to `2.27.2`, `tiptap-markdown` to `0.8.10`. Nothing added to apps that didn't ask for an editor.
 - `@plugin "@tailwindcss/typography";` added to `app/app.css` — without it the editor's lists and code blocks render unstyled.
 - Component copied from `.claude/skills/rich-text-editor/rich-text-editor.tsx` to `app/components/rich-text-editor.tsx`, `immediatelyRender: false` intact.
-- `api/upload` + `api/files/*` routes created and registered, gated the way the editor's screen is gated; uploads land in R2 via `createStorage`, never in D1.
+- `api/upload` + `api/files/*` routes created and registered, gated the way the editor's screen is gated; the upload route runs `handleUpload` with `maxBytes` and `accept`, never a plain `put`; uploads land in R2, never in D1.
 - D1 stores the markdown string; reading renders through `~/components/markdown`, not `dangerouslySetInnerHTML`.

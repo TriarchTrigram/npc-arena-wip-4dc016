@@ -1,4 +1,4 @@
-// How each Story boss looks on top of the stickman body: halos, horns, crowns, capes and weapons.
+// How each Story boss looks on top of the stickman body: halos, horns, crowns, capes, hoods and weapons.
 // The engine calls this twice per boss per frame: once behind the limbs ("back") and once in front ("front").
 import type { BossDesign } from "./fighters";
 
@@ -351,6 +351,198 @@ export function drawBossDesign(
         ctx.beginPath();
         ctx.arc(ex, ey, 1.4 * s, 0, TAU);
         ctx.fill();
+      }
+      break;
+    }
+    // ----- The Hollow King: a tattered cloak, a hood with no face, a bone crown and a scythe -----
+    case "hollow": {
+      if (layer === "back") {
+        // ragged cloak streaming behind
+        const back = -face;
+        const sway = Math.sin(t * 2.6) * 5 * s + Math.min(20, Math.abs(vx) * 0.05) * s;
+        const hemY = hip.y + 40 * s;
+        const gr = ctx.createLinearGradient(0, shoulder.y, 0, hemY);
+        gr.addColorStop(0, "hsl(170 18% 12% / 0.96)");
+        gr.addColorStop(1, "hsl(165 20% 18% / 0.7)");
+        ctx.fillStyle = gr;
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.6 * s;
+        ctx.beginPath();
+        ctx.moveTo(neck.x, neck.y - 4 * s);
+        ctx.quadraticCurveTo(shoulder.x + back * 26 * s, mid.y, hip.x + back * (34 * s + sway), hemY);
+        for (let i = 1; i <= 7; i++) {
+          const x = hip.x + back * (34 * s + sway) - back * i * 7 * s;
+          const tear = (i % 2 ? 14 : 2) + Math.sin(t * 5 + i * 1.7) * 3;
+          ctx.lineTo(x, hemY - tear * s);
+        }
+        ctx.lineTo(hip.x - back * 6 * s, hip.y + 10 * s);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // souls circling the reaper
+        if (alive) {
+          ctx.globalCompositeOperation = "lighter";
+          for (let i = 0; i < 3; i++) {
+            const an = t * 1.8 + (i / 3) * TAU;
+            const ox = mid.x + Math.cos(an) * 40 * s, oy = mid.y + Math.sin(an) * 16 * s - 10 * s;
+            glow(ctx, ox, oy, 10 * s, "hsl(152 92% 70% / 0.9)", "hsl(152 92% 60% / 0)");
+            for (let j = 1; j < 4; j++) {
+              const aj = an - j * 0.16;
+              glow(ctx, mid.x + Math.cos(aj) * 40 * s, mid.y + Math.sin(aj) * 16 * s - 10 * s, (6 - j) * s, "hsl(152 92% 60% / 0.5)", "hsl(152 92% 60% / 0)");
+            }
+          }
+          ctx.globalCompositeOperation = "source-over";
+        }
+      } else {
+        // the scythe: a long shaft along the forearm, the blade curving down at the top
+        // held upright in the front hand, leaning a little with the forearm
+        const lean = Math.max(-1, Math.min(1, (p.hF.x - p.eF.x) / (14 * s)));
+        const top = { x: p.hF.x + lean * 8 * s, y: p.hF.y - 46 * s };
+        const butt = { x: p.hF.x + (p.hF.x - top.x) * 0.7, y: p.hF.y + 38 * s };
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 5 * s;
+        ctx.beginPath();
+        ctx.moveTo(butt.x, butt.y); ctx.lineTo(top.x, top.y);
+        ctx.stroke();
+        ctx.strokeStyle = "hsl(30 18% 34%)";
+        ctx.lineWidth = 2.6 * s;
+        ctx.stroke();
+        // blade
+        const bx = top.x, by = top.y;
+        ctx.fillStyle = "hsl(180 10% 82%)";
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.6 * s;
+        ctx.beginPath();
+        ctx.moveTo(bx, by - 2 * s);
+        ctx.quadraticCurveTo(bx + face * 30 * s, by - 16 * s, bx + face * 44 * s, by + 10 * s);
+        ctx.quadraticCurveTo(bx + face * 26 * s, by - 4 * s, bx, by + 5 * s);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        if (alive) {
+          ctx.globalCompositeOperation = "lighter";
+          ctx.strokeStyle = "hsl(152 92% 66% / 0.9)";
+          ctx.lineWidth = 1.6 * s;
+          ctx.beginPath();
+          ctx.moveTo(bx + face * 4 * s, by + 3 * s);
+          ctx.quadraticCurveTo(bx + face * 26 * s, by - 3 * s, bx + face * 42 * s, by + 9 * s);
+          ctx.stroke();
+          ctx.globalCompositeOperation = "source-over";
+        }
+        // the hood, and nothing inside it but two eyes
+        const hx = head.x - face * 2.5 * s, hy = head.y - 1.5 * s;
+        ctx.fillStyle = "hsl(170 18% 12%)";
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.8 * s;
+        ctx.beginPath();
+        ctx.moveTo(hx - face * 15 * s, hy + 14 * s);
+        ctx.quadraticCurveTo(hx - face * 18 * s, hy - 16 * s, hx + face * 2 * s, hy - 16 * s);
+        ctx.quadraticCurveTo(hx + face * 16 * s, hy - 12 * s, hx + face * 15 * s, hy + 9 * s);
+        ctx.lineTo(hx + face * 6 * s, hy + 14 * s);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "hsl(170 40% 3%)";
+        ctx.beginPath();
+        ctx.ellipse(head.x + face * 3.5 * s, head.y + 1 * s, 7 * s, 8.5 * s, 0, 0, TAU);
+        ctx.fill();
+        if (alive) {
+          ctx.globalCompositeOperation = "lighter";
+          for (const k of [0, 1]) glow(ctx, head.x + face * (1.5 + k * 5) * s, head.y - 0.5 * s, 3.4 * s, "hsl(152 100% 80%)", "hsl(152 92% 60% / 0)");
+          ctx.globalCompositeOperation = "source-over";
+        }
+        // a crown of bone points on the hood
+        ctx.fillStyle = "hsl(44 30% 82%)";
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.3 * s;
+        for (let i = -2; i <= 2; i++) {
+          const cx = hx + face * 1 * s + i * 4.6 * s, cy = hy - 14 * s + Math.abs(i) * 1.2 * s;
+          const tall = (i === 0 ? 12 : Math.abs(i) === 1 ? 9 : 6) * s;
+          ctx.beginPath();
+          ctx.moveTo(cx - 2.6 * s, cy + 2 * s);
+          ctx.lineTo(cx + i * 0.6 * s, cy - tall);
+          ctx.lineTo(cx + 2.6 * s, cy + 2 * s);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+      break;
+    }
+    // ----- The Black Sun: a dead sun behind its head, a mantle of dark fire, a golden mask -----
+    case "blacksun": {
+      const cx = head.x - face * 7 * s, cy = head.y - 6 * s;
+      if (layer === "back") {
+        if (alive) {
+          ctx.globalCompositeOperation = "lighter";
+          glow(ctx, cx, cy, 64 * s, "hsl(40 100% 62% / 0.55)", "hsl(24 100% 50% / 0)");
+          // corona flares licking out around the disc
+          ctx.fillStyle = "hsl(36 100% 58% / 0.85)";
+          for (let i = 0; i < 14; i++) {
+            const an = (i / 14) * TAU + t * 0.5;
+            const len = (34 + 9 * Math.sin(t * 5 + i * 2.1) + (i % 2 ? 0 : 8)) * s;
+            ctx.beginPath();
+            ctx.moveTo(cx + Math.cos(an - 0.13) * 22 * s, cy + Math.sin(an - 0.13) * 22 * s);
+            ctx.quadraticCurveTo(cx + Math.cos(an + 0.12) * len * 0.8, cy + Math.sin(an + 0.12) * len * 0.8, cx + Math.cos(an) * len, cy + Math.sin(an) * len);
+            ctx.lineTo(cx + Math.cos(an + 0.13) * 22 * s, cy + Math.sin(an + 0.13) * 22 * s);
+            ctx.fill();
+          }
+          ctx.globalCompositeOperation = "source-over";
+        }
+        // the dead sun itself
+        ctx.fillStyle = "hsl(250 40% 5%)";
+        ctx.strokeStyle = alive ? "hsl(44 100% 74%)" : "hsl(30 30% 40%)";
+        ctx.lineWidth = 2.4 * s;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 23 * s, 0, TAU);
+        ctx.fill();
+        ctx.stroke();
+        // a mantle of dark fire off the shoulders
+        const back = -face;
+        for (let i = 0; i < 3; i++) {
+          const bx = shoulder.x + back * (4 + i * 7) * s, by = shoulder.y + (2 + i * 10) * s;
+          const len = (30 - i * 5 + Math.sin(t * 9 + i) * 5) * s;
+          const ang = Math.atan2(-0.5, back) + Math.sin(t * 6 + i) * 0.12;
+          const tip = { x: bx + Math.cos(ang) * len, y: by + Math.sin(ang) * len };
+          ctx.fillStyle = i % 2 ? "hsl(14 70% 22% / 0.92)" : "hsl(24 90% 40% / 0.9)";
+          ctx.beginPath();
+          ctx.moveTo(bx, by - 7 * s);
+          ctx.quadraticCurveTo(bx + back * len * 0.4, by - 12 * s, tip.x, tip.y);
+          ctx.quadraticCurveTo(bx + back * len * 0.5, by + 6 * s, bx, by + 7 * s);
+          ctx.closePath();
+          ctx.fill();
+        }
+      } else {
+        // golden mask: a crescent across the face
+        const mx = head.x + face * 3 * s, my = head.y;
+        ctx.fillStyle = "hsl(42 90% 58%)";
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.3 * s;
+        ctx.beginPath();
+        ctx.arc(mx, my, 9 * s, -Math.PI / 2, Math.PI / 2, face < 0);
+        ctx.quadraticCurveTo(mx + face * 3 * s, my, mx, my - 9 * s);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        if (alive) {
+          ctx.globalCompositeOperation = "lighter";
+          glow(ctx, head.x + face * 6 * s, head.y - 2 * s, 5 * s, "hsl(48 100% 85%)", "hsl(30 100% 55% / 0)");
+          ctx.globalCompositeOperation = "source-over";
+        }
+        ctx.fillStyle = "hsl(250 40% 6%)";
+        ctx.beginPath();
+        ctx.ellipse(head.x + face * 6 * s, head.y - 2 * s, 1.8 * s, 1.2 * s, 0, 0, TAU);
+        ctx.fill();
+        // a circlet of short gold rays
+        ctx.strokeStyle = "hsl(44 100% 66%)";
+        ctx.lineWidth = 2 * s;
+        ctx.beginPath();
+        for (let i = -3; i <= 3; i++) {
+          const an = -Math.PI / 2 + i * 0.32;
+          ctx.moveTo(head.x + Math.cos(an) * (HEAD + 1) * s, head.y + Math.sin(an) * (HEAD + 1) * s);
+          ctx.lineTo(head.x + Math.cos(an) * (HEAD + (i % 2 ? 5 : 9)) * s, head.y + Math.sin(an) * (HEAD + (i % 2 ? 5 : 9)) * s);
+        }
+        ctx.stroke();
       }
       break;
     }

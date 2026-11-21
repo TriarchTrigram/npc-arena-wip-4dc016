@@ -217,6 +217,7 @@ let gravK = 1;
 /** Matter and antimatter closing in on a spot before they cancel out. */
 type Anni = { owner: number; power: Power; move: Move; x: number; y: number; t: number; done: boolean };
 const ANNI_TIME = 0.6;
+const ECLIPSE_TIME = 6;
 
 export type Game = {
   t: number;
@@ -255,6 +256,8 @@ export type Game = {
   annis: Anni[];
   /** Everwinter's Time Stop: the arena stays grey and still until this time. */
   stopUntil: number;
+  /** The Black Sun's Total Eclipse: the sky stays dark until this time. */
+  eclipseUntil: number;
   /** White flash over everything, in seconds left. */
   flash: number;
 };
@@ -321,7 +324,7 @@ export function newGame(ids: (Power | FighterDef)[], preview = false, teams?: nu
     shake: 0, hitstop: 0, ending: 0, over: false, winner: null, preview, duel: n === 2 && !teamMode,
     teamMode, winnerId: null, winnerTeam: null, cut: null,
     intro: preview || n === 0 ? null : { t: 0, max: introEnd },
-    realm: null, realmOut: null, annis: [], stopUntil: 0, flash: 0,
+    realm: null, realmOut: null, annis: [], stopUntil: 0, eclipseUntil: 0, flash: 0,
   };
 }
 
@@ -707,9 +710,25 @@ function fire(g: Game, f: Fighter, act: Action) {
     case "burst": {
       const c = center(f);
       const r = (m.radius ?? 120) * s;
+      const everyone = m.world || m.harvest || m.eclipse;
       for (const o of enemies) {
         const oc = center(o);
-        if (m.world || Math.hypot(oc.x - c.x, (oc.y - c.y) * 0.8) < r) hit(g, f, o, m, power, Math.sign(o.x - f.x) || f.facing);
+        if (!everyone && Math.hypot(oc.x - c.x, (oc.y - c.y) * 0.8) >= r) continue;
+        if (!hit(g, f, o, m, power, Math.sign(o.x - f.x) || f.facing) || !m.harvest) continue;
+        // a soul is torn out of each enemy hit and streams back to the reaper
+        for (let i = 0; i < 9; i++) {
+          const life = rand(0.45, 0.7);
+          const sx = oc.x + rand(-10, 10), sy = oc.y + rand(-16, 10);
+          g.particles.push({ x: sx, y: sy, vx: (c.x - sx) / life, vy: (c.y - sy) / life - rand(40, 120), life, max: life, size: rand(5, 9), color: i % 3 ? f.def.glow : "white", shape: "dot", grav: 0, add: true, rot: 0 });
+        }
+        moveFx(g, m.id, true, oc.x, oc.y, f.facing, o.scale, 0.6);
+      }
+      if (m.harvest && m.heal) pop(g, c.x, c.y - 70 * s, "SOUL HARVEST", f.def.glow, 20, 1);
+      if (m.eclipse) {
+        g.eclipseUntil = g.t + ECLIPSE_TIME;
+        g.flash = Math.max(g.flash, 0.2);
+        pop(g, W / 2, 150, m.name.toUpperCase(), LOOKS[m.id]?.b ?? def.glow, 44, 1.6);
+        sfx(g, { k: "rage", power });
       }
       if (m.world) {
         // every enemy on the field is caught at once; the arena goes still
@@ -718,7 +737,7 @@ function fire(g: Game, f: Fighter, act: Action) {
         pop(g, W / 2, 150, m.name.toUpperCase(), LOOKS[m.id]?.b ?? def.glow, 44, 1.6);
         sfx(g, { k: "rage", power });
       }
-      if (m.heal) { f.hp = Math.min(f.maxHp, f.hp + m.heal); pop(g, c.x, c.y - 70 * s, `+${m.heal}`, DEF_BY_ID.vita.glow, 18); }
+      if (m.heal && !m.harvest) { f.hp = Math.min(f.maxHp, f.hp + m.heal); pop(g, c.x, c.y - 70 * s, `+${m.heal}`, DEF_BY_ID.vita.glow, 18); }
       if (!LOOKS[m.id]) {
         g.particles.push({ x: c.x, y: c.y, vx: 0, vy: 0, life: 0.45, max: 0.45, size: r, color: def.glow, shape: "ring", grav: 0, add: true, rot: 1 });
         g.particles.push({ x: c.x, y: c.y, vx: 0, vy: 0, life: 0.35, max: 0.35, size: r * 0.7, color: def.color, shape: "ring", grav: 0, add: true, rot: 1 });
@@ -972,6 +991,8 @@ function scoreMove(g: Game, f: Fighter, m: Move, target: Fighter) {
   if (m.kind === "mimic") sc = f.lastHitBy ? 12 : 5;
   if (m.kind === "warp") sc = 40;
   if (m.world) sc = g.fighters.some((o) => o.alive && foe(f, o) && o.status.freeze > g.t) ? -10 : 32;
+  if (m.harvest) sc = 14 + 9 * g.fighters.filter((o) => o.alive && foe(f, o)).length + 20 * (1 - f.hp / f.maxHp);
+  if (m.eclipse) sc = g.eclipseUntil > g.t ? -10 : 30;
   if (m.kind === "annihilate") sc += 8;
   if (f.comboT > 0 && m.kind === "melee") sc += 14;
   return sc + rand(0, 5);
@@ -1656,6 +1677,14 @@ export function step(g: Game, dt: number) {
     for (const o of g.fighters) {
       if (!o.alive || !foe(owner, o) || Math.abs(o.x - z.x) > r || o.y < GROUND - r * 0.9) continue;
       hurt(g, o, z.move.dmg * dt, owner);
+      // a draining field feeds its owner while enemies stand in it
+      if (z.move.heal && owner?.alive) {
+        owner.hp = Math.min(owner.maxHp, owner.hp + z.move.heal * dt);
+        if (Math.random() < dt * 8) {
+          const oc = center(o), c = center(owner), life = 0.6;
+          g.particles.push({ x: oc.x, y: oc.y, vx: (c.x - oc.x) / life, vy: (c.y - oc.y) / life - 60, life, max: life, size: rand(4, 7), color: owner.def.glow, shape: "dot", grav: 0, add: true, rot: 0 });
+        }
+      }
       if (z.move.status) o.status[z.move.status] = Math.max(o.status[z.move.status], g.t + (z.move.statusDur ?? 0.5));
       if (z.move.pullIn) o.x += Math.sign(z.x - o.x) * Math.min(Math.abs(z.x - o.x), z.move.pullIn * dt);
     }
@@ -1880,6 +1909,57 @@ function buildRealmBackdrop(id: Realm): HTMLCanvasElement {
 }
 
 /** Everwinter's Time Stop: the arena drains to a cold grey and a frozen clock face hangs over it. */
+/** The Black Sun's Total Eclipse: night falls over the arena and a blacked-out sun hangs in the sky. */
+function drawEclipse(ctx: CanvasRenderingContext2D, g: Game) {
+  const left = g.eclipseUntil - g.t;
+  const a = clamp(Math.min(left, 0.6) / 0.6, 0, 1) * clamp((ECLIPSE_TIME - left) / 0.5, 0, 1);
+  const t = g.t;
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.fillStyle = "hsl(250 45% 5% / 0.66)";
+  ctx.fillRect(-20, -20, W + 40, H + 40);
+  const cx = W / 2, cy = 112, r = 44;
+  ctx.globalCompositeOperation = "lighter";
+  const halo = ctx.createRadialGradient(cx, cy, r * 0.9, cx, cy, r * 3.4);
+  halo.addColorStop(0, "hsl(42 100% 70% / 0.85)");
+  halo.addColorStop(0.35, "hsl(28 100% 50% / 0.35)");
+  halo.addColorStop(1, "hsl(28 100% 50% / 0)");
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 3.4, 0, Math.PI * 2);
+  ctx.fill();
+  // corona streamers flickering out from behind the moon
+  ctx.strokeStyle = "hsl(44 100% 78% / 0.7)";
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 18; i++) {
+    const an = (i / 18) * Math.PI * 2 + Math.sin(t * 0.7 + i) * 0.05;
+    const len = r * (1.5 + 0.5 * Math.sin(t * 3 + i * 2.3) + (i % 3 === 0 ? 0.6 : 0));
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(an) * r, cy + Math.sin(an) * r);
+    ctx.quadraticCurveTo(cx + Math.cos(an + 0.08) * r * 1.3, cy + Math.sin(an + 0.08) * r * 1.3, cx + Math.cos(an) * len, cy + Math.sin(an) * len);
+    ctx.stroke();
+  }
+  // the diamond ring: one bright bead of light slipping past the edge
+  const da = -0.7 + Math.sin(t * 0.4) * 0.15;
+  glowDot(ctx, cx + Math.cos(da) * r, cy + Math.sin(da) * r, 22, "hsl(0 0% 100%)", "hsl(44 100% 70% / 0)");
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = "hsl(250 40% 4%)";
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "hsl(44 100% 80%)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // a few stars come out
+  ctx.fillStyle = "hsl(0 0% 100% / 0.8)";
+  for (let i = 0; i < 26; i++) {
+    const sx = ((i * 157.3) % W), sy = 20 + ((i * 83.7) % 220);
+    const tw = 0.5 + 0.5 * Math.sin(t * 3 + i);
+    ctx.fillRect(sx, sy, 1.5 + tw, 1.5 + tw);
+  }
+  ctx.restore();
+}
+
 function drawTimeStop(ctx: CanvasRenderingContext2D, g: Game) {
   const left = g.stopUntil - g.t;
   const a = clamp(Math.min(left, 0.3) / 0.3, 0, 1);
@@ -2870,6 +2950,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, g: Game, backdrop: HTML
   }
   ctx.drawImage(backdrop, -12, -8, W + 24, H + 16);
   drawRealm(ctx, g);
+  if (g.eclipseUntil > g.t) drawEclipse(ctx, g);
   for (const z of g.zones) { tintBy(g.fighters[z.owner]); drawZone(ctx, g, z); }
   for (const e of g.eruptions) if (!e.fired) { tintBy(g.fighters[e.owner]); drawEruption(ctx, e); }
   setLookTint(null);

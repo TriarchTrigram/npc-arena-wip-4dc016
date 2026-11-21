@@ -6,8 +6,8 @@ import { cn } from "~/lib/utils";
 import { DEF_BY_ID, FIGHTERS, type Power } from "~/lib/fighters";
 import { CHAPTERS, STAGES_PER_CHAPTER, canTeam, chapterOpen, enemySide, playerSide, type Pair } from "~/lib/story";
 
-const TITLE_KEYS: StringKey[] = ["story.chapterTitle", "story.ch2.title", "story.ch3.title", "story.ch4.title", "story.ch5.title"];
-const STAGE_PREFIX = ["story.stages", "story.ch2.stages", "story.ch3.stages", "story.ch4.stages", "story.ch5.stages"];
+const TITLE_KEYS: StringKey[] = ["story.chapterTitle", "story.ch2.title", "story.ch3.title", "story.ch4.title", "story.ch5.title", "story.ch6.title", "story.ch7.title"];
+const STAGE_PREFIX = ["story.stages", "story.ch2.stages", "story.ch3.stages", "story.ch4.stages", "story.ch5.stages", "story.ch6.stages", "story.ch7.stages"];
 const stageKey = (ch: number, i: number) => `${STAGE_PREFIX[ch]}.s${i + 1}` as StringKey;
 
 export function StoryPanel({ cleared, chapter, onChapter, stage, onStage, pair, onPair, locked }: {

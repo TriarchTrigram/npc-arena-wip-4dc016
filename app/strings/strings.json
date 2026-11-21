@@ -79,7 +79,7 @@
       "nextStage": "Next stage",
       "tryAgain": "Try again",
       "changePair": "Change pair",
-      "storyComplete": "Story complete! The Rift is sealed.",
+      "storyComplete": "Story complete! The Black Sun has set.",
       "nextChapter": "Next chapter"
     },
     "idle": "Press Start to begin the battle",
@@ -124,7 +124,7 @@
     "cta": "Choose how to fight",
     "backAria": "Back to the title screen",
     "modes": {
-      "story": "Five chapters with a fused or teamed-up pair.",
+      "story": "Seven chapters with a fused or teamed-up pair.",
       "duel": "One on one, no distractions.",
       "ffa": "Everyone in, free for all.",
       "teams": "Pick sides and fight together.",
@@ -281,6 +281,36 @@
         "s8": "Hall of Echoes",
         "s9": "The Last Gate",
         "s10": "The Riftmaker's Core"
+      }
+    },
+    "ch6": {
+      "title": "Chapter 6: The Hollow Kingdom",
+      "stages": {
+        "s1": "Bone Road",
+        "s2": "Lantern Marsh",
+        "s3": "Crypt Gate",
+        "s4": "Weeping Bridge",
+        "s5": "The Ossuary",
+        "s6": "Ghost Market",
+        "s7": "Hall of Chains",
+        "s8": "Cathedral of Ash",
+        "s9": "The Last Vigil",
+        "s10": "The Hollow King's Throne"
+      }
+    },
+    "ch7": {
+      "title": "Chapter 7: The Dying Sun",
+      "stages": {
+        "s1": "Dusk Road",
+        "s2": "Sundial Plaza",
+        "s3": "Solar Forge",
+        "s4": "Corona Steps",
+        "s5": "Shadow Orchard",
+        "s6": "Burning Observatory",
+        "s7": "Halo Bridge",
+        "s8": "Umbra Gate",
+        "s9": "The Last Light",
+        "s10": "The Black Sun's Crown"
       }
     }
   },

@@ -1,5 +1,5 @@
 // How each fighter's moves look. Every one of the 64 moves has its own colours, particles and drawing,
-// so no two moves look alike. The engine calls in here when a move fires, while it flies and when it hits.
+// so no two moves look alike. The Story bosses' moves have their own entries too. The engine calls in here when a move fires, while it flies and when it hits.
 
 export type PShape =
   | "dot" | "spark" | "shard" | "chunk" | "ring" | "plus" | "smoke"
@@ -141,6 +141,20 @@ export const LOOKS: Record<string, Look> = {
   "fold-space": L("hsl(186 100% 60%)", "hsl(318 100% 78%)", "pixel", true, 0, "portal"),
   "mirror-shards": L("hsl(186 60% 85%)", "hsl(318 100% 80%)", "shard", true, 200, "cross"),
   "unmake": L("hsl(318 100% 55%)", "hsl(0 0% 100%)", "pixel", true, 0, "portal"),
+  // The Hollow King, soul reaping
+  "reaper-scythe": L("hsl(165 22% 22%)", "hsl(152 92% 66%)", "smoke", false, -60, "slash", "hand", 0.3),
+  "soul-chains": L("hsl(170 8% 62%)", "hsl(152 92% 66%)", "dot", true, 0, "implode"),
+  "grave-hands": L("hsl(48 22% 84%)", "hsl(152 92% 64%)", "dust", false, 600, "crater"),
+  "wailing-souls": L("hsl(152 80% 72%)", "hsl(150 70% 92%)", "smoke", false, -80, "implode"),
+  "graveyard": L("hsl(168 24% 20%)", "hsl(152 92% 66%)", "smoke", false, -70),
+  "soul-harvest": L("hsl(160 40% 16%)", "hsl(152 92% 68%)", "dot", true, -40, "implode", "body", 0.9),
+  // The Black Sun, eclipse
+  "corona-edge": L("hsl(28 100% 52%)", "hsl(46 100% 72%)", "ember", true, -180, "flare", "hand", 0.28),
+  "solar-flare": L("hsl(22 100% 52%)", "hsl(48 100% 80%)", "ember", true, -120, "flare"),
+  "sunspot-rain": L("hsl(20 40% 10%)", "hsl(38 100% 60%)", "ember", true, -100, "crater", "sky", 1.1),
+  "eclipse-disc": L("hsl(250 40% 6%)", "hsl(44 100% 70%)", "spark", true, 0, "starburst"),
+  "prominence": L("hsl(18 100% 52%)", "hsl(48 100% 76%)", "ember", true, -260, "flare"),
+  "total-eclipse": L("hsl(250 40% 6%)", "hsl(44 100% 72%)", "star", true, 0, "starburst", "body", 0.9),
 };
 
 /** A one-off effect: a move's signature when it fires (hit = false) or its mark on whoever it struck (hit = true). */
@@ -1302,6 +1316,122 @@ function drawCast(ctx: CanvasRenderingContext2D, fx: Fx, a: string, b: string, s
       ctx.fill();
       break;
     }
+    // ----- The Hollow King -----
+    case "reaper-scythe": {
+      // a wide crescent sweep, souls flung off the tip
+      ctx.scale(dir, 1);
+      const R = 62 * s;
+      const sweep = -2.3 + e * 3.2;
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 3; i++) {
+        ctx.strokeStyle = al(i ? b : "hsl(0 0% 100%)", 0.9 - i * 0.25);
+        ctx.lineWidth = (10 - i * 3) * s;
+        ctx.beginPath();
+        ctx.arc(-14 * s, 6 * s, R - i * 7 * s, -2.3, Math.max(-2.29, sweep));
+        ctx.stroke();
+      }
+      for (let i = 0; i < 5; i++) {
+        const an = sweep - i * 0.25;
+        const rr = R * (1 + i * 0.08);
+        glow(ctx, -14 * s + Math.cos(an) * rr, 6 * s + Math.sin(an) * rr, 7 * s, b, 0.7 * (1 - i / 5));
+      }
+      break;
+    }
+    case "soul-harvest": {
+      // a turning sigil, with hands of light at its rim
+      ctx.globalCompositeOperation = "lighter";
+      const R = 90 * s * (0.4 + 0.6 * e);
+      glow(ctx, 0, 0, R * 1.4, b, 0.5);
+      ctx.strokeStyle = b;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, R, 0, TAU);
+      ctx.stroke();
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, R * 0.72, 0, TAU);
+      ctx.stroke();
+      ctx.beginPath();
+      for (let i = 0; i <= 5; i++) {
+        const an = -Math.PI / 2 + t * 0.8 + ((i * 2) / 5) * TAU;
+        ctx.lineTo(Math.cos(an) * R * 0.72, Math.sin(an) * R * 0.72);
+      }
+      ctx.stroke();
+      for (let i = 0; i < 8; i++) {
+        const an = (i / 8) * TAU - t * 0.6;
+        glow(ctx, Math.cos(an) * R, Math.sin(an) * R, 9 * s, "hsl(0 0% 100%)", 0.9);
+      }
+      break;
+    }
+    // ----- The Black Sun -----
+    case "corona-edge": {
+      // a burning ring with a black core: a tiny eclipse on the fist
+      const R = 26 * s * (0.5 + e);
+      ctx.globalCompositeOperation = "lighter";
+      glow(ctx, 0, 0, R * 1.8, a, 0.7);
+      ctx.strokeStyle = b;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const an = (i / 10) * TAU + seed;
+        ctx.moveTo(Math.cos(an) * R, Math.sin(an) * R);
+        ctx.lineTo(Math.cos(an) * R * 1.55, Math.sin(an) * R * 1.55);
+      }
+      ctx.stroke();
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(0, 0, R, 0, TAU);
+      ctx.stroke();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = al("hsl(250 40% 6%)", 0.92);
+      ctx.beginPath();
+      ctx.arc(0, 0, R * 0.66, 0, TAU);
+      ctx.fill();
+      break;
+    }
+    case "sunspot-rain": {
+      // a dead sun opens in the sky and sheds burning sunspots
+      ctx.globalAlpha = Math.min(1, k * 6) * fade;
+      ctx.globalCompositeOperation = "lighter";
+      glow(ctx, 0, 0, 84 * s, b, 0.7);
+      ctx.strokeStyle = al(b, 0.85);
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 14; i++) {
+        const an = (i / 14) * TAU + t * 0.4;
+        const len = (48 + 14 * Math.sin(t * 4 + i * 1.9)) * s;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(an) * 30 * s, Math.sin(an) * 30 * s);
+        ctx.quadraticCurveTo(Math.cos(an + 0.1) * len * 0.8, Math.sin(an + 0.1) * len * 0.8, Math.cos(an) * len, Math.sin(an) * len);
+        ctx.stroke();
+      }
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = "hsl(250 40% 5%)";
+      ctx.strokeStyle = b;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, 30 * s, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+      break;
+    }
+    case "total-eclipse": {
+      // above the caster, a moon slides across a burning sun
+      ctx.translate(0, -78 * s);
+      const R = 28 * s;
+      ctx.globalCompositeOperation = "lighter";
+      glow(ctx, 0, 0, R * (2 + e * 1.6), b, 0.9);
+      ctx.fillStyle = b;
+      ctx.beginPath();
+      ctx.arc(0, 0, R, 0, TAU);
+      ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
+      const off = (1 - Math.min(1, k * 2.2)) * R * 2.2;
+      ctx.fillStyle = "hsl(250 40% 5%)";
+      ctx.beginPath();
+      ctx.arc(off, 0, R * 1.02, 0, TAU);
+      ctx.fill();
+      break;
+    }
   }
 }
 
@@ -1700,6 +1830,68 @@ export function drawShotLook(ctx: CanvasRenderingContext2D, id: string, p: Shot,
       glow(ctx, p.x, p.y, r * 0.8, "hsl(0 0% 100%)", 1);
       break;
     }
+    case "wailing-souls": {
+      // a ghost: a round head, a wavering tail streaming behind, hollow eyes and an open mouth
+      ctx.globalCompositeOperation = "lighter";
+      glow(ctx, p.x, p.y, r * 2.6, a, 0.55);
+      ctx.globalCompositeOperation = "source-over";
+      const tl = r * 3.2;
+      const wv = Math.sin(t * 12 + p.rot * 3) * r * 0.5;
+      ctx.fillStyle = al(b, 0.92);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, Math.PI / 2, -Math.PI / 2, dir < 0);
+      ctx.quadraticCurveTo(p.x - dir * tl * 0.5, p.y - r * 0.9 - wv * 0.4, p.x - dir * tl, p.y + wv);
+      ctx.quadraticCurveTo(p.x - dir * tl * 0.5, p.y + r * 0.9 + wv * 0.4, p.x, p.y + r);
+      ctx.fill();
+      ctx.fillStyle = "hsl(170 40% 10%)";
+      for (const ex of [0.05, 0.5]) {
+        ctx.beginPath();
+        ctx.ellipse(p.x + dir * r * ex, p.y - r * 0.25, r * 0.16, r * 0.26, 0, 0, TAU);
+        ctx.fill();
+      }
+      ctx.beginPath();
+      ctx.ellipse(p.x + dir * r * 0.3, p.y + r * 0.38, r * 0.17, r * 0.24 + Math.abs(Math.sin(t * 9)) * r * 0.1, 0, 0, TAU);
+      ctx.fill();
+      break;
+    }
+    case "eclipse-disc": {
+      // a spinning black disc rimmed in corona fire, one bright bead racing round it
+      ctx.globalCompositeOperation = "lighter";
+      glow(ctx, p.x, p.y, r * 2.6, "hsl(32 100% 55%)", 0.7);
+      ctx.strokeStyle = al(b, 0.85);
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 12; i++) {
+        const an = (i / 12) * TAU + t * 6;
+        const len = r * (1.5 + 0.3 * Math.sin(t * 20 + i));
+        ctx.beginPath();
+        ctx.moveTo(p.x + Math.cos(an) * r, p.y + Math.sin(an) * r);
+        ctx.lineTo(p.x + Math.cos(an) * len, p.y + Math.sin(an) * len);
+        ctx.stroke();
+      }
+      glow(ctx, p.x + Math.cos(t * 14) * r, p.y + Math.sin(t * 14) * r, r * 0.7, "hsl(0 0% 100%)", 1);
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = a;
+      ctx.strokeStyle = b;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+      break;
+    }
+    case "sunspot-rain": {
+      // a falling ball of sun with a black spot in its heart and a flame tail
+      ctx.globalCompositeOperation = "lighter";
+      glow(ctx, p.x, p.y, r * 2.6, b, 0.65);
+      flame(ctx, p.x, p.y, r * 0.9, r * 3.2, Math.atan2(-p.vy, -p.vx), t, p.rot, "hsl(24 100% 52%)", b);
+      glow(ctx, p.x, p.y, r * 1.1, "hsl(48 100% 80%)", 1);
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = a;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r * 0.5, 0, TAU);
+      ctx.fill();
+      break;
+    }
     default:
       ctx.restore();
       return false;
@@ -1914,6 +2106,65 @@ export function drawBeamLook(ctx: CanvasRenderingContext2D, id: string, bm: Beam
       }
       break;
     }
+    case "soul-chains": {
+      // a spectral chain, links alternating flat and round, with a hook at the end
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = al(b, 0.45);
+      ctx.lineWidth = 12;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(len, 0); ctx.stroke();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.strokeStyle = a;
+      ctx.lineWidth = 3;
+      for (let x = 6, i = 0; x < len - 6; x += 13, i++) {
+        ctx.beginPath();
+        ctx.ellipse(x, 0, 8, i % 2 ? 2 : 5, 0, 0, TAU);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "hsl(180 10% 84%)";
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(len - 6, 0);
+      ctx.quadraticCurveTo(len + 12, -6, len + 2, -20);
+      ctx.quadraticCurveTo(len + 4, -8, len - 6, -4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      break;
+    }
+    case "solar-flare": {
+      // a torrent of plasma: white-gold core, two strands twisting round it, loops arching off the top
+      ctx.globalCompositeOperation = "lighter";
+      glow(ctx, 0, 0, w * 2.6, b, 1);
+      ctx.strokeStyle = al(a, 0.6);
+      ctx.lineWidth = w * 1.9;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(len, 0); ctx.stroke();
+      ctx.strokeStyle = b;
+      ctx.lineWidth = w * 0.9;
+      ctx.stroke();
+      ctx.strokeStyle = "hsl(0 0% 100%)";
+      ctx.lineWidth = w * 0.35;
+      ctx.stroke();
+      ctx.lineWidth = 2.5;
+      for (let i = 0; i < 2; i++) {
+        ctx.strokeStyle = i ? al(b, 0.9) : al("hsl(14 100% 58%)", 0.9);
+        ctx.beginPath();
+        for (let x = 0; x <= len; x += 10) ctx.lineTo(x, Math.sin(x * 0.045 - t * 26 + i * Math.PI) * w * 0.9);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = al(a, 0.8);
+      ctx.lineWidth = 3;
+      for (let i = 1; i < 5; i++) {
+        const x0 = (i / 5) * len, sp = 30 + 12 * Math.sin(i * 2.7);
+        const hh = w * (1.6 + 0.6 * Math.sin(t * 9 + i));
+        ctx.beginPath();
+        ctx.moveTo(x0 - sp / 2, -w * 0.4);
+        ctx.bezierCurveTo(x0 - sp / 2, -hh * 1.4, x0 + sp / 2, -hh * 1.4, x0 + sp / 2, -w * 0.4);
+        ctx.stroke();
+      }
+      glow(ctx, len, 0, w * 1.5, "hsl(0 0% 100%)", 1);
+      break;
+    }
     default:
       ctx.restore();
       return false;
@@ -2097,6 +2348,75 @@ export function drawEruptionLook(ctx: CanvasRenderingContext2D, id: string, x: n
         ctx.lineTo(x + sd * r * 0.8, gy - h * 0.05);
         ctx.stroke();
       }
+      break;
+    }
+    case "grave-hands": {
+      // a skeletal hand bursts out of the ground and grabs
+      ctx.globalCompositeOperation = "lighter";
+      glow(ctx, x, gy - h * 0.4, r * 1.6, b, 0.45);
+      ctx.globalCompositeOperation = "source-over";
+      const top = gy - h * 0.72;
+      const sway = Math.sin(t * 6) * 4;
+      const grip = Math.min(1, Math.max(0, (t - 0.45) * 4));
+      const bones = (wid: number, col: string) => {
+        ctx.strokeStyle = col;
+        ctx.lineWidth = wid;
+        ctx.beginPath();
+        ctx.moveTo(x - 3, gy + 4); ctx.lineTo(x - 3 + sway, top + 10);
+        ctx.moveTo(x + 4, gy + 4); ctx.lineTo(x + 4 + sway, top + 10);
+        for (let i = 0; i < 4; i++) {
+          const fx0 = x + sway + (i - 1.5) * r * 0.2, fy0 = top;
+          const fx1 = x + sway + (i - 1.5) * r * 0.28, fy1 = top - r * 0.55;
+          ctx.moveTo(fx0, fy0);
+          ctx.lineTo(fx1, fy1);
+          ctx.lineTo(fx1 + (x + sway - fx1) * 0.55 * grip, fy1 - r * 0.2 * (1 - grip) + r * 0.05);
+        }
+        ctx.moveTo(x + sway - r * 0.36, top + 8);
+        ctx.lineTo(x + sway - r * 0.55, top - r * 0.2);
+        ctx.stroke();
+      };
+      bones(8, INK);
+      bones(4.5, a);
+      ctx.fillStyle = a;
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(x + sway, top + 4, r * 0.38, r * 0.22, 0, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "hsl(28 25% 24%)";
+      for (let i = 0; i < 5; i++) {
+        rock(ctx, x + (i - 2) * r * 0.42, gy - 3 - (i % 2) * 5, 6 + (i % 3) * 2, i, i * 3.1);
+        ctx.fill();
+        ctx.stroke();
+      }
+      break;
+    }
+    case "prominence": {
+      // a solar prominence: a loop of plasma arching out of the ground and back in
+      const bez = (u: number) => {
+        const p0 = [x - r * 0.8, gy], p1 = [x - r * 1.7, gy - h * 1.2], p2 = [x + r * 1.7, gy - h * 1.2], p3 = [x + r * 0.8, gy];
+        const v = 1 - u;
+        return [
+          v * v * v * p0[0] + 3 * v * v * u * p1[0] + 3 * v * u * u * p2[0] + u * u * u * p3[0],
+          v * v * v * p0[1] + 3 * v * v * u * p1[1] + 3 * v * u * u * p2[1] + u * u * u * p3[1],
+        ];
+      };
+      ctx.globalCompositeOperation = "lighter";
+      glow(ctx, x, gy - h * 0.5, r * 2.2, a, 0.5);
+      for (const [wd, c] of [[r * 0.75, al(a, 0.7)], [r * 0.4, b], [r * 0.14, "hsl(0 0% 100%)"]] as const) {
+        ctx.strokeStyle = c;
+        ctx.lineWidth = wd;
+        ctx.beginPath();
+        ctx.moveTo(x - r * 0.8, gy);
+        ctx.bezierCurveTo(x - r * 1.7, gy - h * 1.2, x + r * 1.7, gy - h * 1.2, x + r * 0.8, gy);
+        ctx.stroke();
+      }
+      for (let i = 0; i < 7; i++) {
+        const [px, py] = bez((i / 7 + t * 0.9) % 1);
+        glow(ctx, px, py, r * 0.4, "hsl(0 0% 100%)", 0.8);
+      }
+      for (let i = 0; i < 3; i++) flame(ctx, x + (i - 1) * r * 0.5, gy, r * 0.35, h * 0.3, -Math.PI / 2, t, i, a, b);
       break;
     }
     default:
@@ -2348,6 +2668,51 @@ export function drawZoneLook(ctx: CanvasRenderingContext2D, id: string, x: numbe
         ctx.beginPath();
         ctx.arc(bx, gy - 2 - k * 26, 3 + k * 7, Math.PI, 0);
         ctx.stroke();
+      }
+      break;
+    }
+    case "graveyard": {
+      // a patch of grave mist: leaning headstones and will-o'-wisps that feed the reaper
+      const gr = ctx.createRadialGradient(x, gy, 0, x, gy, r);
+      gr.addColorStop(0, al(a, 0.85));
+      gr.addColorStop(1, al(a, 0));
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.ellipse(x, gy, r, r * 0.55, 0, Math.PI, 0);
+      ctx.fill();
+      ctx.strokeStyle = b;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(x, gy + 2, r, 11, 0, 0, TAU);
+      ctx.stroke();
+      for (let i = 0; i < 4; i++) {
+        const th = 26 + (i % 2) * 9;
+        ctx.save();
+        ctx.translate(x + (i - 1.5) * r * 0.48, gy + 2);
+        ctx.rotate(Math.sin(i * 3.1) * 0.16);
+        ctx.fillStyle = "hsl(200 6% 50%)";
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-9, 0);
+        ctx.lineTo(-9, -th + 9);
+        ctx.arc(0, -th + 9, 9, Math.PI, 0);
+        ctx.lineTo(9, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, -th + 6); ctx.lineTo(0, -th + 18);
+        ctx.moveTo(-4, -th + 10); ctx.lineTo(4, -th + 10);
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 4; i++) {
+        const wx = x + Math.sin(i * 2.7 + t * 0.8) * r * 0.7;
+        const wy = gy - 46 - Math.sin(t * 3 + i) * 12;
+        glow(ctx, wx, wy, 14, b, 0.8);
+        glow(ctx, wx, wy, 4, "hsl(0 0% 100%)", 1);
       }
       break;
     }

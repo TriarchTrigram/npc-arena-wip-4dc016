@@ -15,7 +15,7 @@ export type Stage = {
 
 export type Chapter = { stages: Stage[] };
 
-/** The five chapters, each ten stages ending on a boss. A chapter opens once the one before it is cleared. */
+/** The chapters, each ten stages ending on a boss. A chapter opens once the one before it is cleared. */
 export const CHAPTERS: Chapter[] = [
   {
     stages: [
@@ -89,6 +89,36 @@ export const CHAPTERS: Chapter[] = [
       { enemies: ["magneto", "gravi", "tele", "umbra"], enemyHp: 0.19 },
       { enemies: ["pyro", "electro", "aero", "lux", "umbra"], enemyHp: 0.16 },
       { enemies: [], boss: "riftmaker" },
+    ],
+  },
+  {
+    // Chapter 6: The Hollow Kingdom
+    stages: [
+      { enemies: ["umbra"] },
+      { enemies: ["toxi", "vita"], enemyHp: 0.85 },
+      { enemies: ["chrono", "psy"], enemyHp: 0.8 },
+      { enemies: ["umbra", "magneto"], enemyHp: 0.7 },
+      { enemies: ["toxi", "umbra", "shift"], enemyHp: 0.45 },
+      { enemies: ["psy", "tele", "vita"], enemyHp: 0.45 },
+      { enemies: ["gravi", "umbra", "cryo"], enemyHp: 0.38 },
+      { enemies: ["pyro", "toxi", "terra", "umbra"], enemyHp: 0.22 },
+      { enemies: ["chrono", "psy", "tele", "shift", "umbra"], enemyHp: 0.13 },
+      { enemies: [], boss: "hollowking" },
+    ],
+  },
+  {
+    // Chapter 7: The Dying Sun
+    stages: [
+      { enemies: ["lux"] },
+      { enemies: ["pyro", "lux"], enemyHp: 0.85 },
+      { enemies: ["electro", "magneto"], enemyHp: 0.65 },
+      { enemies: ["umbra", "lux"], enemyHp: 0.8 },
+      { enemies: ["pyro", "aero", "gravi"], enemyHp: 0.46 },
+      { enemies: ["lux", "chrono", "psy"], enemyHp: 0.46 },
+      { enemies: ["electro", "pyro", "terra"], enemyHp: 0.44 },
+      { enemies: ["gravi", "umbra", "lux", "tele"], enemyHp: 0.2 },
+      { enemies: ["pyro", "lux", "electro", "umbra", "gravi"], enemyHp: 0.14 },
+      { enemies: [], boss: "blacksun" },
     ],
   },
 ];

@@ -21,12 +21,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "~/components/ui/popover
 import { Separator } from "~/components/ui/separator";
 import { Toggle } from "~/components/ui/toggle";
 import { cn } from "~/lib/utils";
+import { uploadFile, UploadError } from "~stencil/upload/client";
 
 interface RichTextEditorProps {
   /** Markdown in, markdown out — never HTML. */
   value: string;
   onChange: (markdown: string) => void;
-  /** Route accepting a multipart `file` POST and returning `{ url }`. */
+  /** The app's upload route, running `handleUpload` from `~stencil/upload/server`. */
   uploadUrl?: string;
   placeholder?: string;
   /** Tailwind min-height class for the writing surface. */
@@ -35,7 +36,7 @@ interface RichTextEditorProps {
   maxHeightClass?: string;
   /** Fired on Cmd/Ctrl+Enter so a composer can submit from the keyboard. */
   onSubmit?: () => void;
-  /** File-picker `accept` filter. */
+  /** File-picker `accept` filter; keep it in step with the upload route's `accept`. */
   accept?: string;
   className?: string;
 }
@@ -50,7 +51,7 @@ export function RichTextEditor({
   minHeightClass = "min-h-32",
   maxHeightClass,
   onSubmit,
-  accept = "image/*,.pdf,.txt,.md,.csv,.json",
+  accept = "image/*,application/pdf",
   className,
 }: RichTextEditorProps) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -111,25 +112,20 @@ export function RichTextEditor({
     }
   }, [editor, value]);
 
-  const uploadFile = useCallback(
+  const addFile = useCallback(
     async (file: File) => {
       if (!editor) return;
       setUploadError(null);
-      const fd = new FormData();
-      fd.append("file", file);
-      let res: Response;
+      let url: string;
+      let contentType: string;
       try {
-        res = await fetch(uploadUrl, { method: "POST", body: fd });
-      } catch {
-        setUploadError("Upload failed — check your connection and try again.");
+        ({ url, contentType } = await uploadFile(file, { route: uploadUrl }));
+      } catch (err) {
+        // An UploadError carries the route's own sentence (too big, wrong type).
+        setUploadError(err instanceof UploadError ? err.message : "Upload failed — try again.");
         return;
       }
-      if (!res.ok) {
-        setUploadError("Upload failed — try again.");
-        return;
-      }
-      const { url } = (await res.json()) as { url: string };
-      if (file.type.startsWith("image/")) {
+      if (contentType.startsWith("image/")) {
         editor.chain().focus().setImage({ src: url }).run();
       } else {
         // A proper link-marked node (a raw markdown string wouldn't get the mark); the
@@ -158,13 +154,13 @@ export function RichTextEditor({
         if (item.kind !== "file") continue;
         e.preventDefault();
         const file = item.getAsFile();
-        if (file) void uploadFile(file);
+        if (file) void addFile(file);
         break;
       }
     }
     dom.addEventListener("paste", onPaste);
     return () => dom.removeEventListener("paste", onPaste);
-  }, [editor, uploadFile]);
+  }, [editor, addFile]);
 
   // Drop files onto the editor.
   useEffect(() => {
@@ -174,11 +170,11 @@ export function RichTextEditor({
       const files = e.dataTransfer?.files;
       if (!files?.length) return;
       e.preventDefault();
-      void uploadFile(files[0]);
+      void addFile(files[0]);
     }
     dom.addEventListener("drop", onDrop);
     return () => dom.removeEventListener("drop", onDrop);
-  }, [editor, uploadFile]);
+  }, [editor, addFile]);
 
   if (!editor) return null;
 
@@ -311,7 +307,7 @@ export function RichTextEditor({
           accept={accept}
           onChange={(e) => {
             const f = e.target.files?.[0];
-            if (f) void uploadFile(f);
+            if (f) void addFile(f);
             e.target.value = "";
           }}
         />

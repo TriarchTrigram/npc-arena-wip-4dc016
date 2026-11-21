@@ -71,10 +71,14 @@ export type Move = {
   erase?: boolean;
   /** Reaches every enemy on the field, wherever they stand. */
   world?: boolean;
+  /** A blast that reaches every enemy and pulls a soul out of each one; its `heal` is gained per enemy hit. */
+  harvest?: boolean;
+  /** A blast that reaches every enemy and darkens the whole arena under an eclipse. */
+  eclipse?: boolean;
 };
 
 /** A Story boss's own body design, drawn by the engine on top of the stickman. */
-export type BossDesign = "antimatter" | "maelstrom" | "magmaw" | "everwinter" | "riftmaker";
+export type BossDesign = "antimatter" | "maelstrom" | "magmaw" | "everwinter" | "riftmaker" | "hollow" | "blacksun";
 
 export type FighterDef = {
   id: Power;
