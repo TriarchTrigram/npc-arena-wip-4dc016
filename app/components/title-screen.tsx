@@ -100,7 +100,7 @@ function AttractFight({ onPair }: { onPair: (pair: FighterDef[]) => void }) {
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, []);
-  return <canvas ref={ref} width={W} height={H} aria-hidden="true" className="absolute inset-0 h-full w-full object-cover" />;
+  return <canvas ref={ref} width={W} height={H} aria-hidden="true" className="absolute inset-0 h-full w-full object-cover object-bottom" />;
 }
 
 /** Classic yin-yang swirl, recoloured to the two elements instead of black and white. */
@@ -125,7 +125,7 @@ export function TitleScreen({ onPick, music }: { onPick: (mode: Mode) => void; m
       {/* the live fight, dimmed toward the bottom so the menu reads */}
       <div className="relative flex min-h-[30rem] w-full flex-col justify-end sm:aspect-[16/8] sm:min-h-0">
         <AttractFight onPair={setPair} />
-        <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-b from-[hsl(250_32%_10%/0.15)] via-[hsl(250_32%_10%/0.35)] to-[hsl(250_32%_10%)]" />
+        <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-b from-[hsl(250_32%_10%/0.1)] from-40% via-[hsl(250_32%_10%/0.45)] via-75% to-[hsl(250_32%_10%)]" />
         {music && <div className="absolute right-3 top-3 z-10 rounded-full bg-card/90 px-2 py-1 text-foreground shadow-sm">{music}</div>}
         <div className="relative flex flex-col items-center gap-3 px-6 pb-6 pt-16 text-center sm:pb-10">
           <ElementYinYang redColor={pyro.color} blueColor={hydro.color} className="h-14 w-14 drop-shadow-lg motion-safe:animate-[spin_18s_linear_infinite] sm:h-20 sm:w-20" />
@@ -138,7 +138,7 @@ export function TitleScreen({ onPick, music }: { onPick: (mode: Mode) => void; m
           </h1>
           <Text id="title.tagline" as="p" className="max-w-prose text-base text-white/85" />
         </div>
-        <p className="absolute left-3 top-3 z-10 flex items-center gap-2 rounded-full bg-[hsl(250_32%_8%/0.7)] px-3 py-1.5 text-sm text-white/90">
+        <p className="absolute left-3 top-16 z-10 flex sm:top-3 items-center gap-2 rounded-full bg-[hsl(250_32%_8%/0.7)] px-3 py-1.5 text-sm text-white/90">
           <span className="relative flex h-2 w-2" aria-hidden="true">
             <span className="absolute inline-flex h-full w-full rounded-full bg-[hsl(0_85%_60%)] motion-safe:animate-ping" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-[hsl(0_85%_60%)]" />
