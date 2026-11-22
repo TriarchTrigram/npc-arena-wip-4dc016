@@ -3,7 +3,7 @@ import { DEF_BY_ID, juggernautOf, rosterIdOf, type Anim, type FighterDef, type M
 import type { Sfx } from "./arena-sound";
 import { INTROS, INTRO_LEN, INTRO_ARRIVED, type IntroBurst, type IntroPose } from "./spawn-intros";
 import { LOOKS, setLookTint, drawFx, drawSpark, drawShotLook, drawBeamLook, drawEruptionLook, drawZoneLook, drawRushLook, drawAnnihilation, eruptionColors, type Fx, type PShape } from "./move-looks";
-import { drawBossDesign } from "./boss-designs";
+import { drawBossDesign, type BossAct } from "./boss-designs";
 
 export const W = 960;
 export const H = 600;
@@ -33,6 +33,8 @@ const STANCE: Pose = { t: 0.12, aF1: 0.75, aF2: 2.35, aB1: 0.35, aB2: 1.95, lF1:
 const AIR: Pose = { t: 0.2, aF1: 2.1, aF2: 2.6, aB1: -0.7, aB2: -0.2, lF1: 1.3, lF2: 0.15, lB1: 0.45, lB2: -0.65 };
 const HURT: Pose = { t: -0.45, aF1: -0.35, aF2: 0.5, aB1: -0.9, aB2: -0.4, lF1: 0.35, lF2: 0.1, lB1: -0.25, lB2: -0.1 };
 const DAZED: Pose = { t: 0.45, aF1: 0.15, aF2: 0.05, aB1: -0.1, aB2: -0.15, lF1: 0.3, lF2: -0.2, lB1: -0.2, lB2: -0.45 };
+/** A crushing blow: bent far back, arms flung. The hurt pose blends toward it the harder the hit. */
+const HURT_HEAVY: Pose = { t: -0.95, aF1: -1.0, aF2: -0.35, aB1: -1.45, aB2: -1.0, lF1: 0.7, lF2: 0.35, lB1: -0.55, lB2: -0.2 };
 const KO: Pose = { t: -1.52, aF1: -1.35, aF2: -1.75, aB1: -1.75, aB2: -1.45, lF1: 1.55, lF2: 1.6, lB1: 1.4, lB2: 1.62 };
 // forward dash: leaning in, arms streaming back
 const DASH: Pose = { t: 0.62, aF1: -0.95, aF2: -0.6, aB1: -1.15, aB2: -0.85, lF1: 0.95, lF2: 0.3, lB1: -0.75, lB2: -0.95 };
@@ -189,6 +191,10 @@ export type Fighter = {
   rage: boolean; rageT: number;
   /** Seconds into the entrance phase when this fighter's own entrance starts. */
   spawnAt: number;
+  /** Cinematic hit reactions: body roll (radians) and its speed while tumbling, how hard the last hit landed, and the shudder while the hit freezes. */
+  spin: number; spinV: number; recoil: number; jolt: number;
+  /** The striking hand or foot's recent path, drawn as a smear. */
+  trail: { x: number; y: number; life: number }[];
 };
 
 type Projectile = {
@@ -201,6 +207,8 @@ type Zone = { owner: number; power: Power; move: Move; x: number; life: number; 
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; color: string; shape: PShape; grav: number; add: boolean; rot: number };
 type Pop = { x: number; y: number; text: string; color: string; life: number; max: number; size: number };
 type Wave = { x: number; y: number; r: number; life: number; max: number; a: string; b: string };
+/** A big hit's impact frame: a spiked starburst and speed streaks in the hit's direction. */
+type Impact = { x: number; y: number; dir: number; size: number; life: number; max: number; a: string; b: string; seed: number; heavy: boolean };
 
 export type FeedItem = { id: number; killer: string | null; victim: string };
 
@@ -260,6 +268,17 @@ export type Game = {
   eclipseUntil: number;
   /** White flash over everything, in seconds left. */
   flash: number;
+  /** The fight camera: where it looks and how far it is pushed in. */
+  cam: { x: number; y: number; z: number };
+  /** A quick push-in on a big hit. */
+  punch: { x: number; y: number; t: number; max: number; z: number } | null;
+  /** A directional jolt of the whole view that springs back. */
+  kick: { x: number; y: number };
+  /** Slow motion left, in real seconds (the final K.O.). */
+  slow: number;
+  impacts: Impact[];
+  /** A silent attract-mode fight behind the title: no lifebars or callouts. */
+  demo: boolean;
 };
 
 let feedId = 0;
@@ -315,6 +334,7 @@ export function newGame(ids: (Power | FighterDef)[], preview = false, teams?: nu
       jugg: isJugg, hoverY,
       rage: false, rageT: 0,
       spawnAt: isJugg ? lastSlot * gap + 0.35 : slot * gap,
+      spin: 0, spinV: 0, recoil: 0, jolt: 0, trail: [],
     };
   });
   const introEnd = Math.max(0, ...fighters.map((f) => f.spawnAt)) + INTRO_LEN + 0.2;
@@ -325,7 +345,15 @@ export function newGame(ids: (Power | FighterDef)[], preview = false, teams?: nu
     teamMode, winnerId: null, winnerTeam: null, cut: null,
     intro: preview || n === 0 ? null : { t: 0, max: introEnd },
     realm: null, realmOut: null, annis: [], stopUntil: 0, eclipseUntil: 0, flash: 0,
+    cam: { x: W / 2, y: H / 2, z: 1 }, punch: null, kick: { x: 0, y: 0 }, slow: 0, impacts: [], demo: false,
   };
+}
+
+/** A silent fight for the title screen: real entrances and AI, no HUD, no sound. */
+export function newDemo(ids: (Power | FighterDef)[]): Game {
+  const g = newGame(ids);
+  g.demo = true;
+  return g;
 }
 
 // body points
@@ -394,6 +422,69 @@ function sfx(g: Game, e: Sfx) {
 
 function pop(g: Game, x: number, y: number, text: string, color: string, size = 18, life = 0.8) {
   g.pops.push({ x, y, text, color, life, max: life, size });
+}
+
+// ---------- cinematic camera ----------
+/** Push the camera in on a spot for a moment. */
+function punchIn(g: Game, x: number, y: number, z: number, max = 0.4) {
+  if (g.preview) return;
+  if (g.punch && g.punch.z > z && g.punch.t < g.punch.max * 0.5) return;
+  g.punch = { x, y, t: 0, max, z };
+}
+
+/** Jolt the whole view in a direction; it springs back on its own. */
+function kickCam(g: Game, dx: number, dy: number) {
+  g.kick.x = clamp(g.kick.x + dx, -12, 12);
+  g.kick.y = clamp(g.kick.y + dy, -8, 8);
+}
+
+/** Spiked impact frame and speed streaks where a hit lands. */
+function impact(g: Game, x: number, y: number, dir: number, size: number, a: string, b: string, heavy: boolean) {
+  const life = heavy ? 0.24 : 0.13;
+  g.impacts.push({ x, y, dir, size, life, max: life, a, b, seed: Math.random() * 100, heavy });
+  const n = heavy ? 16 : 7;
+  for (let i = 0; i < n; i++) {
+    const ang = (dir > 0 ? 0 : Math.PI) + rand(-0.7, 0.7);
+    const sp = rand(420, 980) * (heavy ? 1.2 : 1);
+    g.particles.push({ x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 80, life: 0.24, max: 0.24, size: rand(3, 6), color: i % 3 ? b : "white", shape: "spark", grav: 700, add: true, rot: 0 });
+  }
+}
+
+/** The camera follows the fight: it pushes in when only a few fighters are left close together, and punches in on big hits. Runs on real time, even through hit freezes. */
+function stepCam(g: Game, dt: number) {
+  const spring = Math.pow(0.0015, dt);
+  g.kick.x *= spring;
+  g.kick.y *= spring;
+  let tx = W / 2, ty = H / 2, tz = 1;
+  const live = g.fighters.filter((f) => f.alive);
+  if (!g.preview && !g.intro && live.length >= 1 && live.length <= 3) {
+    let x0 = Infinity, x1 = -Infinity, top = Infinity;
+    for (const f of live) {
+      x0 = Math.min(x0, f.x); x1 = Math.max(x1, f.x);
+      top = Math.min(top, f.y - bodyH(f) - 40 * f.scale);
+    }
+    tz = clamp(W / (x1 - x0 + 380), 1, 1.16);
+    tx = (x0 + x1) / 2;
+    // keep the floor near the bottom, but follow anyone launched high
+    ty = Math.min(GROUND + 34 - H / (2 * tz), top + H / (2 * tz) - 20);
+  }
+  const pu = g.punch;
+  if (pu) {
+    pu.t += dt;
+    const u = pu.t / pu.max;
+    if (u >= 1) g.punch = null;
+    else {
+      const e = u < 0.2 ? u / 0.2 : 1 - (u - 0.2) / 0.8;
+      const ee = e * e * (3 - 2 * e);
+      tz += pu.z * ee;
+      tx += (pu.x - tx) * 0.55 * ee;
+      ty += (pu.y - ty) * 0.55 * ee;
+    }
+  }
+  const a = 1 - Math.exp(-dt * (pu ? 16 : 3.2));
+  g.cam.x += (tx - g.cam.x) * a;
+  g.cam.y += (ty - g.cam.y) * a;
+  g.cam.z += (tz - g.cam.z) * a;
 }
 
 // ---------- clashes and dashes ----------
@@ -500,6 +591,17 @@ function knockOut(g: Game, f: Fighter, by: Fighter | null) {
   sfx(g, { k: "ko" });
   g.shake = Math.max(g.shake, 14);
   g.hitstop = Math.max(g.hitstop, 0.12);
+  f.spinV = (f.vx > 0 ? 1 : -1) * 9;
+  impact(g, c.x, c.y, Math.sign(f.vx) || 1, 70 * f.scale, f.def.color, f.def.glow, true);
+  g.waves.push({ x: c.x, y: c.y, r: 150 * f.scale, life: 0.55, max: 0.55, a: f.def.glow, b: "white" });
+  // the last one standing: slow motion and a hard push-in on the finishing blow
+  const left = g.fighters.filter((o) => o.alive);
+  const sides = g.teamMode ? new Set(left.map((o) => o.team)).size : left.length;
+  if (sides <= 1 && !g.preview) {
+    g.slow = 1.1;
+    g.flash = Math.max(g.flash, 0.16);
+    punchIn(g, c.x, c.y, 0.32, 1.5);
+  } else punchIn(g, c.x, c.y, 0.14, 0.5);
 }
 
 function hurt(g: Game, f: Fighter, amount: number, by: Fighter | null) {
@@ -570,8 +672,21 @@ function landHit(g: Game, a: Fighter, o: Fighter, move: Move, power: Power, dir:
   // white impact star
   g.particles.push({ x: c.x - dir * 6, y: c.y, vx: 0, vy: 0, life: 0.14, max: 0.14, size: 18 + dmg, color: "white", shape: "ring", grav: 0, add: true, rot: 0 });
   pop(g, c.x + rand(-10, 10), c.y - 56 * o.scale, crit ? `${Math.ceil(dmg)}!` : `${Math.ceil(dmg)}`, crit ? DEF_BY_ID.umbra.glow : "white", crit ? 24 : 18, 0.7);
+  // cinematic impact: starburst, a jolt of the view, a hit freeze scaled to the blow, and a push-in on the big ones
+  const lk = LOOKS[move.id];
+  const ca = rg?.a ?? lk?.a ?? DEF_BY_ID[power].color;
+  const cb = rg?.b ?? lk?.b ?? DEF_BY_ID[power].glow;
+  const big = crit || dmg >= 12 || (heavy && dmg >= 8);
+  const few = g.fighters.length <= 4;
+  impact(g, c.x - dir * 6, c.y, dir, (big ? 50 : 24 + dmg) * o.scale, ca, cb, big);
+  o.recoil = clamp(dmg / 14, 0.25, 1);
+  o.jolt = big ? 0.18 : 0.09;
+  if (move.lift && !o.jugg) o.spinV = dir * (big ? 15 : 10);
+  kickCam(g, dir * Math.min(10, 2 + dmg * 0.5), big ? 4 : 1.5);
   g.shake = Math.max(g.shake, Math.min(12, dmg * 0.55));
-  if (dmg >= 10) g.hitstop = Math.max(g.hitstop, 0.05);
+  g.hitstop = Math.max(g.hitstop, few ? (big ? 0.11 : dmg >= 6 ? 0.045 : 0.018) : big ? 0.05 : 0);
+  if (big && few) punchIn(g, c.x, c.y, crit ? 0.18 : 0.11, 0.42);
+  if (crit) g.flash = Math.max(g.flash, 0.07);
   if (move.heal) a.hp = Math.min(a.maxHp, a.hp + move.heal);
   hurt(g, o, dmg, a);
   return true;
@@ -620,6 +735,20 @@ function fire(g: Game, f: Fighter, act: Action) {
   const enemies = g.fighters.filter((o) => o.alive && foe(f, o));
   if (m.kind !== "blink") castFx(g, f, m);
   sfx(g, { k: "cast", power, move: m.id, kind: m.kind, anim: m.anim });
+  // a big ability breaks loose with a ring of force; the biggest ones flash and pull the camera in
+  if (m.kind !== "melee" && (m.cd >= 5 || m.kind === "beam")) {
+    const lk = LOOKS[m.id];
+    const rgc = rageOf(f);
+    const ca = rgc?.a ?? lk?.a ?? def.color, cb = rgc?.b ?? lk?.b ?? def.glow;
+    const at = m.kind === "beam" ? h : center(f);
+    g.waves.push({ x: at.x, y: at.y, r: (m.kind === "beam" ? 60 : 110) * s, life: 0.45, max: 0.45, a: ca, b: cb });
+    g.shake = Math.max(g.shake, m.kind === "beam" ? 5 : 7);
+    kickCam(g, -f.facing * 3, 2);
+    if (m.cd >= 9 && !g.preview) {
+      g.flash = Math.max(g.flash, 0.06);
+      punchIn(g, at.x, at.y, 0.1, 0.45);
+    }
+  }
   switch (m.kind) {
     case "melee": {
       const x1 = f.x + f.facing * (m.range + 14) * s;
@@ -1276,6 +1405,7 @@ function tickFighter(g: Game, f: Fighter, dt: number) {
     f.koT += dt;
     f.dashT = 0; f.kneelT = 0; f.clashAir = false;
     physics(f, dt);
+    rollBody(f, dt);
     smoothPose(f, KO, dt, 9);
     return;
   }
@@ -1456,6 +1586,36 @@ function tickFighter(g: Game, f: Fighter, dt: number) {
 
   const wasAir = !f.onGround;
   physics(f, dt);
+  if (wasAir && f.onGround && Math.abs(f.spinV) > 0.1) {
+    // a launched fighter crashes down: dust, a thud, and one small bounce off a hard tumble
+    for (let i = 0; i < 12; i++) {
+      g.particles.push({ x: f.x + rand(-20, 20) * s, y: GROUND - 2, vx: rand(-220, 220), vy: -rand(40, 180), life: 0.5, max: 0.5, size: rand(4, 9) * s, color: "hsl(34 40% 82%)", shape: "dot", grav: 300, add: false, rot: 0 });
+    }
+    g.shake = Math.max(g.shake, 5);
+    if (Math.abs(f.spinV) > 6) { f.vy = -210; f.onGround = false; f.spinV *= 0.35; }
+    else f.spinV = 0;
+  }
+  rollBody(f, dt);
+  f.recoil = Math.max(0, f.recoil - dt * 2.2);
+  // skidding back from a hit kicks up dust
+  if (f.onGround && f.hurtT > 0 && Math.abs(f.vx) > 200 && Math.random() < dt * 45) {
+    g.particles.push({ x: f.x - Math.sign(f.vx) * 6 * s, y: GROUND - 2, vx: -f.vx * 0.25 + rand(-40, 40), vy: -rand(30, 110), life: 0.4, max: 0.4, size: rand(3, 7) * s, color: "hsl(34 40% 82%)", shape: "dot", grav: 260, add: false, rot: 0 });
+  }
+  // charging a big move: power gathers into the hand
+  const ca = f.act;
+  if (ca && !ca.fired && ca.move.kind !== "melee" && ca.move.kind !== "dash" && ca.move.wind >= 0.2) {
+    const lk = LOOKS[ca.move.id];
+    const col = rg?.b ?? lk?.b ?? DEF_BY_ID[ca.power].glow;
+    const hp = hand(f);
+    const big = ca.move.cd >= 5;
+    if (Math.random() < dt * (big ? 70 : 35)) {
+      const ang = rand(0, Math.PI * 2), r = rand(36, big ? 96 : 66) * s, life = 0.24;
+      g.particles.push({ x: hp.x + Math.cos(ang) * r, y: hp.y + Math.sin(ang) * r, vx: -Math.cos(ang) * r / life * 1.6, vy: -Math.sin(ang) * r / life * 1.6, life, max: life, size: rand(2.5, 5) * s, color: col, shape: "dot", grav: 0, add: true, rot: 0 });
+    }
+    if (big && f.onGround && Math.random() < dt * 30) {
+      g.particles.push({ x: f.x + rand(-30, 30) * s, y: GROUND - 2, vx: 0, vy: -rand(120, 260), life: 0.5, max: 0.5, size: rand(2, 4) * s, color: col, shape: "spark", grav: 0, add: true, rot: 0 });
+    }
+  }
   if (wasAir && f.onGround) {
     f.airDashed = false;
     if (f.clashAir) {
@@ -1481,13 +1641,17 @@ function tickFighter(g: Game, f: Fighter, dt: number) {
   } else if (stunned) {
     target_ = { ...DAZED, t: DAZED.t + Math.sin(g.t * 6) * 0.08 };
   } else if (f.hurtT > 0) {
-    target_ = HURT; k = 30;
+    const r = f.recoil;
+    target_ = { ...HURT };
+    for (const key of POSE_KEYS) target_[key] = HURT[key] + (HURT_HEAVY[key] - HURT[key]) * r;
+    k = 30 + r * 12;
   } else if (f.dashT > 0) {
     target_ = f.dashDir === f.facing ? DASH : BACKDASH; k = 45;
   } else if (f.act) {
     const a = f.act;
     const m = a.move;
-    const anim = ANIMS[m.anim];
+    // the Hollow King reaps overhead with both arms, whatever the move's own animation
+    const anim = ANIMS[f.def.boss === "hollow" && m.kind === "melee" ? "slam" : m.anim];
     const base = f.jugg ? FLY : f.onGround ? STANCE : AIR;
     if (a.t < m.wind) target_ = { ...base, ...anim.wind };
     else if (a.t < m.wind + m.act + m.rec * 0.5) { target_ = { ...base, ...anim.strike }; k = 40; }
@@ -1515,6 +1679,25 @@ function tickFighter(g: Game, f: Fighter, dt: number) {
     target_ = { ...STANCE, t: STANCE.t + b * 0.03, aF2: STANCE.aF2 + b * 0.08, aB2: STANCE.aB2 - b * 0.06 };
   }
   smoothPose(f, target_, dt, k);
+  // the striking hand or foot leaves a smear while a close-range blow lands
+  const sa = f.act;
+  if (sa && sa.fired && sa.move.kind === "melee" && sa.t < sa.move.wind + sa.move.act + 0.12 && f.def.boss !== "hollow") {
+    const r = rig(f.x, f.y, f.pose, s, f.facing);
+    const tip = sa.move.anim === "kick" ? r.fF : r.hF;
+    f.trail.push({ x: tip.x, y: tip.y, life: 0.15 });
+    if (f.trail.length > 14) f.trail.shift();
+  }
+}
+
+/** Tumbling through the air after a launch, then settling back upright. */
+function rollBody(f: Fighter, dt: number) {
+  if (f.spinV && !f.onGround) f.spin += f.spinV * dt;
+  else if (f.onGround) f.spinV = 0;
+  if (!f.spinV && f.spin) {
+    f.spin = Math.atan2(Math.sin(f.spin), Math.cos(f.spin));
+    f.spin *= Math.pow(0.0004, dt);
+    if (Math.abs(f.spin) < 0.01) f.spin = 0;
+  }
 }
 
 function physics(f: Fighter, dt: number) {
@@ -1541,6 +1724,8 @@ function smoothPose(f: Fighter, target: Pose, dt: number, k: number) {
 
 export function step(g: Game, dt: number) {
   g.shake = Math.max(0, g.shake - dt * 40);
+  stepCam(g, dt);
+  for (const f of g.fighters) f.jolt = Math.max(0, f.jolt - dt);
   if (g.intro) {
     stepIntro(g, dt);
     return;
@@ -1549,8 +1734,14 @@ export function step(g: Game, dt: number) {
     stepCut(g, dt);
     return;
   }
+  // the final K.O. plays in slow motion
+  if (g.slow > 0) {
+    g.slow -= dt;
+    dt *= 0.3;
+  }
   if (g.hitstop > 0) {
     g.hitstop -= dt;
+    for (const x of g.impacts) x.life -= dt * 0.5;
     return;
   }
   g.t += dt;
@@ -1738,6 +1929,12 @@ function tickBits(g: Game, dt: number) {
   g.waves = g.waves.filter((w) => w.life > 0);
   for (const x of g.fx) x.life -= dt;
   g.fx = g.fx.filter((x) => x.life > 0);
+  for (const x of g.impacts) x.life -= dt;
+  g.impacts = g.impacts.filter((x) => x.life > 0);
+  for (const f of g.fighters) {
+    for (const p of f.trail) p.life -= dt;
+    if (f.trail.length) f.trail = f.trail.filter((p) => p.life > 0);
+  }
 }
 
 // ---------- drawing ----------
@@ -2216,11 +2413,110 @@ function drawWave(ctx: CanvasRenderingContext2D, w: Wave) {
   ctx.restore();
 }
 
-/** `alpha` fades the whole body, `solid` paints it one flat colour (used by the entrances), `shadow: false` skips the floor shadow. */
+/** A fighter, rolled while tumbling and shuddering while a hit freezes. Same options as the body. */
 function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter, o: { alpha?: number; solid?: string; shadow?: boolean } = {}) {
+  const jx = f.jolt > 0 ? Math.sin(f.jolt * 170) * 4.5 * f.scale * Math.min(1, f.jolt / 0.09) : 0;
+  if (!f.spin && !jx) return drawFighterBody(ctx, g, f, o);
+  const s = f.scale;
+  if (o.shadow !== false) {
+    const air = clamp((GROUND - f.y) / 300, 0, 1);
+    ctx.fillStyle = `hsl(250 40% 15% / ${0.28 * (1 - air * 0.6) * (o.alpha ?? 1)})`;
+    ctx.beginPath();
+    ctx.ellipse(f.x, GROUND + 2, 26 * s * (1 - air * 0.4), 6 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.save();
+  ctx.translate(jx, 0);
+  if (f.spin) {
+    const c = center(f);
+    ctx.translate(c.x, c.y);
+    ctx.rotate(f.spin);
+    ctx.translate(-c.x, -c.y);
+  }
+  drawFighterBody(ctx, g, f, { ...o, shadow: false });
+  ctx.restore();
+}
+
+/** The smear a fist or foot leaves through a strike: a tapered ribbon in the move's colours. */
+function drawTrail(ctx: CanvasRenderingContext2D, f: Fighter) {
+  const tr = f.trail;
+  if (tr.length < 2) return;
+  const lk = f.act ? LOOKS[f.act.move.id] : undefined;
+  const rg = rageOf(f);
+  const col = rg?.b ?? lk?.b ?? f.def.glow;
+  const core = rg?.a ?? lk?.a ?? f.def.color;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineCap = "round";
+  for (let i = 1; i < tr.length; i++) {
+    const a = tr[i - 1], b = tr[i];
+    const k = i / (tr.length - 1);
+    const life = clamp(b.life / 0.15, 0, 1);
+    ctx.globalAlpha = life * (0.25 + 0.65 * k);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = (3 + 13 * k) * f.scale * life;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.strokeStyle = k > 0.6 ? "white" : core;
+    ctx.lineWidth = (1 + 4 * k) * f.scale * life;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** A hit's impact frame: spiked starburst with a white core, and speed streaks flying the way the blow went. */
+function drawImpact(ctx: CanvasRenderingContext2D, x: Impact) {
+  const u = 1 - x.life / x.max;
+  const R = x.size * (0.55 + 0.75 * Math.sqrt(u));
+  const spikes = x.heavy ? 14 : 9;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = 1 - u;
+  ctx.beginPath();
+  for (let i = 0; i <= spikes * 2; i++) {
+    const an = (i / (spikes * 2)) * Math.PI * 2 + x.seed;
+    const jag = 0.6 + 0.4 * Math.abs(Math.sin(x.seed * 7.3 + i * 2.17));
+    const r = i % 2 ? R * 0.34 : R * jag;
+    const px = x.x + Math.cos(an) * r, py = x.y + Math.sin(an) * r * 0.85;
+    if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+  }
+  ctx.closePath();
+  const grd = ctx.createRadialGradient(x.x, x.y, 0, x.x, x.y, R);
+  grd.addColorStop(0, "white");
+  grd.addColorStop(0.35, x.b);
+  grd.addColorStop(1, shade(x.a, 0, 0));
+  ctx.fillStyle = grd;
+  ctx.fill();
+  // speed streaks
+  ctx.strokeStyle = x.b;
+  ctx.lineCap = "round";
+  const n = x.heavy ? 7 : 4;
+  for (let i = 0; i < n; i++) {
+    const off = (Math.sin(x.seed * 3.1 + i * 1.9) * 0.9) * R * 0.7;
+    const start = R * (0.2 + u * 0.8);
+    const len = R * (x.heavy ? 1.9 : 1.2) * (0.6 + 0.4 * Math.abs(Math.cos(x.seed + i)));
+    ctx.lineWidth = (x.heavy ? 4 : 2.5) * (1 - u) + 1;
+    ctx.beginPath();
+    ctx.moveTo(x.x + x.dir * start, x.y + off);
+    ctx.lineTo(x.x + x.dir * (start + len), x.y + off * 1.15);
+    ctx.stroke();
+  }
+  // a white ring snapping outward
+  ctx.strokeStyle = "white";
+  ctx.lineWidth = 3 * (1 - u) + 0.5;
+  ctx.beginPath();
+  ctx.ellipse(x.x, x.y, R * 1.15, R * 0.95, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** `alpha` fades the whole body, `solid` paints it one flat colour (used by the entrances), `shadow: false` skips the floor shadow. */
+function drawFighterBody(ctx: CanvasRenderingContext2D, g: Game, f: Fighter, o: { alpha?: number; solid?: string; shadow?: boolean } = {}) {
   const s = f.scale;
   let face: number = f.facing;
-  if (f.act?.move.anim === "spin" && f.act.fired) face = Math.sin(g.t * 40) > 0 ? 1 : -1;
+  if (f.act?.move.anim === "spin" && f.act.fired && f.def.boss !== "hollow") face = Math.sin(g.t * 40) > 0 ? 1 : -1;
   const { hip, neck, shoulder, head, kF, fF, kB, fB, eF, hF, eB, hB } = rig(f.x, f.y, f.pose, s, face);
 
   const flash = f.flash > 0;
@@ -2247,7 +2543,15 @@ function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter, o: { al
   if (rg) drawRageAura(ctx, g, f, rg, hip, head);
   const bt = g.t + (g.intro?.t ?? 0) + f.key;
   const bossPts = { hip, neck, shoulder, head, kF, fF, kB, fB, eF, hF, eB, hB };
-  if (f.def.boss && !o.solid) drawBossDesign(ctx, f.def.boss, "back", bossPts, s, face, bt, f.alive, f.vx);
+  let bossAct: BossAct | undefined;
+  if (f.def.boss && f.act && f.alive) {
+    const m = f.act.move, at = f.act.t;
+    const strikeLen = Math.max(0.12, m.act + m.rec * 0.5);
+    const phase = at < m.wind ? "wind" : at < m.wind + strikeLen ? "strike" : "after";
+    const u = phase === "wind" ? at / Math.max(0.01, m.wind) : phase === "strike" ? (at - m.wind) / strikeLen : (at - m.wind - strikeLen) / Math.max(0.1, m.rec * 0.5);
+    bossAct = { kind: m.kind, id: m.id, phase, u: clamp(u, 0, 1) };
+  }
+  if (f.def.boss && !o.solid) drawBossDesign(ctx, f.def.boss, "back", bossPts, s, face, bt, f.alive, f.vx, bossAct);
 
   // scarf trailing from the neck (a boss wears its own design instead)
   const wave = Math.sin((g.t + (g.intro?.t ?? 0)) * 12 + f.key) * 4 * s;
@@ -2330,7 +2634,7 @@ function drawFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter, o: { al
     ctx.arc(ex + face * 1.3 * s, ey + 0.5 * s, 2 * s, 0, Math.PI * 2);
     ctx.fill();
   }
-  if (f.def.boss && !o.solid) drawBossDesign(ctx, f.def.boss, "front", bossPts, s, face, bt, f.alive, f.vx);
+  if (f.def.boss && !o.solid) drawBossDesign(ctx, f.def.boss, "front", bossPts, s, face, bt, f.alive, f.vx, bossAct);
   ctx.globalAlpha = 1;
 
   if (!f.alive) return;
@@ -2871,6 +3175,12 @@ function drawHud(ctx: CanvasRenderingContext2D, g: Game) {
   } else {
     const boss = g.fighters.find((f) => f.jugg);
     if (boss) drawBossBar(ctx, boss);
+  }
+}
+
+/** Health bars and names over heads, drawn inside the camera so they stay on their fighters. */
+function drawHeadBars(ctx: CanvasRenderingContext2D, g: Game) {
+  {
     for (const f of g.fighters) {
       if (!f.alive || f.jugg || arriving(g, f)) continue;
       const bw = 46 * f.scale, y = f.y - bodyH(f) - 24 * f.scale;
@@ -2935,15 +3245,21 @@ function tintBy(f: Fighter | undefined) {
 export function drawScene(ctx: CanvasRenderingContext2D, g: Game, backdrop: HTMLCanvasElement) {
   ctx.save();
   if (g.shake > 0) ctx.translate(rand(-g.shake, g.shake), rand(-g.shake, g.shake) * 0.6);
+  ctx.translate(g.kick.x, g.kick.y);
   const cut = g.cut;
   const hero = cut ? g.fighters[cut.key] : null;
   const ck = cut ? cut.t / cut.max : 0;
-  // the camera pushes in on the raging fighter, then pulls back out
-  const zoom = cut ? 1 + 0.45 * Math.min(1, ck / 0.18) * Math.min(1, (1 - ck) / 0.12) : 1;
-  if (hero && zoom > 1) {
+  // the fight camera; a rage cutscene pushes in on the raging fighter, then pulls back out
+  let zoom = g.cam.z, fx = g.cam.x, fy = g.cam.y;
+  if (hero) {
+    const cz = 1 + 0.45 * Math.min(1, ck / 0.18) * Math.min(1, (1 - ck) / 0.12);
     const c = center(hero);
-    const fx = clamp(c.x, W / (2 * zoom), W - W / (2 * zoom));
-    const fy = clamp(c.y, H / (2 * zoom), H - H / (2 * zoom));
+    const w = cz - 1 > zoom - 1 ? 1 : 0;
+    if (w) { zoom = cz; fx = c.x; fy = c.y; }
+  }
+  if (zoom > 1.001) {
+    fx = clamp(fx, W / (2 * zoom), W - W / (2 * zoom));
+    fy = clamp(fy, H / (2 * zoom), H - H / (2 * zoom));
     ctx.translate(W / 2, H / 2);
     ctx.scale(zoom, zoom);
     ctx.translate(-fx, -fy);
@@ -2959,6 +3275,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, g: Game, backdrop: HTML
   for (const f of g.fighters) if (!f.alive) drawFighter(ctx, g, f);
   for (const f of g.fighters) if (f.alive && f !== hero) drawGhosts(ctx, f);
   for (const f of g.fighters) if (f.alive && f !== hero) { if (g.intro) drawIntroFighter(ctx, g, f); else drawFighter(ctx, g, f); }
+  for (const f of g.fighters) if (f.alive) drawTrail(ctx, f);
   if (g.intro) for (const f of g.fighters) drawIntroLayer(ctx, g, f, "front");
   for (const f of g.fighters) {
     const a = f.act;
@@ -2974,7 +3291,14 @@ export function drawScene(ctx: CanvasRenderingContext2D, g: Game, backdrop: HTML
     const owner = g.fighters[a.owner];
     drawAnnihilation(ctx, a.move.id, a.x, a.y, (a.move.radius ?? 70) * (owner?.scale ?? 1), a.t / ANNI_TIME, g.t);
   }
+  // a crushing blow darkens the frame for an instant so the impact pops
+  const frame = g.impacts.find((x) => x.heavy && x.life / x.max > 0.72);
+  if (frame && !g.demo && g.fighters.length <= 4) {
+    ctx.fillStyle = `hsl(255 45% 6% / ${0.3 * ((frame.life / frame.max - 0.72) / 0.28)})`;
+    ctx.fillRect(-W, -H, W * 3, H * 3);
+  }
   for (const x of g.fx) drawFx(ctx, x, g.t);
+  for (const x of g.impacts) drawImpact(ctx, x);
   for (const w of g.waves) drawWave(ctx, w);
   for (const p of g.particles) drawParticle(ctx, p);
   for (const t of g.pops) {
@@ -2982,6 +3306,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, g: Game, backdrop: HTML
     outlinedText(ctx, t.text, t.x, t.y, t.size, t.color);
   }
   ctx.globalAlpha = 1;
+  if (!g.duel && !g.demo && !cut) drawHeadBars(ctx, g);
   ctx.restore();
   if (g.stopUntil > g.t) drawTimeStop(ctx, g);
   if (g.flash > 0) {
@@ -2992,6 +3317,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, g: Game, backdrop: HTML
     drawCutTitles(ctx, hero, ck);
     return;
   }
+  if (g.demo) return;
   drawHud(ctx, g);
   if (!g.preview && !g.intro && g.t < 1.1) {
     const k = clamp(g.t / 0.2, 0, 1);

@@ -33,15 +33,234 @@ function jagLine(ctx: CanvasRenderingContext2D, pts: Pt[], amp: number, seed: nu
   ctx.stroke();
 }
 
+/** What the boss is doing this frame, so its weapon and body can follow the move. */
+export type BossAct = { kind: string; id: string; phase: "wind" | "strike" | "after"; u: number };
+
+const ease = (u: number) => 1 - Math.pow(1 - u, 3);
+const lerp = (a: number, b: number, u: number) => a + (b - a) * u;
+
+/** A small licking flame, pointing up. */
+function flame(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, col: string) {
+  ctx.fillStyle = col;
+  ctx.beginPath();
+  ctx.moveTo(x - w, y);
+  ctx.quadraticCurveTo(x - w * 0.6, y - h * 0.6, x, y - h);
+  ctx.quadraticCurveTo(x + w * 0.6, y - h * 0.6, x + w, y);
+  ctx.quadraticCurveTo(x, y + w * 0.6, x - w, y);
+  ctx.fill();
+}
+
+/** A robe or skirt from the waist down past the knees, its hem torn and swaying. */
+function robe(ctx: CanvasRenderingContext2D, hip: Pt, fF: Pt, fB: Pt, s: number, t: number, fill: string, trim: string) {
+  const hemY = Math.min(fF.y, fB.y) - 10 * s;
+  const l = Math.min(fF.x, fB.x, hip.x - 10 * s) - 6 * s, r = Math.max(fF.x, fB.x, hip.x + 10 * s) + 6 * s;
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 1.4 * s;
+  ctx.beginPath();
+  ctx.moveTo(hip.x - 8 * s, hip.y - 6 * s);
+  ctx.lineTo(hip.x + 8 * s, hip.y - 6 * s);
+  ctx.lineTo(r, hemY);
+  const n = 7;
+  for (let i = 1; i <= n; i++) {
+    const x = r + ((l - r) * i) / n;
+    ctx.lineTo(x, hemY - (i % 2 ? 7 : 0) * s + Math.sin(t * 4 + i * 1.3) * 2 * s);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = trim;
+  ctx.lineWidth = 1.6 * s;
+  ctx.beginPath();
+  ctx.moveTo(hip.x - 8 * s, hip.y - 4 * s);
+  ctx.lineTo(hip.x + 8 * s, hip.y - 4 * s);
+  ctx.stroke();
+}
+
+/** Motes drifting through a box above (x, y): embers, snow, souls or stars. Stateless: placed by time. */
+function motes(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, t: number, n: number, col: string, size: number, rise = 1) {
+  ctx.fillStyle = col;
+  for (let i = 0; i < n; i++) {
+    const k = (t * 0.35 * (0.7 + (i % 3) * 0.2) + i / n) % 1;
+    const px = x + (Math.sin(i * 12.9898) * 0.5) * w + Math.sin(t * 2 + i) * 4;
+    const py = y - (rise > 0 ? k : 1 - k) * h;
+    ctx.globalAlpha = Math.sin(k * Math.PI);
+    ctx.beginPath();
+    ctx.arc(px, py, size * (0.6 + (i % 2) * 0.5), 0, TAU);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** A rounded shoulder plate. */
+function pauldron(ctx: CanvasRenderingContext2D, sh: Pt, face: number, s: number, fill: string, edge: string, spikes = 0) {
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 1.6 * s;
+  ctx.beginPath();
+  ctx.ellipse(sh.x - face * 2 * s, sh.y + 1 * s, 10 * s, 6.5 * s, -face * 0.25, Math.PI, TAU);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = 1.4 * s;
+  ctx.beginPath();
+  ctx.ellipse(sh.x - face * 2 * s, sh.y + 1 * s, 7 * s, 4 * s, -face * 0.25, Math.PI * 1.1, TAU * 0.95);
+  ctx.stroke();
+  for (let i = 0; i < spikes; i++) {
+    const bx = sh.x - face * (6 - i * 6) * s, by = sh.y - 4 * s;
+    ctx.fillStyle = fill;
+    ctx.strokeStyle = INK;
+    ctx.beginPath();
+    ctx.moveTo(bx - 2.5 * s, by + 1 * s);
+    ctx.lineTo(bx - face * 2 * s, by - 9 * s);
+    ctx.lineTo(bx + 2.5 * s, by + 1 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+}
+
+/**
+ * The Hollow King's scythe through each move. Angles are in the facing-right frame: -PI/2 is straight up,
+ * 0 points forward, PI/2 straight down. `from` is where this swing's smear starts.
+ */
+function scytheSwing(act: BossAct | undefined, p: BossRig, s: number, t: number) {
+  const lean = Math.max(-1, Math.min(1, (p.hF.x - p.eF.x) / (14 * s)));
+  const rest = -Math.PI / 2 - 0.15 + lean * 0.12;
+  const pivot = p.hF;
+  let a = rest, from = rest, smear = 0, charge = 0;
+  if (act) {
+    const u = act.u;
+    const swing = (back: number, end: number, k = 1) => {
+      if (act.phase === "wind") { a = lerp(rest, back, ease(u)); charge = u * 0.6; }
+      else if (act.phase === "strike") {
+        const e = ease(Math.min(1, u * 1.6));
+        a = lerp(back, end, e);
+        from = Math.max(back, a - 2.2);
+        smear = (1 - u) * k;
+        charge = 1 - u;
+      } else a = lerp(end, rest, ease(u));
+    };
+    switch (act.kind) {
+      case "melee": swing(-Math.PI - 0.35, 1.0); break; // Reaper's Scythe: over the shoulder and down through the target
+      case "pull": swing(-Math.PI / 2 - 0.9, -0.15, 0.6); break; // Soul Chains: hooked out in front
+      case "eruption": swing(-Math.PI / 2 - 1.1, 1.35, 0.8); break; // Grave Hands: slammed point-first into the ground
+      case "projectile": swing(-Math.PI + 0.1, 0.35, 0.9); break; // Wailing Souls: a flat sweep that throws the souls
+      case "zone": // Graveyard: twirled like a baton, then raised high
+        if (act.phase === "wind") { a = rest + ease(u) * TAU * 2; charge = u; }
+        else if (act.phase === "strike") { a = -Math.PI / 2 - 0.05; charge = 1 - u * 0.5; }
+        else a = lerp(-Math.PI / 2, rest, ease(u));
+        break;
+      case "burst": // Soul Harvest: spun overhead, then one huge reap
+        if (act.phase === "wind") { a = rest - ease(u) * (TAU * 2 + rest + Math.PI + 0.6); charge = u; }
+        else swing(-Math.PI - 0.6, 1.2, 1.3);
+        break;
+      default: swing(-Math.PI / 2 - 0.6, 0.2, 0.6);
+    }
+  }
+  return { pivot, a, from, smear, charge: Math.min(1, charge + (act ? 0 : 0.15 + 0.1 * Math.sin(t * 3))) };
+}
+
+/** A green crescent behind the blade's path, fading toward where the swing began. */
+function drawSmear(ctx: CanvasRenderingContext2D, pv: Pt, a0: number, a1: number, face: number, s: number, k: number) {
+  if (a1 - a0 < 0.05) return;
+  const w = (x: number) => (face > 0 ? x : Math.PI - x);
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  const steps = 10;
+  for (let i = 0; i < steps; i++) {
+    const s0 = a0 + ((a1 - a0) * i) / steps, s1 = a0 + ((a1 - a0) * (i + 1)) / steps;
+    const al = Math.min(1, k) * ((i + 1) / steps);
+    ctx.fillStyle = `hsl(152 92% ${60 + i * 2}% / ${0.55 * al})`;
+    ctx.beginPath();
+    ctx.arc(pv.x, pv.y, 60 * s, w(s0), w(s1), face < 0);
+    ctx.arc(pv.x, pv.y, (34 + 18 * (1 - i / steps)) * s, w(s1), w(s0), face > 0);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.strokeStyle = `hsl(150 100% 92% / ${0.9 * Math.min(1, k)})`;
+  ctx.lineWidth = 2.4 * s;
+  ctx.beginPath();
+  ctx.arc(pv.x, pv.y, 59 * s, w(Math.max(a0, a1 - 1.2)), w(a1), face < 0);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** The scythe itself: a bone-ringed shaft through the hand, a long curved blade with a soul-green edge. */
+function drawScythe(ctx: CanvasRenderingContext2D, pv: Pt, a: number, face: number, s: number, alive: boolean, charge: number, t: number) {
+  const ux = Math.cos(a) * face, uy = Math.sin(a);
+  const nx = face * -uy, ny = face * ux;
+  const P = (along: number, side: number) => ({ x: pv.x + ux * along * s + nx * side * s, y: pv.y + uy * along * s + ny * side * s });
+  const top = P(48, 0), butt = P(-38, 0);
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 5.5 * s;
+  ctx.beginPath();
+  ctx.moveTo(butt.x, butt.y); ctx.lineTo(top.x, top.y);
+  ctx.stroke();
+  ctx.strokeStyle = "hsl(30 18% 30%)";
+  ctx.lineWidth = 3 * s;
+  ctx.stroke();
+  // bone rings on the shaft and a skull-knob at the butt
+  ctx.strokeStyle = "hsl(44 30% 80%)";
+  ctx.lineWidth = 2 * s;
+  for (const k of [-24, 22, 40]) {
+    const d = P(k, 3.5), e = P(k, -3.5);
+    ctx.beginPath();
+    ctx.moveTo(d.x, d.y); ctx.lineTo(e.x, e.y);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "hsl(44 30% 82%)";
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 1.3 * s;
+  ctx.beginPath();
+  ctx.arc(butt.x, butt.y, 4 * s, 0, TAU);
+  ctx.fill();
+  ctx.stroke();
+  // blade
+  const b0 = P(50, -1), c1 = P(66, 32), tip = P(36, 50), c2 = P(54, 26), b1 = P(43, 0);
+  ctx.fillStyle = "hsl(180 10% 80%)";
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 1.7 * s;
+  ctx.beginPath();
+  ctx.moveTo(b0.x, b0.y);
+  ctx.quadraticCurveTo(c1.x, c1.y, tip.x, tip.y);
+  ctx.quadraticCurveTo(c2.x, c2.y, b1.x, b1.y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  // a darker spine along the back of the blade
+  ctx.strokeStyle = "hsl(180 8% 48%)";
+  ctx.lineWidth = 1.6 * s;
+  const sp1 = P(60, 22), sp2 = P(44, 42);
+  ctx.beginPath();
+  ctx.moveTo(b0.x, b0.y);
+  ctx.quadraticCurveTo(sp1.x, sp1.y, sp2.x, sp2.y);
+  ctx.stroke();
+  if (alive) {
+    ctx.globalCompositeOperation = "lighter";
+    const e1 = P(46, 3), ec = P(55, 26), e2 = P(37, 47);
+    ctx.strokeStyle = `hsl(152 92% ${66 + charge * 20}% / ${0.6 + charge * 0.4})`;
+    ctx.lineWidth = (1.6 + charge * 2.4) * s;
+    ctx.beginPath();
+    ctx.moveTo(e1.x, e1.y);
+    ctx.quadraticCurveTo(ec.x, ec.y, e2.x, e2.y);
+    ctx.stroke();
+    if (charge > 0.3) glow(ctx, tip.x, tip.y, (8 + 10 * charge + Math.sin(t * 20) * 2) * s, `hsl(152 100% 80% / ${charge})`, "hsl(152 92% 60% / 0)");
+    ctx.globalCompositeOperation = "source-over";
+  }
+}
+
 export function drawBossDesign(
   ctx: CanvasRenderingContext2D, design: BossDesign, layer: "back" | "front", p: BossRig,
-  s: number, face: number, t: number, alive: boolean, vx: number,
+  s: number, face: number, t: number, alive: boolean, vx: number, act?: BossAct,
 ) {
   ctx.save();
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   const { head, neck, hip, shoulder } = p;
   const mid = { x: (hip.x + head.x) / 2, y: (hip.y + head.y) / 2 };
+  if (layer === "back") drawBossExtras(ctx, design, layer, p, s, face, t, alive, vx, act);
   switch (design) {
     // ----- Nullshade: matter and antimatter -----
     case "antimatter": {
@@ -356,11 +575,13 @@ export function drawBossDesign(
     }
     // ----- The Hollow King: a tattered cloak, a hood with no face, a bone crown and a scythe -----
     case "hollow": {
+      // where the scythe points this frame, and whether its swing leaves a smear
+      const sw = scytheSwing(act, p, s, t);
       if (layer === "back") {
         // ragged cloak streaming behind
         const back = -face;
         const sway = Math.sin(t * 2.6) * 5 * s + Math.min(20, Math.abs(vx) * 0.05) * s;
-        const hemY = hip.y + 40 * s;
+        const hemY = hip.y + 44 * s;
         const gr = ctx.createLinearGradient(0, shoulder.y, 0, hemY);
         gr.addColorStop(0, "hsl(170 18% 12% / 0.96)");
         gr.addColorStop(1, "hsl(165 20% 18% / 0.7)");
@@ -369,66 +590,59 @@ export function drawBossDesign(
         ctx.lineWidth = 1.6 * s;
         ctx.beginPath();
         ctx.moveTo(neck.x, neck.y - 4 * s);
-        ctx.quadraticCurveTo(shoulder.x + back * 26 * s, mid.y, hip.x + back * (34 * s + sway), hemY);
-        for (let i = 1; i <= 7; i++) {
-          const x = hip.x + back * (34 * s + sway) - back * i * 7 * s;
-          const tear = (i % 2 ? 14 : 2) + Math.sin(t * 5 + i * 1.7) * 3;
+        ctx.quadraticCurveTo(shoulder.x + back * 26 * s, mid.y, hip.x + back * (36 * s + sway), hemY);
+        for (let i = 1; i <= 8; i++) {
+          const x = hip.x + back * (36 * s + sway) - back * i * 7 * s;
+          const tear = (i % 2 ? 15 : 2) + Math.sin(t * 5 + i * 1.7) * 3;
           ctx.lineTo(x, hemY - tear * s);
         }
         ctx.lineTo(hip.x - back * 6 * s, hip.y + 10 * s);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
-        // souls circling the reaper
+        // a torn robe hanging from the waist to the shins
+        robe(ctx, hip, p.fF, p.fB, s, t, "hsl(170 18% 11% / 0.95)", "hsl(152 70% 40% / 0.7)");
+        // souls circling the reaper; while he reaps, they stream toward the blade
         if (alive) {
           ctx.globalCompositeOperation = "lighter";
-          for (let i = 0; i < 3; i++) {
-            const an = t * 1.8 + (i / 3) * TAU;
-            const ox = mid.x + Math.cos(an) * 40 * s, oy = mid.y + Math.sin(an) * 16 * s - 10 * s;
+          const n = act?.kind === "burst" || act?.kind === "zone" ? 6 : 3;
+          for (let i = 0; i < n; i++) {
+            const an = t * (act ? 4 : 1.8) + (i / n) * TAU;
+            const rr = (act?.phase === "wind" ? 40 - 20 * act.u : 40) * s;
+            const ox = mid.x + Math.cos(an) * rr, oy = mid.y + Math.sin(an) * rr * 0.4 - 10 * s;
             glow(ctx, ox, oy, 10 * s, "hsl(152 92% 70% / 0.9)", "hsl(152 92% 60% / 0)");
             for (let j = 1; j < 4; j++) {
               const aj = an - j * 0.16;
-              glow(ctx, mid.x + Math.cos(aj) * 40 * s, mid.y + Math.sin(aj) * 16 * s - 10 * s, (6 - j) * s, "hsl(152 92% 60% / 0.5)", "hsl(152 92% 60% / 0)");
+              glow(ctx, mid.x + Math.cos(aj) * rr, mid.y + Math.sin(aj) * rr * 0.4 - 10 * s, (6 - j) * s, "hsl(152 92% 60% / 0.5)", "hsl(152 92% 60% / 0)");
             }
           }
           ctx.globalCompositeOperation = "source-over";
         }
       } else {
-        // the scythe: a long shaft along the forearm, the blade curving down at the top
-        // held upright in the front hand, leaning a little with the forearm
-        const lean = Math.max(-1, Math.min(1, (p.hF.x - p.eF.x) / (14 * s)));
-        const top = { x: p.hF.x + lean * 8 * s, y: p.hF.y - 46 * s };
-        const butt = { x: p.hF.x + (p.hF.x - top.x) * 0.7, y: p.hF.y + 38 * s };
-        ctx.strokeStyle = INK;
-        ctx.lineWidth = 5 * s;
-        ctx.beginPath();
-        ctx.moveTo(butt.x, butt.y); ctx.lineTo(top.x, top.y);
-        ctx.stroke();
-        ctx.strokeStyle = "hsl(30 18% 34%)";
-        ctx.lineWidth = 2.6 * s;
-        ctx.stroke();
-        // blade
-        const bx = top.x, by = top.y;
-        ctx.fillStyle = "hsl(180 10% 82%)";
-        ctx.strokeStyle = INK;
-        ctx.lineWidth = 1.6 * s;
-        ctx.beginPath();
-        ctx.moveTo(bx, by - 2 * s);
-        ctx.quadraticCurveTo(bx + face * 30 * s, by - 16 * s, bx + face * 44 * s, by + 10 * s);
-        ctx.quadraticCurveTo(bx + face * 26 * s, by - 4 * s, bx, by + 5 * s);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
+        // ribs showing through the dark body, and a sash of soul light
+        ctx.strokeStyle = "hsl(44 30% 82%)";
+        ctx.lineWidth = 1.5 * s;
+        for (let i = 0; i < 3; i++) {
+          const k = 0.2 + i * 0.16;
+          const rx = neck.x + (hip.x - neck.x) * k, ry = neck.y + (hip.y - neck.y) * k;
+          ctx.beginPath();
+          ctx.moveTo(rx - 6 * s, ry + 2 * s);
+          ctx.quadraticCurveTo(rx, ry - 2 * s, rx + 6 * s, ry + 2 * s);
+          ctx.stroke();
+        }
         if (alive) {
           ctx.globalCompositeOperation = "lighter";
-          ctx.strokeStyle = "hsl(152 92% 66% / 0.9)";
-          ctx.lineWidth = 1.6 * s;
+          ctx.strokeStyle = "hsl(152 92% 60% / 0.8)";
+          ctx.lineWidth = 2.4 * s;
           ctx.beginPath();
-          ctx.moveTo(bx + face * 4 * s, by + 3 * s);
-          ctx.quadraticCurveTo(bx + face * 26 * s, by - 3 * s, bx + face * 42 * s, by + 9 * s);
+          ctx.moveTo(hip.x - 9 * s, hip.y - 4 * s);
+          ctx.lineTo(hip.x + 9 * s, hip.y - 7 * s);
           ctx.stroke();
           ctx.globalCompositeOperation = "source-over";
         }
+        // the scythe, swung through its arc; a green crescent follows the blade
+        if (sw.smear) drawSmear(ctx, sw.pivot, sw.from, sw.a, face, s, sw.smear);
+        drawScythe(ctx, sw.pivot, sw.a, face, s, alive, sw.charge, t);
         // the hood, and nothing inside it but two eyes
         const hx = head.x - face * 2.5 * s, hy = head.y - 1.5 * s;
         ctx.fillStyle = "hsl(170 18% 12%)";
@@ -448,10 +662,11 @@ export function drawBossDesign(
         ctx.fill();
         if (alive) {
           ctx.globalCompositeOperation = "lighter";
-          for (const k of [0, 1]) glow(ctx, head.x + face * (1.5 + k * 5) * s, head.y - 0.5 * s, 3.4 * s, "hsl(152 100% 80%)", "hsl(152 92% 60% / 0)");
+          const flare = act ? 1.4 : 1;
+          for (const k of [0, 1]) glow(ctx, head.x + face * (1.5 + k * 5) * s, head.y - 0.5 * s, 3.4 * s * flare, "hsl(152 100% 80%)", "hsl(152 92% 60% / 0)");
           ctx.globalCompositeOperation = "source-over";
         }
-        // a crown of bone points on the hood
+        // a crown of bone points on the hood, each tipped with a soul flame
         ctx.fillStyle = "hsl(44 30% 82%)";
         ctx.strokeStyle = INK;
         ctx.lineWidth = 1.3 * s;
@@ -465,6 +680,12 @@ export function drawBossDesign(
           ctx.closePath();
           ctx.fill();
           ctx.stroke();
+          if (alive) {
+            ctx.globalCompositeOperation = "lighter";
+            flame(ctx, cx + i * 0.6 * s, cy - tall, 3 * s, (5 + Math.sin(t * 9 + i) * 1.5) * s, "hsl(152 100% 70% / 0.85)");
+            ctx.globalCompositeOperation = "source-over";
+            ctx.fillStyle = "hsl(44 30% 82%)";
+          }
         }
       }
       break;
@@ -546,6 +767,191 @@ export function drawBossDesign(
       }
       break;
     }
+  }
+  ctx.restore();
+  if (layer === "front") drawBossExtras(ctx, design, layer, p, s, face, t, alive, vx, act);
+}
+
+/**
+ * Armour, capes, robes and drifting motes layered onto each boss: behind everything on the "back" pass,
+ * over everything on the "front" pass. The signature pieces (halos, horns, crowns, weapons) are in drawBossDesign.
+ */
+function drawBossExtras(
+  ctx: CanvasRenderingContext2D, design: BossDesign, layer: "back" | "front", p: BossRig,
+  s: number, face: number, t: number, alive: boolean, vx: number, act?: BossAct,
+) {
+  const { head, hip, shoulder, neck } = p;
+  const mid = { x: (hip.x + head.x) / 2, y: (hip.y + head.y) / 2 };
+  const back = -face;
+  const casting = !!act && act.phase !== "after";
+  /** A cape off the shoulders, its hem cut into points. */
+  const cape = (len: number, fill: string, edge: string, points = 5) => {
+    const sway = Math.sin(t * 3) * 4 * s + Math.min(18, Math.abs(vx) * 0.04) * s;
+    const hemY = hip.y + len * s;
+    ctx.fillStyle = fill;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 1.5 * s;
+    ctx.beginPath();
+    ctx.moveTo(neck.x, neck.y);
+    ctx.quadraticCurveTo(shoulder.x + back * 22 * s, mid.y, hip.x + back * (28 * s + sway), hemY);
+    for (let i = 1; i <= points; i++) {
+      const x = hip.x + back * (28 * s + sway) - back * i * (30 / points) * s;
+      ctx.lineTo(x, hemY - (i % 2 ? 8 : 0) * s);
+    }
+    ctx.lineTo(hip.x, hip.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = 1.6 * s;
+    ctx.beginPath();
+    ctx.moveTo(neck.x, neck.y);
+    ctx.quadraticCurveTo(shoulder.x + back * 22 * s, mid.y, hip.x + back * (28 * s + sway), hemY);
+    ctx.stroke();
+  };
+  /** Power gathered in both fists while a move charges. */
+  const fists = (inner: string, outer: string) => {
+    if (!alive) return;
+    const r = (casting ? 11 : 6) * s + Math.sin(t * 14) * s;
+    ctx.globalCompositeOperation = "lighter";
+    glow(ctx, p.hF.x, p.hF.y, r, inner, outer);
+    glow(ctx, p.hB.x, p.hB.y, r * 0.75, inner, outer);
+    ctx.globalCompositeOperation = "source-over";
+  };
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  switch (design) {
+    case "antimatter":
+      if (layer === "back") {
+        cape(30, "hsl(268 55% 10% / 0.95)", "hsl(186 100% 70% / 0.8)");
+        if (alive) {
+          ctx.globalCompositeOperation = "lighter";
+          motes(ctx, mid.x, hip.y + 20 * s, 60 * s, 110 * s, t, 8, "hsl(186 100% 75%)", 1.8 * s);
+          ctx.globalCompositeOperation = "source-over";
+        }
+      } else {
+        // an accretion ring of matter and antimatter round the waist, tilted
+        if (alive) {
+          for (let i = 0; i < 10; i++) {
+            const an = t * 2.4 + (i / 10) * TAU;
+            if (Math.sin(an) < 0) continue; // only the near half passes in front
+            const x = hip.x + Math.cos(an) * 26 * s, y = hip.y - 10 * s + Math.sin(an) * 6 * s;
+            ctx.fillStyle = i % 2 ? "hsl(0 0% 100%)" : "hsl(268 70% 8%)";
+            ctx.strokeStyle = "hsl(186 100% 72%)";
+            ctx.lineWidth = 1 * s;
+            ctx.beginPath();
+            ctx.arc(x, y, 2.4 * s, 0, TAU);
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+        fists("hsl(186 100% 85%)", "hsl(186 100% 60% / 0)");
+      }
+      break;
+    case "maelstrom":
+      if (layer === "back") {
+        cape(36, "hsl(205 75% 30% / 0.92)", "hsl(186 100% 88% / 0.95)", 6);
+        if (alive) motes(ctx, mid.x, hip.y - 40 * s, 70 * s, 90 * s, t * 2.2, 10, "hsl(195 90% 80% / 0.9)", 1.6 * s, -1);
+      } else {
+        pauldron(ctx, shoulder, face, s, "hsl(176 45% 34%)", "hsl(186 90% 80%)", 2);
+        fists("hsl(190 100% 85%)", "hsl(205 100% 55% / 0)");
+        if (alive) glow(ctx, head.x + face * 5 * s, head.y - 1.5 * s, 5 * s, "hsl(190 100% 85% / 0.9)", "hsl(190 100% 60% / 0)");
+      }
+      break;
+    case "magmaw":
+      if (layer === "back") {
+        if (alive) {
+          ctx.globalCompositeOperation = "lighter";
+          motes(ctx, mid.x, hip.y, 60 * s, 130 * s, t * 1.4, 10, "hsl(30 100% 62%)", 1.8 * s);
+          ctx.globalCompositeOperation = "source-over";
+        }
+      } else {
+        // a cracked rock breastplate and an obsidian shoulder with spikes
+        const cx = neck.x + (hip.x - neck.x) * 0.35, cy = neck.y + (hip.y - neck.y) * 0.35;
+        ctx.fillStyle = "hsl(18 14% 18%)";
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.5 * s;
+        ctx.beginPath();
+        ctx.moveTo(cx - 9 * s, cy - 6 * s);
+        ctx.lineTo(cx + 9 * s, cy - 7 * s);
+        ctx.lineTo(cx + 7 * s, cy + 9 * s);
+        ctx.lineTo(cx, cy + 13 * s);
+        ctx.lineTo(cx - 7 * s, cy + 8 * s);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.strokeStyle = alive ? "hsl(30 100% 58%)" : "hsl(20 50% 30%)";
+        ctx.lineWidth = 1.4 * s;
+        ctx.beginPath();
+        ctx.moveTo(cx - 4 * s, cy - 5 * s); ctx.lineTo(cx + 1 * s, cy + 2 * s); ctx.lineTo(cx - 1 * s, cy + 10 * s);
+        ctx.moveTo(cx + 1 * s, cy + 2 * s); ctx.lineTo(cx + 6 * s, cy + 4 * s);
+        ctx.stroke();
+        ctx.globalCompositeOperation = "source-over";
+        pauldron(ctx, shoulder, face, s, "hsl(260 12% 14%)", "hsl(28 100% 55%)", 2);
+        fists("hsl(44 100% 75%)", "hsl(16 100% 50% / 0)");
+      }
+      break;
+    case "everwinter":
+      if (layer === "back") {
+        if (alive) motes(ctx, mid.x, hip.y - 50 * s, 90 * s, 100 * s, t * 0.8, 12, "hsl(200 100% 96%)", 1.7 * s, -1);
+      } else {
+        pauldron(ctx, shoulder, face, s, "hsl(200 70% 86%)", "hsl(205 60% 50%)", 3);
+        fists("hsl(195 100% 92%)", "hsl(200 100% 70% / 0)");
+        // frost breath
+        if (alive) {
+          const k = (t * 0.8) % 1;
+          ctx.fillStyle = `hsl(200 80% 96% / ${0.5 * (1 - k)})`;
+          ctx.beginPath();
+          ctx.arc(head.x + face * (12 + k * 14) * s, head.y + 4 * s - k * 4 * s, (2 + k * 5) * s, 0, TAU);
+          ctx.fill();
+        }
+      }
+      break;
+    case "riftmaker":
+      if (layer === "back") {
+        // a tear in reality hanging behind it, stars showing through
+        const rx = mid.x + back * 12 * s, ry = mid.y - 8 * s, rh = 70 * s;
+        const wob = Math.sin(t * 3) * 2 * s;
+        ctx.fillStyle = "hsl(262 70% 6% / 0.92)";
+        ctx.strokeStyle = "hsl(318 100% 70%)";
+        ctx.lineWidth = 2 * s;
+        ctx.beginPath();
+        ctx.moveTo(rx, ry - rh / 2);
+        for (let i = 1; i <= 6; i++) ctx.lineTo(rx + (i % 2 ? 9 : 4) * s + wob, ry - rh / 2 + (rh * i) / 6);
+        for (let i = 5; i >= 1; i--) ctx.lineTo(rx - (i % 2 ? 9 : 4) * s - wob, ry - rh / 2 + (rh * i) / 6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "white";
+        for (let i = 0; i < 6; i++) {
+          const sx = rx + Math.sin(i * 7.1) * 4 * s, sy = ry - rh / 2 + ((i * 0.17 + t * 0.05) % 1) * rh;
+          ctx.globalAlpha = 0.5 + 0.5 * Math.sin(t * 5 + i);
+          ctx.fillRect(sx, sy, 1.6 * s, 1.6 * s);
+        }
+        ctx.globalAlpha = 1;
+        cape(26, "hsl(262 50% 14% / 0.92)", "hsl(186 100% 70% / 0.85)");
+      } else {
+        pauldron(ctx, shoulder, face, s, "hsl(262 40% 22%)", "hsl(318 100% 70%)", 0);
+        fists("hsl(318 100% 85%)", "hsl(186 100% 60% / 0)");
+      }
+      break;
+    case "hollow":
+      break;
+    case "blacksun":
+      if (layer === "back") {
+        robe(ctx, hip, p.fF, p.fB, s, t, "hsl(10 55% 16% / 0.95)", "hsl(44 100% 62%)");
+        if (alive) {
+          ctx.globalCompositeOperation = "lighter";
+          motes(ctx, mid.x, hip.y, 70 * s, 120 * s, t, 9, "hsl(38 100% 62%)", 1.7 * s);
+          ctx.globalCompositeOperation = "source-over";
+        }
+      } else {
+        pauldron(ctx, shoulder, face, s, "hsl(42 85% 52%)", "hsl(30 80% 30%)", 3);
+        fists("hsl(48 100% 80%)", "hsl(24 100% 50% / 0)");
+      }
+      break;
   }
   ctx.restore();
 }

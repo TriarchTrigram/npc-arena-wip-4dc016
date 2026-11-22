@@ -1,6 +1,6 @@
 ---
 name: mcp-server
-description: Turning this app into an MCP server so each app user can use it as a tool from their own AI assistant — "let people use my app from ChatGPT", "add a Claude connector", "expose my app to AI", "make this an MCP server", "connect this to claude.ai". Use whenever the brief means the person using the app drives it from claude.ai or ChatGPT, each acting only on their own data. ALSO use when a builder asks to turn the connector off, or reports it missing — "there's no MCP endpoint", "Claude can't find my server", "how do I disable the AI connector". Covers the app/mcp.ts manifest, the tool() helper and handler contract, app user scoping, the file-presence on/off switch, and how an app user connects from claude.ai and ChatGPT.
+description: Turning this app into an MCP server so each app user can use it as a tool from their own AI assistant — "let people use my app from ChatGPT", "add a Claude connector", "expose my app to AI", "make this an MCP server", "connect this to claude.ai". Use whenever the brief means the person using the app drives it from claude.ai or ChatGPT, each acting only on their own data. ALSO use when a builder asks to turn the connector off, or reports it missing — "there's no MCP endpoint", "Claude can't find my server", "how do I disable the AI connector". ALSO use when a builder asks for a page showing app users how to connect ("add a Connect to Claude page", "an MCP page in the account menu") or to limit who may connect ("only admins can use the connector", "AI tools for paying app users only"). Covers the app/mcp.ts manifest, the tool() helper and handler contract, app user scoping, the file-presence on/off switch, how an app user connects from claude.ai and ChatGPT, the connect page, and limiting the connector by role or app plan.
 metadata:
   agents: [chat, builder]
 ---
@@ -161,6 +161,77 @@ Both flows sign the app user in through the app's normal login and show a consen
 screen naming the connecting client before any tool can run — that is the
 platform's OAuth, not something you build or can skip.
 
+## A connect page and access limits — only when the builder asks
+
+Build neither by default. Both are ordinary app code: the `/mcp` route, the OAuth
+flow and the consent screen stay the platform's.
+
+**A connect page.** A "Connect to Claude or ChatGPT" page, linked from the account
+menu next to Sign out. Its loader calls `requireAuth` and returns
+`new URL(request.url).origin + "/mcp"`; the page shows that address with a copy
+button and the claude.ai and ChatGPT steps from "How an app user connects" above.
+
+**Limiting who may connect.** `ctx.member` carries identity only — there is no
+`member.role` and no plan on it — and a handler has no `request`, so
+`requireRole` and `getSubscription` do not work there. Write the rule once, keyed
+on the app user's id, and put it in front of every tool:
+
+```ts
+// app/lib/connector-access.server.ts
+import { eq } from "drizzle-orm";
+import { hasRole } from "~stencil/auth/roles";
+import { subscription } from "~stencil/auth/schema";
+import { createDb } from "~stencil/db";
+import { getPaymentSettings, hasPlan } from "~stencil/payments/server";
+import type { AppContext } from "~stencil/types/context";
+import { tiers } from "~/generated/tiers";
+
+// By role — the Role the app builder sets on their Stencil Users page (see `app-roles`).
+export const isAdmin = (env: Env, userId: string) => hasRole(env, userId, "admin");
+
+// By app plan — the same answer `requireSubscription` gives a page (see `payments`).
+export async function hasProPlan(env: Env, userId: string) {
+  const [{ paymentsEnabled }, [sub]] = await Promise.all([
+    getPaymentSettings({ cloudflare: { env } } as AppContext),
+    createDb(env).select().from(subscription).where(eq(subscription.userId, userId)).limit(1),
+  ]);
+  return hasPlan(sub ?? null, paymentsEnabled, tiers.pro.id);
+}
+```
+
+```ts
+// app/mcp.ts
+import { tool, type McpManifest, type McpTool } from "~stencil/mcp";
+import { isAdmin } from "~/lib/connector-access.server";
+
+function adminsOnly(tools: McpTool[]): McpTool[] {
+  return tools.map((t) => ({
+    ...t,
+    async handler(args, ctx) {
+      if (!(await isAdmin(ctx.env, ctx.member.id))) {
+        return { ok: false, error: "Only admins of this app can use it from an assistant." };
+      }
+      return t.handler(args, ctx);
+    },
+  }));
+}
+
+export const mcp: McpManifest = { name: "Tasks", tools: adminsOnly([/* tool({ … }), … */]) };
+```
+
+- **Return the refusal, do not throw it.** A thrown error reaches the assistant as
+  "The tool failed to run." and is logged as an app error; a returned message is
+  something the assistant can read back to the app user.
+- **Wrap the whole list**, so a tool added later cannot miss the check. The limit is
+  per app, not per tool: every signed-in app user can still connect and see the
+  tool names, and a refused app user gets the message on each call.
+- **Show the connect page to the same people.** Its loader calls
+  `requireRole(request, env, "admin")` or `requireSubscription(request, context,
+  tiers.pro.id)` instead of `requireAuth`, and the layout loader shows the menu link
+  only when `hasRole` or `hasPlan` says yes. Hiding the link alone limits nothing.
+- Never keep a role or plan copy in the app's own tables for this; `app-roles` and
+  `payments` say why.
+
 ## What to tell the builder
 
 The builder cannot see the connector work until an app user signs in and connects
@@ -173,6 +244,8 @@ from their assistant, so hand them something they can act on:
   access on a consent screen first.
 - If they want it off: delete `app/mcp.ts` (or clear its tools) and redeploy —
   there is no toggle.
+- If you limited it: who may use it (the role name to set on their Users page, or
+  the app plan), and where the connect page is if you built one.
 
 ## Before you report done
 
