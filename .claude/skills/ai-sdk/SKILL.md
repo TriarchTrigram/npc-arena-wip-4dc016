@@ -32,8 +32,9 @@ Every call goes through Stencil's AI gateway, which serves a fixed list of route
 | Speech to text | yes | `ai.transcribe` (Speech to text below); a whole video is the `captions` media job |
 | Generating an image | yes | `createImage(env)` from `~stencil/image` (`runtime-image-generation` skill), never an image model through `ai` |
 | Live dictation as someone speaks | browser | the `voice-input` skill (`SpeechRecognition`), not the gateway |
-| Text to speech (read aloud, a spoken reply) | **no** | not served. For read-aloud use the browser's `speechSynthesis`; otherwise tell the app builder plainly it is not available and ask how to proceed |
-| Any other provider endpoint (audio, speech, image, moderation, assistants, realtime) | **no** | the gateway answers 404. Say so plainly and offer the nearest row above |
+| Text to speech (read aloud, a spoken reply, an audio version of a post) | yes | `createAudio(env).speak` from `~stencil/audio`, not `createAI` — the `runtime-audio` skill |
+| Music and sound effects (a jingle, a game sound) | yes | `createAudio(env).music` / `.soundEffect` from `~stencil/audio` — the `runtime-audio` skill |
+| Any other provider endpoint (the SDK's `speechModel`, moderation, assistants, realtime or streaming speech, voice cloning) | **no** | the gateway answers 404. Say so plainly and offer the nearest row above |
 
 The gateway serves `openai:` ids for embeddings and for `languageModel` text, but OpenAI ids are not allow-listed, so a wrong one fails only at runtime; use the Anthropic ids below for chat.
 

@@ -14,7 +14,8 @@ only** — loaders, actions or scheduled handlers, never the browser. Output is 
 the file from your own route.
 
 Storage and playback are the **`storage`** skill; generating a video from React is the
-**`remotion`** skill. This skill is the step between them: taking files the app has and
+**`remotion`** skill; making new sound (speech from text, music, a sound effect) is the
+**`runtime-audio`** skill. This skill is the step between them: taking files the app has and
 making new ones.
 
 ## Do not use ffmpeg.wasm or any npm media library

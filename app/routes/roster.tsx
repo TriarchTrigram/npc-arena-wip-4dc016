@@ -15,6 +15,7 @@ import {
 } from "~/components/design";
 import { cn } from "~/lib/utils";
 import { FIGHTERS, defOf, type FighterDef, type Role } from "~/lib/fighters";
+import { FORMS, FORM_NAME, PERFECTED_FLAME, formsOf, type Form, type FormKind } from "~/lib/forms";
 import { useHybrids } from "~/lib/hybrids";
 import { FusionSheet, HybridParents } from "~/components/fusion-sheet";
 
@@ -94,6 +95,7 @@ function FighterCard({ fighter, index }: { fighter: Fighter; index: number | nul
           <Text id="roster.card.ability" as="p" className="text-xs uppercase tracking-widest text-muted-foreground" />
           <p className="text-foreground-secondary">{fighter.ability}</p>
         </div>
+        {!hybrid && formsOf(fighter.id).map((fm) => <FormBlock key={fm.kind} form={fm} />)}
         <div className="mt-auto border-t-2 border-border-subtle pt-4">
           <Text id="roster.card.moves" vars={{ count: fighter.moves.length }} as="p" className="text-xs uppercase tracking-widest text-muted-foreground tabular-nums" />
           <ul className="mt-2 flex flex-col gap-2">
@@ -107,6 +109,76 @@ function FighterCard({ fighter, index }: { fighter: Fighter; index: number | nul
         </div>
       </PanelBody>
     </Panel>
+  );
+}
+
+const FORM_TONE: Record<FormKind, "neutral" | "info" | "success" | "warning" | "danger"> = {
+  rage: "danger",
+  perfected: "danger",
+  awakened: "warning",
+  mastery: "info",
+  mystic: "success",
+};
+
+/** A fighter's form: its mode, its own name, what it does and the moves it adds. */
+function FormBlock({ form }: { form: Form }) {
+  return (
+    <div
+      data-form-block
+      className="rounded-md border-2 border-border-subtle p-3"
+      style={{ borderLeftColor: form.a, borderLeftWidth: 6 }}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusBadge tone={FORM_TONE[form.kind]}>{FORM_NAME[form.kind]}</StatusBadge>
+        <span className="text-sm font-extrabold tracking-wide text-foreground">{form.title}</span>
+      </div>
+      <p className="mt-2 text-sm text-foreground-secondary">{form.blurb}</p>
+      <Text id="roster.card.formAt" vars={{ at: Math.round(form.at * 100) }} as="p" className="mt-1 text-xs text-muted-foreground tabular-nums" />
+      <ul className="mt-2 flex flex-col gap-1">
+        {form.moves.map((m) => (
+          <li key={m.id} className="flex items-baseline justify-between gap-3 text-sm">
+            <span className="font-extrabold text-foreground">{m.name}</span>
+            <Text id={`roster.kind.${m.kind}` as StringKey} className="shrink-0 text-muted-foreground" />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const FORM_GROUPS: FormKind[] = ["rage", "awakened", "mastery", "mystic", "perfected"];
+
+/** Who has which form, at a glance. */
+function FormsOverview() {
+  return (
+    <section className="mt-8" data-forms-overview>
+      <SectionHeading title={<Text id="roster.forms.title" />} />
+      <Text id="roster.forms.subtitle" as="p" className="-mt-2 mb-6 max-w-prose text-foreground-secondary" />
+      <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        {FORM_GROUPS.map((kind) => {
+          const members = kind === "perfected" ? [PERFECTED_FLAME] : FIGHTERS.map((f) => FORMS[f.id]).filter((fm) => fm.kind === kind);
+          return (
+            <li key={kind}>
+              <Panel className="h-full">
+                <PanelBody className="flex h-full flex-col gap-3">
+                  <StatusBadge tone={FORM_TONE[kind]}>{FORM_NAME[kind]}</StatusBadge>
+                  <Text id={`roster.forms.${kind}` as StringKey} as="p" className="text-sm text-muted-foreground" />
+                  <ul className="flex flex-col gap-2">
+                    {members.map((fm) => (
+                      <li key={fm.power + fm.kind} className="flex items-center gap-2 text-sm">
+                        <span aria-hidden="true" className="size-3 shrink-0 rounded-full border-2 border-foreground" style={{ background: kind === "perfected" ? `linear-gradient(90deg, ${fm.a} 50%, ${fm.b} 50%)` : fm.a }} />
+                        <span className="font-semibold text-foreground">{FIGHTERS.find((f) => f.id === fm.power)?.name}</span>
+                        <span className="ml-auto truncate text-xs text-muted-foreground">{fm.title}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </PanelBody>
+              </Panel>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
@@ -133,7 +205,9 @@ export default function Roster() {
         }
       />
 
-      <div className="mt-6 flex flex-wrap items-center gap-2 py-1.5">
+      <FormsOverview />
+
+      <div className="mt-12 flex flex-wrap items-center gap-2 py-1.5">
         <Text id="roster.filter.label" className="mr-2 text-sm text-muted-foreground" />
         <Button size="sm" variant={role === "all" ? "default" : "outline"} onClick={() => setRole("all")}>
           <Text id="roster.filter.all" />

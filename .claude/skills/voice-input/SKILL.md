@@ -21,6 +21,9 @@ small slice of memory, closes the app or clears cached files under pressure, and
 gives an installed home-screen app its own microphone permission, separate from
 Safari's. Build for that from the start.
 
+This skill is about sound going in. The app speaking back (read aloud, a spoken reply)
+is `createAudio(env).speak` from `~stencil/audio`: the `runtime-audio` skill.
+
 ## When to use this skill
 
 - Any request for voice, speech, dictation, a microphone, or transcription.

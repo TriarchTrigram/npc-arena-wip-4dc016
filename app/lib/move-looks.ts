@@ -18,6 +18,8 @@ export type Look = {
   cast?: "hand" | "body" | "feet" | "sky";
   castLife?: number;
   hit?: HitLook;
+  /** A form move borrows the hand-drawn signature of this move, drawn in its own colours. */
+  sig?: string;
 };
 
 const L = (a: string, b: string, p: PShape, add: boolean, grav: number, hit?: HitLook, cast?: Look["cast"], castLife?: number): Look =>
@@ -156,6 +158,58 @@ export const LOOKS: Record<string, Look> = {
   "prominence": L("hsl(18 100% 52%)", "hsl(48 100% 76%)", "ember", true, -260, "flare"),
   "total-eclipse": L("hsl(250 40% 6%)", "hsl(44 100% 72%)", "star", true, 0, "starburst", "body", 0.9),
 };
+
+// ---------- form moves ----------
+// The moves a fighter gains in its form (app/lib/forms.ts). Each has its own colours, particles and hit mark,
+// and borrows the hand-drawn signature (`sig`) of the move it grows out of, drawn in its own colours.
+const F = (sig: string, a: string, b: string, p: PShape, add: boolean, grav: number, hit?: HitLook): Look => ({ ...L(a, b, p, add, grav, hit), sig });
+const FORM_LOOKS: Record<string, Look> = {
+  // Rage Mode
+  "blue-comet": F("fireball", "hsl(222 100% 58%)", "hsl(190 100% 84%)", "ember", true, -140, "flare"),
+  "azure-inferno": F("inferno-ring", "hsl(226 95% 52%)", "hsl(195 100% 80%)", "ember", true, -260, "flare"),
+  "black-bolt-rush": F("cyclone-spin", "hsl(265 45% 9%)", "hsl(0 0% 100%)", "bolt", false, 0, "fork"),
+  "thunder-judgement": F("storm-call", "hsl(265 40% 12%)", "hsl(0 0% 100%)", "bolt", false, 0, "fork"),
+  "hurricane-blades": F("wind-blade", "hsl(166 88% 34%)", "hsl(146 100% 86%)", "spark", true, 0, "slash"),
+  "hurricane-eye": F("singularity", "hsl(168 70% 30%)", "hsl(150 100% 84%)", "leaf", false, -80, "swirl"),
+  "molten-fist": F("boulder-fist", "hsl(14 90% 46%)", "hsl(42 100% 64%)", "ember", true, -160, "crater"),
+  "volcanic-rupture": F("flame-pillar", "hsl(10 85% 40%)", "hsl(38 100% 62%)", "chunk", false, 900, "crater"),
+  // Awakened Mode
+  "abyssal-maw": F("gravity-pull", "hsl(278 70% 20%)", "hsl(310 100% 70%)", "smoke", false, -40, "bite"),
+  "eclipse-fang": F("shadow-step", "hsl(270 60% 10%)", "hsl(310 100% 72%)", "smoke", false, -60, "slash"),
+  "solar-lance": F("prism-beam", "hsl(44 100% 60%)", "hsl(0 0% 100%)", "star", true, 0, "starburst"),
+  "heavens-gate": F("light-lances", "hsl(48 100% 66%)", "hsl(0 0% 100%)", "star", true, 160, "cross"),
+  "collapsing-star": F("singularity", "hsl(255 70% 30%)", "hsl(275 100% 84%)", "star", true, 0, "implode"),
+  "planet-crusher": F("meteor-drop", "hsl(255 50% 26%)", "hsl(275 100% 80%)", "chunk", false, 800, "crater"),
+  "hydra-lash": F("blade-arm", "hsl(318 85% 54%)", "hsl(150 100% 72%)", "drop", false, 300, "bite"),
+  "chimera-burst": F("plague-burst", "hsl(318 80% 48%)", "hsl(150 100% 70%)", "bubble", false, -60, "splat"),
+  // Mastery Mode
+  "frozen-requiem": F("prism-beam", "hsl(205 90% 66%)", "hsl(0 0% 100%)", "flake", false, 40, "shatter"),
+  "glacial-lotus": F("glacier-spike", "hsl(200 80% 78%)", "hsl(0 0% 100%)", "flake", false, 200, "shatter"),
+  "tsunami-crash": F("tidal-wall", "hsl(215 90% 46%)", "hsl(185 100% 88%)", "drop", false, 800, "splash"),
+  "hydro-cutter": F("railgun", "hsl(205 100% 56%)", "hsl(185 100% 90%)", "drop", false, 600, "ripple"),
+  "thousand-blades": F("shard-storm", "hsl(220 16% 64%)", "hsl(355 90% 68%)", "shard", false, 600, "sparks"),
+  "magnetic-storm": F("stasis-field", "hsl(220 18% 50%)", "hsl(355 90% 66%)", "shard", false, 0, "sparks"),
+  "hydra-venom": F("acid-spit", "hsl(100 75% 42%)", "hsl(280 70% 72%)", "bubble", false, -80, "fizz"),
+  "plague-garden": F("miasma-cloud", "hsl(96 60% 34%)", "hsl(280 70% 70%)", "petal", false, -60, "fizz"),
+  // Mystic Mode
+  "starfall-portals": F("light-lances", "hsl(265 85% 62%)", "hsl(186 100% 84%)", "star", true, 160, "portal"),
+  "void-step": F("warp-kick", "hsl(262 80% 40%)", "hsl(186 100% 82%)", "glyph", true, 0, "portal"),
+  "verdant-wrath": F("earth-spike", "hsl(135 60% 34%)", "hsl(58 100% 76%)", "leaf", false, 400, "sprout"),
+  "sacred-bloom": F("mend", "hsl(135 65% 44%)", "hsl(55 100% 80%)", "petal", false, -120),
+  "clockwork-judgement": F("time-bolt", "hsl(38 80% 54%)", "hsl(180 100% 84%)", "glyph", true, 0, "clock"),
+  "paradox-field": F("stasis-field", "hsl(40 70% 46%)", "hsl(180 100% 82%)", "glyph", true, 0, "clock"),
+  "mind-shatter": F("thunder-bolt", "hsl(292 75% 58%)", "hsl(330 100% 86%)", "glyph", true, 0, "ripple"),
+  "psychic-maelstrom": F("mind-crush", "hsl(290 70% 46%)", "hsl(330 100% 84%)", "star", true, -30, "ripple"),
+  // Perfected Flame: red and blue fire at once
+  "twin-dragon-flame": F("fireball", "hsl(2 95% 54%)", "hsl(214 100% 64%)", "ember", true, -140, "flare"),
+  "crimson-azure-nova": F("sun-flare", "hsl(2 95% 54%)", "hsl(214 100% 64%)", "ember", true, -200, "starburst"),
+};
+for (const [id, lk] of Object.entries(FORM_LOOKS)) {
+  const base = LOOKS[lk.sig!];
+  LOOKS[id] = { ...lk, cast: base?.cast, castLife: base?.castLife };
+}
+/** The signature drawing a move uses: its own, or the one it borrows. */
+const sigOf = (id: string) => LOOKS[id]?.sig ?? id;
 
 /** A one-off effect: a move's signature when it fires (hit = false) or its mark on whoever it struck (hit = true). */
 export type Fx = { id: string; hit: boolean; x: number; y: number; dir: number; size: number; life: number; max: number; seed: number; reach: number; tint?: Tint };
@@ -649,7 +703,7 @@ function drawCast(ctx: CanvasRenderingContext2D, fx: Fx, a: string, b: string, s
   const dir = fx.dir;
   const seed = fx.seed;
   ctx.globalAlpha = fade;
-  switch (fx.id) {
+  switch (sigOf(fx.id)) {
     // ----- close strikes -----
     case "ember-jab": {
       ctx.globalCompositeOperation = "lighter";
@@ -1449,7 +1503,7 @@ export function drawShotLook(ctx: CanvasRenderingContext2D, id: string, p: Shot,
   ctx.save();
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  switch (id) {
+  switch (sigOf(id)) {
     case "fireball": {
       ctx.globalCompositeOperation = "lighter";
       glow(ctx, p.x, p.y, r * 2.8, b, 0.6);
@@ -1915,7 +1969,7 @@ export function drawBeamLook(ctx: CanvasRenderingContext2D, id: string, bm: Beam
   ctx.lineJoin = "round";
   ctx.translate(bm.x, bm.y);
   ctx.rotate(bm.ang);
-  switch (id) {
+  switch (sigOf(id)) {
     case "thunder-bolt": {
       ctx.globalCompositeOperation = "lighter";
       glow(ctx, 0, 0, w * 2.4, "hsl(0 0% 100%)", 1);
@@ -2187,7 +2241,7 @@ export function drawEruptionLook(ctx: CanvasRenderingContext2D, id: string, x: n
   ctx.save();
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  switch (id) {
+  switch (sigOf(id)) {
     case "flame-pillar": {
       ctx.globalCompositeOperation = "lighter";
       glow(ctx, x, gy - h * 0.3, r * 1.6, a, 0.5);
@@ -2436,7 +2490,7 @@ export function drawZoneLook(ctx: CanvasRenderingContext2D, id: string, x: numbe
   ctx.globalAlpha = alpha;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  switch (id) {
+  switch (sigOf(id)) {
     case "frozen-floor": {
       glow(ctx, x, gy - 10, r * 0.9, b, 0.35);
       const gr = ctx.createLinearGradient(0, gy - 14, 0, gy + 14);
@@ -2784,7 +2838,7 @@ export function drawRushLook(ctx: CanvasRenderingContext2D, id: string, x: numbe
   const { a, b } = lk;
   ctx.save();
   ctx.lineCap = "round";
-  switch (id) {
+  switch (sigOf(id)) {
     case "cyclone-spin":
       for (let i = 0; i < 7; i++) {
         const u = i / 6;

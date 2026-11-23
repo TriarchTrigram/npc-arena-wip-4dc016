@@ -1,5 +1,5 @@
 {
-  "hash": "aec048df6d4dd4d1f59747e2031b8f434a6e803a",
+  "hash": "242e75938ba11dba1450be5b0836d079214ca322",
   "files": [
     "app/entry.server.tsx",
     "app/entry.client.tsx",
@@ -2607,6 +2607,15 @@
       "notes": [
         "ui/library.css: Only a proxy label whose native input is visually hidden (.sr-only, .opacity-0) takes the focus halo; a text label around a visible control no longer glows. The halo is lighter: --ring (and --destructive for invalid fields) at 25% instead of 65%.",
         "Non-breaking; nothing in app code changes."
+      ],
+      "breaking": []
+    },
+    {
+      "hash": "242e75938ba11dba1450be5b0836d079214ca322",
+      "date": "2026-11-22",
+      "notes": [
+        "audio.ts: new createAudio(env) with speak(), music(), soundEffect() and voices(): text to speech, music and sound effects on the platform, returned as an mp3 stream for storage.",
+        "Non-breaking; an app that needs read-aloud or generated sound now imports ~stencil/audio (see the runtime-audio skill)."
       ],
       "breaking": []
     }
