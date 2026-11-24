@@ -78,10 +78,12 @@ Cloudflare Workers AI models catalog for the full list):
 | model id | notes |
 |---|---|
 | `@cf/black-forest-labs/flux-1-schnell` | Default. Fast, high quality, strong prompt adherence. |
-| `@cf/stabilityai/stable-diffusion-xl-base-1.0` | Finer detail; slower. |
-| `@cf/bytedance/stable-diffusion-xl-lightning` | Fastest; good for drafts/thumbnails. |
 
-Stick with the default unless the brief wants a specific look.
+Stick with the default unless the brief wants a specific look. Stable Diffusion XL
+(`@cf/stabilityai/stable-diffusion-xl-base-1.0`, `@cf/bytedance/stable-diffusion-xl-lightning`)
+is retired at Cloudflare and answers 400, so never pass either id. When an app builder asks
+for "SDXL" by name, do not swap models silently: tell them SDXL was retired, offer the default
+(FLUX.1 Schnell) as the supported replacement, and only then build with it.
 
 ### Keep one character or style across many images
 

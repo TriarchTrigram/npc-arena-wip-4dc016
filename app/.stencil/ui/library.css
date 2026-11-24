@@ -121,43 +121,8 @@
   }
 }
 
-/* Focus is a soft halo everywhere, including legacy items with ring utilities.
-   Unlayered on purpose: the shared policy wins over component/Tailwind layers.
-   The focus shadow is complete: theme elevation may be the keyword none, which
-   cannot be appended to a comma-separated shadow list.
-   Proxy controls (uploads, choice labels, number/tag input wrappers) own the halo
-   when their native input is hidden or the control is a composed group. A text label
-   never does: only a label whose native input is visually hidden (.sr-only, .opacity-0). */
-:where(
-  :not(.sr-only):focus-visible,
-  label:has(:is(.sr-only, .opacity-0):focus-visible),
-  [class*="has-"][class*="focus-visible"]:has(:focus-visible),
-  [class*="focus-within:ring"]:has(:focus-visible)
-) {
-  outline: none;
-  --tw-ring-shadow: 0 0 transparent;
-  --tw-ring-offset-shadow: 0 0 transparent;
-  box-shadow: 0 0 8px 2px color-mix(in oklab, var(--ring) 25%, transparent);
-}
-
-/* A focused field keeps its normal border; focus does not draw another hard edge. */
-:where(
-  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-  textarea,
-  select,
-  [data-slot="select-trigger"],
-  [data-slot="date-picker"] > button
-):focus-visible {
-  border-color: var(--input);
-}
-
-/* Validation keeps its meaning while using the same soft focus treatment. */
-[aria-invalid="true"]:focus-visible {
-  border-color: var(--destructive);
-  box-shadow: 0 0 8px 2px color-mix(in oklab, var(--destructive) 25%, transparent);
-}
-
-/* Shadows are suppressed by forced-colour modes: retain the system focus cue. */
+/* Focus is each component's own (its ring classes). Forced-colour modes drop those
+   rings and shadows, so keep the system focus cue there. */
 @media (forced-colors: active) {
   :is(
     :not(.sr-only):focus-visible,

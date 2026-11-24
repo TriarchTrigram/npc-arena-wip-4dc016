@@ -347,8 +347,13 @@ for (const inst of due) {
   paid, **or granted at no charge** by the app builder with **Give free access** on
   More → Users, which writes the same `subscription` row every gate honours.
   So chosen people can sell without paying: send the app builder to Give free access for that,
-  never to a paid plan first and never to a hand-written row. `onboardSeller` enforces the plan
-  check and redirects to `/upgrade` if the app user has no active plan. If the app has no plan
+  never to a paid plan first and never to a hand-written row. `onboardSeller` and
+  `connectExistingStripeAccount` enforce the plan check and redirect to
+  `/upgrade?reason=seller-needs-plan` if the app user has no active plan. The platform shows the
+  reason itself: `StencilRoot` renders a "Selling needs an active plan" notice on any page opened
+  with that query, so the app user is never dropped on a pricing page with no explanation. Keep
+  the query string when an `/upgrade` route of your own redirects somewhere else, or the notice
+  is lost. A one-time purchase is not a plan and does not pass this check. If the app has no plan
   yet, set one up first (the `payments` skill).
 - **Onboarding gate: no selling UI until `active`.** Always call `getSellerStatus` first and show the
   seller tools (a buy button configured by that seller, "manage sales", etc.) only when

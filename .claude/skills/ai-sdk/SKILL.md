@@ -68,6 +68,24 @@ const { text } = await ai.transcribe({ audio, feature: "voice-notes" });
 
 An app that shows its own AI usage reads `await ai.usage()`: this billing period's calls, credits and dollars per feature for this deploy, from Stencil's own record, so the app keeps no price list of its own.
 
+## The language the model writes in
+
+In an app that speaks more than one language (it has an `app/strings/strings.<language>.json` file), `ai.languageModel` already tells the model to write in the language of the app user whose request is being served, unless an instruction in the prompt names a different output language. Add nothing for it: no language line in the prompt, no language column, no picker. An app with one language sends exactly what the code wrote.
+
+- A feature with its own language choice (a "story language" picker, a translate button) passes it and it wins: `ai.languageModel(id, { feature, language: "fr" })`.
+- Work done for someone other than the person behind the request has no request language to read, or the wrong one: a scheduled handler, a webhook, an admin action that writes a document or email for each app user. There the language travels with the recipient. Read it with `appUserLanguage(env, userId)` from `~stencil/locale` and pass it, once per recipient:
+
+```ts
+import { appUserLanguage } from "~stencil/locale";
+
+const model = ai.languageModel("anthropic:claude-sonnet-5-5", {
+  feature: "weekly-worksheet",
+  language: await appUserLanguage(env, recipient.id), // undefined when they chose none, or the app no longer speaks it
+});
+```
+
+`readDocument` and `transcribe` are not affected: a document is read as written.
+
 ## Call options
 
 - Never set `temperature`, `topP` or `topK` on Anthropic calls. Every 5.x model rejects them with a 400, and a call to Sonnet 4.5 or Haiku 4.5 is served on a 5.5 model with them dropped (the app builder sees a warning for it under Monitoring). Leaving them out is always safe.

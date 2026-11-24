@@ -1,6 +1,19 @@
 /** Cookie the browser writes with its own IANA zone; the worker prefers it over the connection's. */
 export const VIEWER_TIME_ZONE_COOKIE = "stencil_tz";
 
+/** Display-preference writes; never authentication cookies.
+ * Refresh the original Lax cookie first so same-site embeds cannot retain a stale
+ * unpartitioned value ahead of the partitioned value in the Cookie header.
+ * Cross-site HTTPS embeds also need a partitioned cookie; their Lax write is blocked.
+ * Top-level and HTTP behavior remains byte-identical to the original preference. */
+export function viewerTimeZoneCookies(zone: string, embedded: boolean, secure: boolean): string[] {
+  if (!isValidTimeZone(zone)) throw new Error("Invalid viewer timezone");
+  const preference = `${VIEWER_TIME_ZONE_COOKIE}=${encodeURIComponent(zone)}; path=/; max-age=31536000`;
+  const cookies = [`${preference}; samesite=lax`];
+  if (embedded && secure) cookies.push(`${preference}; samesite=none; secure; partitioned`);
+  return cookies;
+}
+
 export function isValidTimeZone(zone: string | undefined): zone is string {
   if (!zone) return false;
   try {

@@ -26,17 +26,15 @@
   },
   {
     "id": "write-me-a-plan",
-    "why": "A long answer gets the one-bubble version here and the full version on the web, introduced by a sentence with the link on its own line.",
+    "why": "A long answer gets the short version here and an offer to send the rest here in the next reply, never a pointer to the web.",
     "context": "English. Stage: published, no marketing yet.",
     "message": "write me a marketing plan",
     "must": [
       "At most 3 bubbles, whole reply near 300 characters",
       "A one-bubble short version of the plan",
-      "One sentence saying why the full plan is on the web, then the web link on its own line",
-      "Exactly one link in the reply",
-      "Ends on one question typeable in a word or a number"
+      "Ends on one question asking whether they want the full plan sent here in parts, answerable in a word"
     ],
-    "mustNot": ["A fourth bubble", "Headings, numbered lists or asterisk bullets", "A bare URL in the middle of a sentence", "A sentence split across two bubbles"]
+    "mustNot": ["A link, or any word that the full plan is on the web", "A fourth bubble", "Headings, numbered lists or asterisk bullets", "A bare URL in the middle of a sentence", "A sentence split across two bubbles"]
   },
   {
     "id": "hebrew-message",
@@ -119,5 +117,51 @@
       "Ends on one question with Coach's recommendation first and one reason, at most three options"
     ],
     "mustNot": ["'Great idea' or any flattery", "An emoji", "More than one question"]
+  },
+  {
+    "id": "clear-the-thread",
+    "why": "A request to drop a question is answered first, and the question does not come back.",
+    "context": "English. The conversation memory lists an open thread: get a one-line description of what the app does. Coach's last message asked that question.",
+    "message": "Clear the thread",
+    "must": [
+      "First bubble is one short line saying the question was dropped",
+      "At most 2 bubbles",
+      "Any closing question is about something else"
+    ],
+    "mustNot": [
+      "The dropped question, in the same words or new ones",
+      "A claim that the chat history was erased or cleared",
+      "An explanation of how memory or sessions work",
+      "'I can't do that from here'"
+    ]
+  },
+  {
+    "id": "dropped-stays-dropped",
+    "why": "A dropped question does not come back on a later message in the same conversation.",
+    "context": "English. Two messages ago the builder said \"Clear the thread\" and Coach replied that it had dropped the question of what the app does, which the conversation memory still lists as an open thread. The app is at Pre-launch.",
+    "message": "what should I focus on this week?",
+    "must": [
+      "An answer about what to focus on, built from what Coach already knows",
+      "At most 3 bubbles"
+    ],
+    "mustNot": [
+      "What the app does or who it is for, asked in any wording",
+      "A question the builder must answer before Coach can help"
+    ]
+  },
+  {
+    "id": "dropped-with-nothing-left-to-ask",
+    "why": "A dropped question stays dropped even when the stage has nothing else to go on.",
+    "context": "English. The app has no first build yet and is at Prototype. Earlier in this conversation the builder said \"drop it\" to Coach's question about what the app is and who it is for.",
+    "message": "what do I do next?",
+    "must": [
+      "A next step Coach can name without that answer, from the app's name, the notes or what is already there",
+      "Any assumption Coach makes said in one short line",
+      "At most 3 bubbles"
+    ],
+    "mustNot": [
+      "What the app is or who it is for, asked in any wording",
+      "A line saying Coach needs something from the builder before it can help or write a brief"
+    ]
   }
 ]

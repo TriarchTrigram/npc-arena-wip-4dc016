@@ -64,6 +64,23 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 }
 ```
 
+## An admin limited to one group
+
+A brief that gives some admins only their own slice — a partner's admins who manage that
+partner's business owners, a regional manager, a franchise — is the same shape with one more
+line: a named helper in `app/lib/roles.server.ts` that resolves the caller's group on the
+server (`requireGroupAdmin(request, env)` returns `{ user, partnerId }` from the platform
+role plus a membership row the admin cannot edit) and throws 403 when the caller is neither
+a full admin nor a member of any group. A helper that returns true when the caller holds no
+role at all passes every signed-in app user, which is the opposite of a gate. Every read on
+the page then carries the group — the owner list **and** the pending-invites list beside it,
+the import, the export — and every action that resends, cancels, edits or deletes looks its
+row up by id **and** group, never by id alone. A full admin passes with no group and sees
+everything; nobody else sees a row outside their group from any route on the page. Before
+reporting the page done, read each read and write on it against the helper: one list
+scoped and its neighbour not is what the security scan flags as a partner seeing another
+partner's prospects.
+
 `loader` AND `action` of every admin file start with `requireRole`; nothing reads or writes
 above it. The back office sees every app user's rows, which a signed-in app user's own
 access rules would hide, so it reads and writes through `system(env)` **after** the gate

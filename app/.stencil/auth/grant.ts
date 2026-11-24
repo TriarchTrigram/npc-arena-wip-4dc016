@@ -153,7 +153,7 @@ export async function grantAccess(
   ctx?: ExecutionContext,
 ): Promise<GrantAccessResult> {
   const email = input.email.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) {
     throw new Error(`grantAccess: "${input.email}" is not a valid email`);
   }
   const name = input.name?.trim() ?? "";

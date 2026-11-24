@@ -48,6 +48,7 @@ type CompleteBody = {
 };
 type AbortBody = { action: "abort"; uploadId?: string; key?: string };
 type StatusBody = { action: "status"; key?: string };
+type RulesBody = { action: "rules" };
 
 const reply = (body: unknown, status = 200) => Response.json(body, { status });
 const refuse = (error: string, status: number) => reply({ error }, status);
@@ -112,6 +113,16 @@ function formatBytes(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
+// What the field takes, in the words shown before picking: "Images or PDF, up to 20 MB per file."
+function describeRules({ accept, maxBytes }: UploadRouteOptions): string | null {
+  // A cap of 0 is an allowance already spent, not a route with no cap.
+  if (maxBytes === 0) return "Nothing more can be uploaded here right now.";
+  const formats = accept?.length ? describeAccepted(accept) : "";
+  const cap = maxBytes ? `up to ${formatBytes(maxBytes)} per file` : "";
+  const text = [formats, cap].filter(Boolean).join(", ");
+  return text ? `${text[0].toUpperCase()}${text.slice(1)}.` : null;
+}
+
 /**
  * Answer one request of the upload protocol. Call it from the action of the
  * app's upload route after the same gate as the screen that uploads
@@ -125,6 +136,8 @@ function formatBytes(bytes: number): string {
  * `onComplete`. `abort` drops a failed upload so no half file stays in storage.
  * `status` (JSON: key) answers the stored size of a finished file, or null, so
  * a browser continuing a batch after a reload asks instead of remembering.
+ * `rules` answers this request's `accept` and `maxBytes` with a sentence for them,
+ * so a screen says what the field takes before a file is picked.
  * Every refusal is `{ error }` in words an app user can read, with a 4xx status.
  */
 export async function handleUpload(
@@ -156,7 +169,7 @@ export async function handleUpload(
     return reply({ etag: part.etag, partNumber });
   }
 
-  let body: CreateBody | CompleteBody | AbortBody | StatusBody;
+  let body: CreateBody | CompleteBody | AbortBody | StatusBody | RulesBody;
   try {
     body = await request.json();
   } catch {
@@ -218,6 +231,12 @@ export async function handleUpload(
       const stored = await storage.head(body.key);
       return reply({ size: stored?.size ?? null, url: `/api/files/${body.key}` });
     }
+    case "rules":
+      return reply({
+        accept: options.accept ?? null,
+        maxBytes: options.maxBytes ?? null,
+        hint: describeRules(options),
+      });
     default:
       return refuse("This upload request is incomplete.", 400);
   }

@@ -84,6 +84,8 @@ export interface UploadFilesOptions extends Omit<UploadOptions, "onProgress">, B
   concurrency?: number;
   /** Bytes sent across every file, as 0–100. */
   onProgress?: (percent: number) => void;
+  /** Bytes sent so far of one file, as 0–100, for a progress row per file. */
+  onFileProgress?: (file: File, percent: number) => void;
   /** Called as each file finishes or fails, in completion order. */
   onFile?: (result: { file: File; uploaded?: UploadedFile; error?: UploadError }) => void;
 }
@@ -375,6 +377,7 @@ export async function uploadFiles(
             signal: options.signal,
             onProgress: (percent) => {
               sent.set(file!, (percent / 100) * file!.size);
+              options.onFileProgress?.(file!, percent);
               reportAll();
             },
           },
@@ -401,6 +404,25 @@ export async function uploadFiles(
   const left = (await savedFiles(scope)).filter((f) => mine.has(f.id));
   if (left.every((f) => f.done)) await forgetBatch(left);
   return { uploaded, failed };
+}
+
+export interface UploadRules {
+  /** The types the route stores, as `handleUpload` was given them; null when it stores any. */
+  accept: string[] | null;
+  maxBytes: number | null;
+  /** What the field takes, in words: "Images or PDF, up to 20 MB per file." */
+  hint: string | null;
+}
+
+/** What the upload route accepts for this app user right now, to show before a file is picked. */
+export async function uploadRules(route = DEFAULT_ROUTE): Promise<UploadRules> {
+  const res = await fetch(route, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "rules" }),
+  });
+  if (!res.ok) throw new Error(`The upload route answered ${res.status} for its rules.`);
+  return (await res.json()) as UploadRules;
 }
 
 /**

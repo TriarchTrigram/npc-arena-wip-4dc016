@@ -1,12 +1,13 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import { useMatches, useNavigate, useRevalidator, useRouteLoaderData } from "react-router";
+import { useLocation, useMatches, useNavigate, useRevalidator, useRouteLoaderData } from "react-router";
 import { captureFirstTouch } from "../auth/attribution";
-import { isValidTimeZone, VIEWER_TIME_ZONE_COOKIE } from "../time";
+import { isValidTimeZone, viewerTimeZoneCookies } from "../time";
 import type { Tenant } from "../types/tenant";
 import { NavigationBridge } from "../ui/navigation-bridge";
 import { LocaleProvider, type AppLocale } from "../ui/language-switcher";
 import { UnsplashCreditsProvider } from "../ui/photo/unsplash";
 import { StringsProvider } from "../ui/strings";
+import { isSellerPlanRedirect, SellerPlanNotice } from "../ui/payments/seller-plan-notice";
 import { UpdateNotice } from "../ui/update-notice";
 import { usePlatformPageLinks } from "./platform-page-links";
 import { mergeStrings } from "./strings";
@@ -16,8 +17,9 @@ import { mergeStrings } from "./strings";
  *
  * Pinned in `app/root.tsx` around `<Outlet />`. It supplies platform strings to
  * every `<Text>` below it, runs the preview navigation bridge, keeps the viewer's
- * timezone in step with their browser, credits every Unsplash photo whose caption
- * is hidden and shows the update notice once a publish has superseded the page.
+ * timezone in step with their browser, credits every Unsplash photo whose caption is
+ * hidden, shows the update notice once a publish has superseded the page and tells a
+ * seller sent to the upgrade page that selling needs a plan.
  * All need the router, which is why they are wired here rather than in the
  * components themselves — those stay framework-free so a static frontend can
  * render them.
@@ -43,6 +45,7 @@ export function StencilRoot({ children }: { children: ReactNode }) {
   usePlatformPageLinks();
   useViewerTimeZoneSync();
   const locale = useLocale();
+  const sellerNeedsPlan = isSellerPlanRedirect(useLocation().search);
 
   const strings = matches.reduce<Record<string, unknown>>((all, match) => {
     const own = (match.data as { strings?: unknown } | undefined)?.strings;
@@ -57,6 +60,7 @@ export function StencilRoot({ children }: { children: ReactNode }) {
       <StringsProvider strings={strings}>
         <LocaleProvider value={locale}>
           <UnsplashCreditsProvider>{children}</UnsplashCreditsProvider>
+          <SellerPlanNotice shown={sellerNeedsPlan} />
           <UpdateNotice />
         </LocaleProvider>
       </StringsProvider>
@@ -87,7 +91,9 @@ function useViewerTimeZoneSync(): void {
     synced.current = true;
     const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     if (!isValidTimeZone(browserZone) || browserZone === serverZone) return;
-    document.cookie = `${VIEWER_TIME_ZONE_COOKIE}=${encodeURIComponent(browserZone)}; path=/; max-age=31536000; samesite=lax`;
+    for (const cookie of viewerTimeZoneCookies(browserZone, window.self !== window.top, window.location.protocol === "https:")) {
+      document.cookie = cookie;
+    }
     revalidate();
   }, [serverZone, revalidate]);
 }

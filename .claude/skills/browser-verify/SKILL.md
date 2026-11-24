@@ -1,6 +1,6 @@
 ---
 name: browser-verify
-description: Drive the app's private preview in a real browser to check that a flow works, when the app builder asked in this turn to check that a specific flow works ("can you check sign-up works?", "does adding a client save?", "test it", "verify it", "make sure the checkout goes through"), reported a behaviour bug in a specific flow that a run would show or confirm ("adding a client doesn't save"), or when this turn's build changed a state that only shows after a click, a form or a tap and the post-build screenshot's critique read "cannot tell from a still" for that state. Never to explore the app, never on a first build, never on a headless turn (the command refuses), never by seeding the preview account's data instead. Appearance is `dev-tools screenshot`'s job.
+description: Drive the app's private preview in a real browser to check that a flow works, when the app builder asked in this turn to check that a specific flow works ("can you check sign-up works?", "does adding a client save?", "test it", "verify it", "make sure the checkout goes through"), reported a behaviour bug in a specific flow that a run would show or confirm ("adding a client doesn't save"), or when this turn's build changed a state that only shows after a click, a form or a tap and the post-build screenshot's critique read "cannot tell from a still" for that state. Also read it before you reply whenever a post-build screenshot read "cannot tell from a still" for any reason: it says which further look can settle the ask. Never to explore the app, never on a first build, never on a headless turn (the command refuses), never by seeding the preview account's data instead. Appearance is `dev-tools screenshot`'s job.
 metadata:
   agents: [builder]
 ---
@@ -78,6 +78,41 @@ Never on a question turn. Never to explore the app or "see what is there". Never
 the still can judge. A run takes minutes and the app builder watches it live: an asked run is
 theirs, and an unasked one is spent only on the one state your build put behind an action.
 
+## When the screenshot reads "cannot tell from a still"
+
+"Not visible" and "cannot tell" are two different findings. Never treat one as the other.
+
+- **"Not visible": the check looked where the change should be and did not find it.** The
+  change is not on the page. Fix it once and build, or say plainly that it did not land. The
+  warning over your reply is right, and nothing below softens it.
+- **"Cannot tell": that one still could not show the change.** It says nothing about whether
+  the change landed. Left as it is, it puts the same warning over your reply as a real miss,
+  and the app builder re-checks or re-asks for work that is already done. So before you
+  reply, look once more in the way that can see it, with the same expect line, word for word:
+  - **"below the still"**: the same screenshot with the full-page option.
+  - **One element** (a photo, a label, a heading's style, a line in the footer): the same
+    screenshot with a focus selector on that element. For something you removed, focus the
+    section it sat in (the footer, the card), so the close-up shows it is gone.
+  - **Behind a tab, a click or a tap** (the cards on a tab, a tray a button opens): the
+    unasked run from the gate above.
+  - **A comparison with the page as it was** (bigger, moved, more even): the measure
+    option, and only when a measurement was taken before the build. Without one, no further
+    still settles it.
+  - **Nothing a still of the loaded page can show** (how a link behaves, timing, what a
+    route answers, a code-only change such as an accessibility attribute): no further
+    screenshot. Use the proof or the non-visual tag your main instructions describe.
+- **One further look per ask**, inside the check time, and never a second one of the same
+  kind. If it reads "visible", the ask is confirmed. If it reads "not visible", the first
+  rule applies.
+- **Still "cannot tell", or no look can reach it:** your reply says what you changed and
+  exactly what the app builder should check, in plain words ("open the Charge tab: it should
+  show the battery card and five level pills"). Do not call the work unverified, and do not
+  say it "may not have landed" or "did not land": those words are for "not visible". Do not
+  say you saw or confirmed it either.
+- **A code-only change needs no made-up visual ask.** When nothing new should appear, do not
+  write an expect line that claims a change. "The Missions page still renders normally" is a
+  no-change check and goes on its own line, as your main instructions say.
+
 ## Hard invariants
 
 - **No secrets in the plan.** Values to type are literals; nothing from the app's config or
@@ -95,9 +130,24 @@ theirs, and an unasked one is spent only on the one state your build put behind 
   checkpoint and what the page showed. `inconclusive` or a blocked step means the run could
   not settle it: open the step's still, fix the plan if the plan was wrong, and otherwise say
   the flow is unverified. Never report a flow as working on a run that did not pass.
-- **Data the run creates is the verify user's**, visible in the app builder's data views. Name
-  it so it reads as a test (`Verify Client`, `verify-test@example.com`), never like real data,
-  and tell the app builder what to delete.
+- **Records the run creates are real data, and you remove them.** The App preview and the
+  Published app share one database, and what the run writes is the verify user's, so the app
+  builder's own lists may not show it while their data views, emails and automations do.
+  - Name it so it reads as a test (`Verify Client`, `verify-test@example.com`), never like
+    real data.
+  - Create a handful of records, never a whole import or catalogue. An import, a sync or a
+    bulk add is run on a sample of a few items. When only the full source can be used, do
+    not run it: say the import is unverified and that the app builder can run it themselves,
+    so the records land in their own account.
+  - Record the id of each record a run creates, at the moment it creates it: read the new row
+    with `dbExecute` right after the run, in every table the flow wrote to. An id counts as
+    captured only when you are sure that run made the row.
+  - After the turn's last run, delete only those ids with `dbExecute` (`WHERE id IN (...)`),
+    then read the tables once more to confirm they are gone. Never delete by name, email,
+    owner or any other match: it can hit the app builder's real rows.
+  - A record that has to stay (its id was not captured, a delete was refused, or the app
+    builder asked to keep it) is left alone and named in your reply: how many, in which table,
+    and that they belong to the verify user.
 
 ## Writing the plan
 
@@ -165,5 +215,6 @@ that is not `PASS` before deciding whether the app or the plan is wrong:
   as a `FAIL`.
 
 In your reply, say what the run did and saw in plain words ("it added a client named Verify
-Client and the list showed it after a reload"), and name the verify user's test record so the
-app builder can delete it. A run that did not pass is reported as such, with the failing step.
+Client and the list showed it after a reload"), and that you removed the test records it
+made, or which ones are still there and where. A run that did not pass is reported as such,
+with the failing step.

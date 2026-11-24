@@ -1,7 +1,7 @@
 // Side-view stickman fight engine for the arena canvas. Runs entirely in the browser.
-import { DEF_BY_ID, juggernautOf, rosterIdOf, type Anim, type FighterDef, type Move, type Power, type StatusEffect } from "./fighters";
+import { DEF_BY_ID, juggernautOf, rosterIdOf, type Anim, type BossDesign, type FighterDef, type Move, type Power, type StatusEffect } from "./fighters";
 import type { Sfx } from "./arena-sound";
-import { INTROS, INTRO_LEN, INTRO_ARRIVED, type IntroBurst, type IntroPose } from "./spawn-intros";
+import { INTROS, BOSS_INTROS, fusionIntro, INTRO_LEN, INTRO_ARRIVED, type IntroBurst, type IntroPose, type IntroSpec } from "./spawn-intros";
 import { LOOKS, setLookTint, drawFx, drawSpark, drawShotLook, drawBeamLook, drawEruptionLook, drawZoneLook, drawRushLook, drawAnnihilation, eruptionColors, type Fx, type PShape } from "./move-looks";
 import { drawBossDesign, type BossAct } from "./boss-designs";
 import { FORMS, PERFECTED_FLAME, FORM_SHOUT, type Form, type FormKind } from "./forms";
@@ -56,6 +56,91 @@ const LAND: Pose = { t: 0.6, aF1: 0.15, aF2: 0.0, aB1: -1.7, aB2: -1.4, lF1: 1.4
 const GUARD: Pose = { t: 0.1, aF1: 1.4, aF2: 3.3, aB1: 1.2, aB2: 3.0, lF1: 0.5, lF2: 0.1, lB1: -0.5, lB2: -0.15 };
 const FLOAT: Pose = { t: 0.0, aF1: 0.9, aF2: 0.25, aB1: 0.6, aB2: 0.1, lF1: 1.55, lF2: -1.4, lB1: 1.35, lB2: -1.6 };
 const INTRO_POSES: Record<IntroPose, Pose> = { stance: STANCE, air: AIR, crouch: CROUCH, rise: RISE, flex: FLEX, land: LAND, guard: GUARD, float: FLOAT };
+
+// ---------- own stances ----------
+// A boss and a hybrid each stand their own way instead of the roster's fighting stance, and breathe their own way at rest.
+const BOSS_STANCE: Record<BossDesign, Pose> = {
+  // Nullshade: tall and still, arms held low and open, palms out
+  antimatter: { t: -0.06, aF1: 0.55, aF2: 1.05, aB1: -0.5, aB2: -0.95, lF1: 0.14, lF2: 0.0, lB1: -0.12, lB2: -0.04 },
+  // Maelstrom: a wide, low lunge with the trident levelled
+  maelstrom: { t: 0.3, aF1: 1.25, aF2: 1.6, aB1: -0.35, aB2: 0.45, lF1: 0.75, lF2: 0.1, lB1: -0.6, lB2: -0.5 },
+  // Magmaw: hunched forward, heavy arms hanging, knees bent
+  magmaw: { t: 0.45, aF1: 0.5, aF2: 0.3, aB1: 0.28, aB2: 0.1, lF1: 0.55, lF2: -0.15, lB1: -0.45, lB2: -0.35 },
+  // Everwinter: upright and regal, one palm raised as if holding the hour
+  everwinter: { t: -0.05, aF1: 1.3, aF2: 2.45, aB1: -0.12, aB2: 0.1, lF1: 0.16, lF2: 0.02, lB1: -0.12, lB2: -0.05 },
+  // The Riftmaker: one hand forward, one hand high, framing the world it is about to rewrite
+  riftmaker: { t: 0.02, aF1: 1.6, aF2: 2.2, aB1: 2.3, aB2: 2.85, lF1: 0.3, lF2: 0.0, lB1: -0.25, lB2: -0.1 },
+  // The Hollow King: slouched over the scythe, both hands on the shaft
+  hollow: { t: 0.28, aF1: 1.0, aF2: 1.45, aB1: 0.8, aB2: 1.35, lF1: 0.42, lF2: -0.05, lB1: -0.35, lB2: -0.2 },
+  // The Black Sun: arms folded across the chest, chin up
+  blacksun: { t: -0.08, aF1: 1.15, aF2: 2.7, aB1: 1.0, aB2: 2.6, lF1: 0.22, lF2: 0.0, lB1: -0.22, lB2: -0.05 },
+};
+/** How each boss breathes at rest: speed, torso sway, arm sway (front, back) and knee bob. */
+const BOSS_IDLE: Record<BossDesign, { hz: number; t: number; aF: number; aB: number; l: number }> = {
+  antimatter: { hz: 1.6, t: 0.02, aF: 0.12, aB: -0.12, l: 0 },
+  maelstrom: { hz: 3.2, t: 0.05, aF: 0.08, aB: 0.1, l: 0.06 },
+  magmaw: { hz: 2.0, t: 0.07, aF: 0.1, aB: 0.1, l: 0.05 },
+  everwinter: { hz: 1.2, t: 0.015, aF: 0.05, aB: 0.02, l: 0 },
+  riftmaker: { hz: 4.5, t: 0.03, aF: 0.14, aB: -0.12, l: 0.02 },
+  hollow: { hz: 1.8, t: 0.05, aF: 0.05, aB: 0.05, l: 0.03 },
+  blacksun: { hz: 1.4, t: 0.02, aF: 0.03, aB: 0.03, l: 0 },
+};
+/** Hybrids pick one of these by their pair, so the same pair always stands the same way: two powers held ready at once. */
+const HYBRID_STANCES: Pose[] = [
+  // both palms charging, one high, one low
+  { t: 0.16, aF1: 1.45, aF2: 1.95, aB1: 0.9, aB2: 1.35, lF1: 0.55, lF2: 0.05, lB1: -0.45, lB2: -0.25 },
+  // wide and low, arms spread to either side
+  { t: 0.22, aF1: 1.2, aF2: 1.9, aB1: -1.05, aB2: -0.6, lF1: 0.7, lF2: 0.05, lB1: -0.62, lB2: -0.35 },
+  // coiled, fists stacked at the hip, ready to throw
+  { t: 0.28, aF1: 0.95, aF2: 2.55, aB1: 0.2, aB2: 2.3, lF1: 0.62, lF2: -0.1, lB1: -0.5, lB2: -0.4 },
+  // upright, one hand raised over the head, the other forward
+  { t: 0.04, aF1: 1.55, aF2: 1.6, aB1: 2.55, aB2: 2.9, lF1: 0.35, lF2: 0.02, lB1: -0.3, lB2: -0.12 },
+];
+const pairHash = (a: Power, b: Power) => [a, b].sort().join("+").split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+/** The rest stance this fighter stands in. */
+function stanceOf(def: FighterDef): Pose {
+  if (def.boss) return BOSS_STANCE[def.boss];
+  if (def.parents) return HYBRID_STANCES[pairHash(def.parents[0], def.parents[1]) % HYBRID_STANCES.length];
+  return STANCE;
+}
+/** The rest stance with this fighter's own breathing on top. */
+function idlePose(f: Fighter, gt: number): Pose {
+  const st = stanceOf(f.def);
+  if (f.def.boss) {
+    const m = BOSS_IDLE[f.def.boss];
+    const b = Math.sin(gt * m.hz + f.key);
+    return { ...st, t: st.t + b * m.t, aF2: st.aF2 + b * m.aF, aB2: st.aB2 + b * m.aB, lF1: st.lF1 + b * m.l, lB1: st.lB1 - b * m.l };
+  }
+  if (f.def.parents) {
+    // two powers pulsing in turn: one hand, then the other
+    const b = Math.sin(gt * 5 + f.key), c = Math.cos(gt * 5 + f.key);
+    return { ...st, t: st.t + b * 0.025, aF2: st.aF2 + b * 0.12, aB2: st.aB2 + c * 0.12 };
+  }
+  const b = Math.sin(gt * 4 + f.key);
+  return { ...STANCE, t: STANCE.t + b * 0.03, aF2: STANCE.aF2 + b * 0.08, aB2: STANCE.aB2 - b * 0.06 };
+}
+/** A pose an entrance names; "stance" means the fighter's own. */
+const introPose = (def: FighterDef, p: IntroPose): Pose => (p === "stance" ? stanceOf(def) : INTRO_POSES[p]);
+
+// ---------- own entrances ----------
+const fusionCache = new Map<string, IntroSpec>();
+/** The entrance this fighter plays: a boss its own, a hybrid the fusion of both parents, anyone else its element's. */
+function introOf(def: FighterDef): IntroSpec {
+  if (def.boss) return BOSS_INTROS[def.boss];
+  if (def.parents) {
+    const [a, b] = def.parents;
+    const key = a + "+" + b;
+    let sp = fusionCache.get(key);
+    if (!sp) {
+      const da = DEF_BY_ID[a], db = DEF_BY_ID[b];
+      sp = fusionIntro(a, b, [da.color, da.glow], [db.color, db.glow]);
+      fusionCache.set(key, sp);
+    }
+    return sp;
+  }
+  return INTROS[def.id];
+}
+const introLen = (f: Fighter) => introOf(f.def).len ?? INTRO_LEN;
 
 const DASH_TIME = 0.17;
 /** Juggernaut cruising height (feet above the floor) and swooping height for close fighting. */
@@ -218,13 +303,15 @@ type Impact = { x: number; y: number; dir: number; size: number; life: number; m
 export type FeedItem = { id: number; killer: string | null; victim: string };
 
 // ---------- realms (The Riftmaker's Reality Warp) ----------
-export type Realm = "moon" | "desert";
-const REALMS: Realm[] = ["moon", "desert"];
+export type Realm = "moon" | "desert" | "galaxy" | "universe" | "nebula";
+const REALMS: Realm[] = ["moon", "desert", "galaxy", "universe", "nebula"];
 const REALM_TIME = 11;
 const REALM_FADE = 0.45;
 /** How strongly things fall in each realm. */
-const REALM_GRAV: Record<Realm, number> = { moon: 0.36, desert: 1 };
-const REALM_NAME: Record<Realm, string> = { moon: "THE MOON", desert: "THE DESERT" };
+const REALM_GRAV: Record<Realm, number> = { moon: 0.36, desert: 1, galaxy: 0.6, universe: 0.2, nebula: 0.75 };
+const REALM_NAME: Record<Realm, string> = { moon: "THE MOON", desert: "THE DESERT", galaxy: "THE GALAXY", universe: "THE UNIVERSE", nebula: "THE NEBULA" };
+/** In the Galaxy, shooting stars fall on the warper's enemies. */
+const STARFALL: Move = { id: "starfall", name: "Starfall", kind: "projectile", anim: "raise", range: 2000, cd: 0, dmg: 4, kb: 160, lift: -180, size: 9, shape: "shard", wind: 0, act: 0, rec: 0 };
 /** Gravity now, set each frame from the realm the fight is in. */
 let gravK = 1;
 /** Matter and antimatter closing in on a spot before they cancel out. */
@@ -330,7 +417,7 @@ export function newGame(ids: (Power | FighterDef)[], preview = false, teams?: nu
       hurtT: 0, flash: 0,
       status: { burn: 0, slow: 0, stun: 0, poison: 0, blind: 0, freeze: 0 },
       lastHitBy: null, lastAttacker: null,
-      pose: { ...(preview ? STANCE : INTRO_POSES[INTROS[def.id].body(0, sc).pose]) },
+      pose: { ...(preview ? stanceOf(def) : introPose(def, introOf(def).body(0, sc).pose)) },
       dashT: 0, dashDir: 0, dashCd: rand(0, 0.6), iframeT: 0, airDashed: false,
       ghosts: [], ghostT: 0,
       clashAir: false, kneelT: 0,
@@ -342,7 +429,7 @@ export function newGame(ids: (Power | FighterDef)[], preview = false, teams?: nu
       spin: 0, spinV: 0, recoil: 0, jolt: 0, trail: [],
     };
   });
-  const introEnd = Math.max(0, ...fighters.map((f) => f.spawnAt)) + INTRO_LEN + 0.2;
+  const introEnd = Math.max(0, ...fighters.map((f) => f.spawnAt + introLen(f))) + 0.2;
   gravK = 1;
   return {
     t: 0, fighters, projectiles: [], beams: [], eruptions: [], zones: [], particles: [], pops: [], waves: [], fx: [], feed: [], sfx: [],
@@ -1022,7 +1109,11 @@ function warpReality(g: Game, f: Fighter, m: Move) {
   sfx(g, { k: "rage", power: m.power ?? f.def.id });
 }
 
-/** Realm upkeep: the desert's sun burns whoever is not the one who brought everyone there; the realm wears off after a while. */
+/**
+ * Realm upkeep, each one against whoever is not the one who brought everyone there: the desert's sun burns them,
+ * the Galaxy drops shooting stars on them, the Nebula's gas slows and blinds them; the Moon and the Universe only
+ * change how things fall. The realm wears off after a while.
+ */
 function stepRealm(g: Game, dt: number) {
   if (g.realmOut) {
     g.realmOut.t += dt;
@@ -1042,7 +1133,46 @@ function stepRealm(g: Game, dt: number) {
     pop(g, W / 2, 150, "REALITY RESTORED", "white", 30, 1.4);
     return;
   }
-  if (rl.id === "desert") {
+  if (rl.id === "galaxy") {
+    // shooting stars streak down on the warper's enemies
+    rl.heat += dt;
+    if (rl.heat >= 1.3) {
+      rl.heat = 0;
+      const foes = g.fighters.filter((o) => o.alive && foe(owner, o));
+      if (foes.length) {
+        const o = pick(foes);
+        // aimed to land where they stand, slanting in from the far side of the arena
+        const dir = o.x > W / 2 ? 1 : -1;
+        const fall = (o.y - 50 + 40) / 700;
+        g.projectiles.push({
+          x: o.x + rand(-24, 24) - dir * 420 * fall, y: -40, vx: dir * 420, vy: 700, r: 9, grav: 0, rot: 0,
+          owner: owner.key, power: "lux", move: STARFALL, life: 2.5, hits: [], shape: "shard",
+        });
+      }
+    }
+    if (Math.random() < dt * 10 && g.particles.length < 900) {
+      g.particles.push({ x: rand(0, W), y: rand(0, GROUND - 60), vx: rand(-6, 6), vy: rand(-6, 6), life: 1.6, max: 1.6, size: rand(2, 4), color: Math.random() < 0.5 ? "hsl(270 90% 85%)" : "hsl(200 100% 88%)", shape: "star", grav: 0, add: true, rot: 0 });
+    }
+  } else if (rl.id === "universe") {
+    // dust from distant worlds drifts up in the near-weightless dark
+    if (Math.random() < dt * 8 && g.particles.length < 900) {
+      g.particles.push({ x: rand(0, W), y: GROUND - rand(0, 20), vx: rand(-14, 14), vy: -rand(14, 40), life: 3, max: 3, size: rand(2, 3.5), color: Math.random() < 0.5 ? "hsl(220 60% 85%)" : "hsl(40 80% 80%)", shape: "dot", grav: -3, add: true, rot: 0 });
+    }
+  } else if (rl.id === "nebula") {
+    // the nebula's gas clings to the warper's enemies: it slows them and clouds their sight
+    rl.heat += dt;
+    if (rl.heat >= 1.5) {
+      rl.heat = 0;
+      for (const o of g.fighters) if (o.alive && foe(owner, o)) {
+        const k = o.jugg ? 0.33 : 1;
+        o.status.slow = Math.max(o.status.slow, g.t + 0.9 * k);
+        o.status.blind = Math.max(o.status.blind, g.t + 0.5 * k);
+      }
+    }
+    if (Math.random() < dt * 9 && g.particles.length < 900) {
+      g.particles.push({ x: -20, y: rand(GROUND - 300, GROUND - 10), vx: rand(30, 80), vy: rand(-8, 8), life: 3.2, max: 3.2, size: rand(10, 20), color: Math.random() < 0.5 ? "hsl(320 80% 65% / 0.5)" : "hsl(180 80% 60% / 0.5)", shape: "smoke", grav: 0, add: true, rot: 0 });
+    }
+  } else if (rl.id === "desert") {
     rl.heat += dt;
     if (rl.heat >= 1.6) {
       rl.heat = 0;
@@ -1352,7 +1482,7 @@ function rageBurst(g: Game, f: Fighter, rg: Rage) {
 
 // ---------- entrances ----------
 /** Progress 0..1 of a fighter's entrance (below 0: not started; 1 once the entrance phase is over). */
-const introU = (g: Game, f: Fighter) => (g.intro ? (g.intro.t - f.spawnAt) / INTRO_LEN : 1);
+const introU = (g: Game, f: Fighter) => (g.intro ? (g.intro.t - f.spawnAt) / introLen(f) : 1);
 /** Still on the way in: no health bar or team ring yet. */
 const arriving = (g: Game, f: Fighter) => !!g.intro && introU(g, f) < INTRO_ARRIVED;
 
@@ -1387,17 +1517,20 @@ function stepIntro(g: Game, dt: number) {
   const prev = it.t;
   it.t += dt;
   for (const f of g.fighters) {
-    const sp = INTROS[f.def.id];
-    const u0 = (prev - f.spawnAt) / INTRO_LEN, u1 = (it.t - f.spawnAt) / INTRO_LEN;
+    const sp = introOf(f.def);
+    const len = sp.len ?? INTRO_LEN;
+    const u0 = (prev - f.spawnAt) / len, u1 = (it.t - f.spawnAt) / len;
     if (u1 < 0) continue;
-    if (u0 >= 1) { smoothPose(f, STANCE, dt, 8); continue; }
+    if (u0 >= 1) { smoothPose(f, idlePose(f, it.t), dt, 8); continue; }
     const crossed = (at: number) => u0 <= at && u1 > at;
-    smoothPose(f, INTRO_POSES[sp.body(clamp(u1, 0, 1), f.scale).pose], dt, 14);
+    smoothPose(f, introPose(f.def, sp.body(clamp(u1, 0, 1), f.scale).pose), dt, 14);
     for (const b of sp.bursts) if (crossed(b.at)) introBurst(g, f, b, b.n);
     const tr = sp.trickle;
     if (tr && u1 < tr.until && Math.random() < dt * tr.rate) introBurst(g, f, { ...tr, at: 0, n: 1 }, 1);
     if (crossed(sp.hit)) {
       sfx(g, { k: "intro", power: f.def.id });
+      // a hybrid arrives with both of its parents' voices
+      if (f.def.parents && f.def.parents[1] !== f.def.id) sfx(g, { k: "intro", power: f.def.parents[1] });
       g.shake = Math.max(g.shake, sp.shake * (g.duel ? 1 : 0.6));
       if (sp.wave) g.waves.push({ x: f.x, y: f.y - 30 * f.scale, r: 120 * f.scale, life: 0.5, max: 0.5, a: sp.wave[0], b: sp.wave[1] });
     }
@@ -1405,7 +1538,7 @@ function stepIntro(g: Game, dt: number) {
   tickBits(g, dt);
   if (it.t >= it.max) {
     g.intro = null;
-    for (const f of g.fighters) f.pose = { ...STANCE };
+    for (const f of g.fighters) f.pose = { ...stanceOf(f.def) };
   }
 }
 
@@ -1686,7 +1819,7 @@ function tickFighter(g: Game, f: Fighter, dt: number) {
     const m = a.move;
     // the Hollow King reaps overhead with both arms, whatever the move's own animation
     const anim = ANIMS[f.def.boss === "hollow" && m.kind === "melee" ? "slam" : m.anim];
-    const base = f.jugg ? FLY : f.onGround ? STANCE : AIR;
+    const base = f.jugg ? FLY : f.onGround ? stanceOf(f.def) : AIR;
     if (a.t < m.wind) target_ = { ...base, ...anim.wind };
     else if (a.t < m.wind + m.act + m.rec * 0.5) { target_ = { ...base, ...anim.strike }; k = 40; }
     else target_ = base;
@@ -1701,16 +1834,15 @@ function tickFighter(g: Game, f: Fighter, dt: number) {
     const lF1 = 0.08 + 0.55 * Math.sin(p) * back;
     const lB1 = 0.08 - 0.55 * Math.sin(p) * back;
     target_ = {
-      ...STANCE,
-      t: 0.2 + Math.abs(Math.sin(p)) * 0.04,
+      ...stanceOf(f.def),
+      t: stanceOf(f.def).t + 0.08 + Math.abs(Math.sin(p)) * 0.04,
       lF1, lF2: lF1 - (0.15 + 0.5 * Math.max(0, Math.cos(p) * back)),
       lB1, lB2: lB1 - (0.15 + 0.5 * Math.max(0, -Math.cos(p) * back)),
       aB1: 0.35 - 0.4 * Math.sin(p) * back,
     };
     k = 26;
   } else {
-    const b = Math.sin(g.t * 4 + f.key);
-    target_ = { ...STANCE, t: STANCE.t + b * 0.03, aF2: STANCE.aF2 + b * 0.08, aB2: STANCE.aB2 - b * 0.06 };
+    target_ = idlePose(f, g.t);
   }
   smoothPose(f, target_, dt, k);
   // the striking hand or foot leaves a smear while a close-range blow lands
@@ -1972,6 +2104,176 @@ function tickBits(g: Game, dt: number) {
   }
 }
 
+// ---------- deep-space realms ----------
+function starField(ctx: CanvasRenderingContext2D, rnd: () => number, n: number, maxY: number) {
+  for (let i = 0; i < n; i++) {
+    const big = rnd() < 0.06;
+    const x = rnd() * W, y = rnd() * maxY;
+    ctx.fillStyle = `hsl(${rnd() < 0.25 ? 210 : rnd() < 0.5 ? 40 : 280} 70% 92% / ${0.3 + rnd() * 0.7})`;
+    ctx.fillRect(x, y, big ? 2 : 1, big ? 2 : 1);
+    if (big) {
+      ctx.strokeStyle = "hsl(0 0% 100% / 0.35)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x - 5, y + 1); ctx.lineTo(x + 7, y + 1);
+      ctx.moveTo(x + 1, y - 5); ctx.lineTo(x + 1, y + 7);
+      ctx.stroke();
+    }
+  }
+}
+
+function softGlow(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number, rot: number, inner: string, outer: string) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.scale(1, ry / rx);
+  const gr = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+  gr.addColorStop(0, inner);
+  gr.addColorStop(1, outer);
+  ctx.fillStyle = gr;
+  ctx.beginPath();
+  ctx.arc(0, 0, rx, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** A floor of light for a realm with no ground of its own: a glowing plane fading into the dark. */
+function spaceFloor(ctx: CanvasRenderingContext2D, rnd: () => number, top: string, bottom: string, line: string) {
+  const fl = ctx.createLinearGradient(0, GROUND - 10, 0, H);
+  fl.addColorStop(0, top);
+  fl.addColorStop(1, bottom);
+  ctx.fillStyle = fl;
+  ctx.fillRect(0, GROUND - 6, W, H - GROUND + 6);
+  ctx.strokeStyle = line;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, GROUND - 5);
+  ctx.lineTo(W, GROUND - 5);
+  ctx.stroke();
+  // perspective lines running away to a point far behind the arena
+  ctx.lineWidth = 1;
+  for (let i = -8; i <= 8; i++) {
+    ctx.beginPath();
+    ctx.moveTo(W / 2 + i * 30, GROUND - 5);
+    ctx.lineTo(W / 2 + i * 150, H);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "hsl(0 0% 100% / 0.6)";
+  for (let i = 0; i < 40; i++) ctx.fillRect(rnd() * W, GROUND + rnd() * (H - GROUND), 1.5, 1.5);
+}
+
+function paintSpaceRealm(ctx: CanvasRenderingContext2D, id: "galaxy" | "universe" | "nebula", rnd: () => number) {
+  if (id === "galaxy") {
+    // inside a spiral galaxy: a blazing core, arms of stars wheeling out across the sky
+    const sky = ctx.createLinearGradient(0, 0, 0, GROUND);
+    sky.addColorStop(0, "hsl(250 60% 6%)");
+    sky.addColorStop(1, "hsl(265 50% 14%)");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+    starField(ctx, rnd, 180, GROUND);
+    const cx = 520, cy = 210;
+    ctx.globalCompositeOperation = "lighter";
+    softGlow(ctx, cx, cy, 420, 150, -0.25, "hsl(265 70% 40% / 0.5)", "hsl(265 70% 30% / 0)");
+    for (let arm = 0; arm < 3; arm++) {
+      for (let i = 0; i < 260; i++) {
+        const k = i / 260;
+        const a = arm * ((Math.PI * 2) / 3) + k * 4.4 + (rnd() - 0.5) * 0.35;
+        const r = 18 + k * 380 + (rnd() - 0.5) * 30 * (0.4 + k);
+        const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r * 0.36;
+        const rot = -0.25;
+        const xr = cx + (x - cx) * Math.cos(rot) - (y - cy) * Math.sin(rot);
+        const yr = cy + (x - cx) * Math.sin(rot) + (y - cy) * Math.cos(rot);
+        const hue = k < 0.3 ? 40 : rnd() < 0.5 ? 205 : 290;
+        ctx.fillStyle = `hsl(${hue} 90% ${70 + rnd() * 20}% / ${0.25 + (1 - k) * 0.5})`;
+        const sz = rnd() < 0.08 ? 2.6 : 1.4;
+        ctx.fillRect(xr, yr, sz, sz);
+      }
+    }
+    softGlow(ctx, cx, cy, 120, 50, -0.25, "hsl(45 100% 92% / 0.95)", "hsl(35 100% 60% / 0)");
+    softGlow(ctx, cx, cy, 34, 18, -0.25, "hsl(0 0% 100%)", "hsl(48 100% 85% / 0)");
+    ctx.globalCompositeOperation = "source-over";
+    spaceFloor(ctx, rnd, "hsl(268 60% 30% / 0.9)", "hsl(250 60% 8%)", "hsl(285 100% 80% / 0.55)");
+    return;
+  }
+  if (id === "universe") {
+    // the open universe: black depth, far galaxies, a ringed planet and a red world, a distant star
+    ctx.fillStyle = "hsl(230 40% 3%)";
+    ctx.fillRect(0, 0, W, H);
+    starField(ctx, rnd, 260, GROUND);
+    ctx.globalCompositeOperation = "lighter";
+    for (const [x, y, r, rot, h] of [[150, 90, 40, 0.5, 210], [820, 300, 26, -0.4, 30], [400, 60, 18, 1.1, 300], [640, 140, 14, 0.2, 190]] as const) {
+      softGlow(ctx, x, y, r, r * 0.35, rot, `hsl(${h} 80% 80% / 0.7)`, `hsl(${h} 80% 50% / 0)`);
+      softGlow(ctx, x, y, r * 0.25, r * 0.12, rot, "hsl(0 0% 100% / 0.9)", "hsl(0 0% 100% / 0)");
+    }
+    softGlow(ctx, 860, 70, 70, 70, 0, "hsl(200 100% 90% / 0.6)", "hsl(220 100% 60% / 0)");
+    ctx.globalCompositeOperation = "source-over";
+    // a red world low on the left
+    const rx = 120, ry = 380, rr = 70;
+    const rg = ctx.createRadialGradient(rx - 22, ry - 22, 6, rx, ry, rr);
+    rg.addColorStop(0, "hsl(16 70% 58%)");
+    rg.addColorStop(1, "hsl(6 60% 22%)");
+    ctx.fillStyle = rg;
+    ctx.beginPath();
+    ctx.arc(rx, ry, rr, 0, Math.PI * 2);
+    ctx.fill();
+    // a ringed giant
+    const px = 690, py = 230, pr = 58;
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(-0.3);
+    ctx.strokeStyle = "hsl(40 50% 75% / 0.85)";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, pr * 1.9, pr * 0.42, 0, Math.PI, Math.PI * 2);
+    ctx.stroke();
+    const pg = ctx.createLinearGradient(0, -pr, 0, pr);
+    pg.addColorStop(0, "hsl(38 60% 72%)");
+    pg.addColorStop(0.5, "hsl(28 50% 55%)");
+    pg.addColorStop(1, "hsl(20 40% 30%)");
+    ctx.fillStyle = pg;
+    ctx.beginPath();
+    ctx.arc(0, 0, pr, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "hsl(28 40% 40% / 0.5)";
+    ctx.lineWidth = 3;
+    for (const yy of [-24, -6, 14, 32]) {
+      ctx.beginPath();
+      ctx.ellipse(0, yy, pr * Math.sqrt(1 - (yy / pr) ** 2), 3, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = "hsl(40 50% 80% / 0.9)";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, pr * 1.9, pr * 0.42, 0, 0, Math.PI);
+    ctx.stroke();
+    ctx.restore();
+    spaceFloor(ctx, rnd, "hsl(220 40% 18% / 0.95)", "hsl(230 40% 4%)", "hsl(200 100% 85% / 0.45)");
+    return;
+  }
+  // the Nebula: rolling clouds of pink, violet and teal gas lit by young stars
+  ctx.fillStyle = "hsl(255 50% 7%)";
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = "lighter";
+  for (let i = 0; i < 26; i++) {
+    const x = rnd() * W, y = rnd() * (GROUND - 40);
+    const r = 90 + rnd() * 200;
+    const hue = [320, 290, 185, 205, 340][Math.floor(rnd() * 5)];
+    softGlow(ctx, x, y, r, r * (0.45 + rnd() * 0.4), rnd() * 3, `hsl(${hue} 85% 55% / ${0.12 + rnd() * 0.16})`, `hsl(${hue} 85% 45% / 0)`);
+  }
+  // dark dust lanes cutting through the glow
+  ctx.globalCompositeOperation = "source-over";
+  for (let i = 0; i < 5; i++) softGlow(ctx, rnd() * W, 80 + rnd() * 260, 160, 26, rnd() * 0.6 - 0.3, "hsl(255 50% 5% / 0.55)", "hsl(255 50% 5% / 0)");
+  ctx.globalCompositeOperation = "lighter";
+  starField(ctx, rnd, 150, GROUND);
+  for (const [x, y] of [[300, 170], [700, 120], [560, 300]] as const) {
+    softGlow(ctx, x, y, 50, 50, 0, "hsl(190 100% 92% / 0.8)", "hsl(200 100% 70% / 0)");
+    ctx.fillStyle = "white";
+    ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
+  }
+  ctx.globalCompositeOperation = "source-over";
+  spaceFloor(ctx, rnd, "hsl(310 55% 32% / 0.9)", "hsl(260 50% 8%)", "hsl(185 100% 75% / 0.55)");
+}
+
 // ---------- drawing ----------
 const realmArt: Partial<Record<Realm, HTMLCanvasElement>> = {};
 
@@ -1987,6 +2289,22 @@ function drawRealm(ctx: CanvasRenderingContext2D, g: Game) {
   if (g.realmOut) show(g.realmOut.id, 1 - g.realmOut.t / REALM_FADE);
   if (g.realm) {
     show(g.realm.id, Math.min(g.realm.t, g.realm.left) / REALM_FADE);
+    if (g.realm.id === "galaxy" || g.realm.id === "universe" || g.realm.id === "nebula") {
+      // stars twinkling over the painting
+      const a = Math.min(g.realm.t, g.realm.left) / REALM_FADE;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 18; i++) {
+        const x = (i * 197.3) % W, y = (i * 83.7) % (GROUND - 60);
+        const tw = Math.max(0, Math.sin(g.t * (1.5 + (i % 5) * 0.6) + i * 2.1));
+        ctx.globalAlpha = clamp(a, 0, 1) * tw * 0.9;
+        ctx.fillStyle = i % 3 ? "hsl(210 100% 92%)" : "hsl(300 100% 88%)";
+        const r = 1 + tw * 2.5;
+        ctx.fillRect(x - r * 2, y - 0.5, r * 4, 1);
+        ctx.fillRect(x - 0.5, y - r * 2, 1, r * 4);
+      }
+      ctx.restore();
+    }
     if (g.realm.id === "desert") {
       // heat shimmer low over the sand
       ctx.save();
@@ -2004,14 +2322,18 @@ function drawRealm(ctx: CanvasRenderingContext2D, g: Game) {
   }
 }
 
-/** A whole-arena painting for a realm: the Moon with Earth in a black sky, or dunes under a white-hot sun. */
+/** A whole-arena painting for a realm: the Moon with Earth in a black sky, dunes under a white-hot sun, or one of the three deep-space realms. */
 function buildRealmBackdrop(id: Realm): HTMLCanvasElement {
   const c = document.createElement("canvas");
   c.width = W;
   c.height = H;
   const ctx = c.getContext("2d")!;
-  let seed = id === "moon" ? 7 : 3;
+  let seed = { moon: 7, desert: 3, galaxy: 11, universe: 19, nebula: 23 }[id];
   const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+  if (id === "galaxy" || id === "universe" || id === "nebula") {
+    paintSpaceRealm(ctx, id, rnd);
+    return c;
+  }
   if (id === "moon") {
     const sky = ctx.createLinearGradient(0, 0, 0, GROUND);
     sky.addColorStop(0, "hsl(235 45% 5%)");
@@ -3484,8 +3806,9 @@ export function drawScene(ctx: CanvasRenderingContext2D, g: Game, backdrop: HTML
 function drawIntroFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter) {
   const u = introU(g, f);
   if (u <= 0) return;
-  const b = INTROS[f.def.id].body(Math.min(1, u), f.scale);
-  if (b.alpha <= 0.001) return;
+  const b = introOf(f.def).body(Math.min(1, u), f.scale);
+  const echoing = !!b.echo && b.echo.alpha > 0.01;
+  if (b.alpha <= 0.001 && !echoing) return;
   const s = f.scale;
   // the floor shadow grows as the body comes down to it
   const lift = clamp(-b.dy / 320, 0, 1);
@@ -3509,8 +3832,8 @@ function drawIntroFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter) {
     if (b.solid && sa > 0.01) drawFighter(ctx, g, f, { alpha: alpha * sa, solid: b.solid, shadow: false });
     ctx.restore();
   };
-  if (b.echo && b.echo.alpha > 0.01) for (const d of [-1, 1]) one(d * b.echo.spread, b.echo.alpha);
-  one(0, b.alpha);
+  if (b.echo && echoing) for (const d of [-1, 1]) one(d * b.echo.spread, b.echo.alpha);
+  if (b.alpha > 0.001) one(0, b.alpha);
   ctx.restore();
   ctx.globalAlpha = 1;
 }
@@ -3519,7 +3842,7 @@ function drawIntroFighter(ctx: CanvasRenderingContext2D, g: Game, f: Fighter) {
 function drawIntroLayer(ctx: CanvasRenderingContext2D, g: Game, f: Fighter, which: "back" | "front") {
   const u = introU(g, f);
   if (u <= 0 || u >= 1 || !g.intro) return;
-  const sp = INTROS[f.def.id];
+  const sp = introOf(f.def);
   const draw = sp[which];
   if (!draw) return;
   ctx.save();

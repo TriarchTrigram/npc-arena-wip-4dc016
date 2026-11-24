@@ -219,7 +219,7 @@ When the app builder says they've finished but `getPaymentStatus` is still not r
 
 ## One-time products
 
-A one-time product is something an app user pays for once and keeps — a course, a template pack, a lifetime unlock. It sits in the same "Plans & products" list as the plans, but it is not a plan: it never unlocks a plan, has no yearly price, no trial, and no place on the gating ladder.
+A one-time product is something an app user pays for once and keeps — a course, a template pack, a lifetime unlock. It sits in the same "Plans & products" list as the plans, but it is not a plan: on its own it never unlocks a plan, has no yearly price, no trial, and no place on the gating ladder. The one bridge is a lifetime unlock: after the purchase, app code gives the buyer the plan with `grantPlanFromPurchase` (Part 2 §3).
 
 - Use a product when the app builder says "once", "one-time", "lifetime" or "buy"; use a plan when they say "monthly", "yearly" or "subscription". Ask when it is unclear.
 - `setOneTimePrice` creates or updates a product, keyed by **name** like plans, with `priceCents` (the minimum is normally $5) and an optional `description`. `removeOneTimePrice` archives one; nobody new can buy it.
@@ -557,6 +557,17 @@ The page shows the offer for the current step and posts `intent=stay`, `intent=p
 
 When something the app does replaces the plan, cancel it in the same action instead of asking the app user to go cancel it themselves. The usual case is a one-time "lifetime" purchase bought with `buy()`: once the purchase is claimed, call `cancelSubscription(request, context)` for that signed-in app user. It cancels their **own** plan at the end of the period they already paid for, so there are no more charges and they keep access until then (`getSubscription` shows `cancelAt`). Pass `{ mode: "immediate" }` only when access must end now. It never refunds, and it redirects to `/upgrade` when they have no plan. It throws with `code: "subscription_not_found"` once the plan has already ended, which is safe to ignore. A page where an app user chooses to leave still uses the stay-offer flow above, ending at `manageSubscription()`.
 
+### A lifetime purchase that stands for a plan — `grantPlanFromPurchase`
+
+When a one-time product is sold as lifetime access to a plan ("Founding Member Lifetime" for the Pro plan), the purchase alone unlocks nothing a plan gates: `requireSubscription`, `hasPlan` and seller onboarding (`onboardSeller`) read only the plan. Once the purchase is claimed, call `grantPlanFromPurchase(request, context, { productId: products.<slug>.id, tierId: tiers.<slug>.id })` for that signed-in app user, in the action or success-page step that already handles the purchase. The platform checks that this app user really paid for that product, then gives them the plan with no end date; they show under More → Users as having free access to that plan, and it never counts as subscription revenue.
+
+- Order: `grantPlanFromPurchase` first, then `cancelSubscription`. With no plan, the grant lands at once. With a live paid plan it returns `{ granted: false, reason: "paid_subscription" }` and changes nothing: cancel the old plan with `cancelSubscription`, and call the grant again on a later visit once that plan has ended (for example in the signed-in layout's action or the page they land on), since it is safe to repeat.
+- A past-due plan (a failed payment Stripe is still retrying) is also refused with `reason: "paid_subscription"`: cancel it first, the same way.
+- `reason: "no_purchase"` means the platform holds no paid purchase of that product for this app user. Right after checkout the payment can take a few seconds to arrive, so show "confirming" and try again on the next load; never grant some other way.
+- `reason: "already"` means they already hold this grant. Treat it as success.
+- Never write the `subscription` table yourself, and never tell the app builder to give free access by hand for each lifetime buyer: this call is the way.
+- A refund of the purchase does not take the plan away by itself. Tell the app builder that after refunding a lifetime purchase they end that person's access under More → Users.
+
 ## 4. Upgrade page
 
 **The `/upgrade` route is mandatory the moment a subscription plan or selling is enabled.** `requireSubscription`, `manageSubscription`, and seller onboarding all hard-redirect unsubscribed app users to `/upgrade` — if the route isn't registered, every one of those redirects lands on a 404 and nobody can subscribe. Before finishing any payments turn, check `app/routes.ts` for the `upgrade` route; if it's missing, add it (create it from the scaffold below, or register a route that redirects to the app's own pricing page).
@@ -826,7 +837,7 @@ If a platform gate blocks something the builder wants — most commonly "let the
 
 ## 10. One-time products
 
-A product is bought once and kept. Use it only for something the app builder sells once (a course, a template pack, a lifetime unlock); recurring access is always a plan. The one exception is a top-up pack, bought again with a fresh `reference` each time ("Top-up packs" below). **A product never replaces `requireSubscription`** — gate plan features on the plan and product content on the product, even in an app that has both.
+A product is bought once and kept. Use it only for something the app builder sells once (a course, a template pack, a lifetime unlock); recurring access is always a plan. The one exception is a top-up pack, bought again with a fresh `reference` each time ("Top-up packs" below). **A product never replaces `requireSubscription`** — gate plan features on the plan and product content on the product, even in an app that has both. A lifetime product that stands for a plan gives the buyer that plan with `grantPlanFromPurchase` (Part 2 §3), and the plan gate stays as it is.
 
 Read products from `~/generated/tiers`, keyed by slug like plans. A product removed after the code was written reads as a stub whose empty `id` nobody owns, so check `id` before showing a buy button:
 
@@ -1020,6 +1031,7 @@ In conversation:
   - App users cancel or switch their own plan: the Stripe billing portal, opened by the app with `manageSubscription()`.
   - A "stay for a discount" or "pause instead" step before an app user cancels: app code, with `applyStayOffer()` and `pauseSubscription()` (Part 2 §3). Never answer that this isn't possible, and never suggest custom Stripe code.
   - Cancelling an app user's own plan because a one-time purchase replaces it (a lifetime upgrade): app code, with `cancelSubscription()` (Part 2 §3). Never answer that this isn't possible.
+  - Giving a lifetime buyer the plan their one-time purchase stands for, so plan gates and seller setup let them in: app code, with `grantPlanFromPurchase()` (Part 2 §3). Never answer that this isn't possible, and never offer free access by hand per buyer as the way.
   - Pausing a subscription from chat or the panel, or moving one app user to a different plan: **not possible yet**. Say so plainly and point to Stencil support. Don't offer custom Stripe code as the way around it; if the app builder asks for that, the next rule applies.
 - **A custom Stripe integration is allowed, but never silent.** When the app builder asks for their own Stripe checkout, their own Stripe key, Stripe Connect for their sellers, or any code that talks to Stripe directly, say plainly *before you build* that Stencil's managed payments are the preferred path — this skill for the app builder charging app users, the `selling` skill for app users charging their own customers — and name what the custom path gives up: nothing shows in the Payments panel, Stencil cannot refund or handle disputes for those charges, the platform's receipts and payment notifications never fire, and the app builder runs their own Stripe account, keys and webhooks from then on. Offer the managed equivalent first: for a per-seller setup that is seller onboarding, seller checkout, the seller panel and seller disconnect from `selling`. Build the custom path only once the app builder confirms they still want it, and say in the build reply that they chose it and what it trades away, so the choice is visible in the chat.
 - **A limited number for sale is never a payments setting.** Products and plans carry no quantity, so the answer depends on what is limited:

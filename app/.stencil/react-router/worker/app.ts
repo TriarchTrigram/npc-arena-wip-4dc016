@@ -5,7 +5,7 @@ import { callTag, normalizeFeature, type CallTag } from "~stencil/backend";
 import { getSession, sessionCookies } from "~stencil/auth/server";
 import { isDraft } from "~stencil/context";
 import { dbCallLog, dbStatsSampleInterval, reportDbStats, summarizeDbCalls, type DbCallLog } from "~stencil/db-stats";
-import { executionCtx, requestMemo } from "~stencil/request-context";
+import { executionCtx, requestLanguage, requestMemo } from "~stencil/request-context";
 import { storedLocale } from "~stencil/locale";
 import { appLocales, loadStringsFromStorage, resolveLocale, textDirection } from "~stencil/strings";
 import { resolveViewerTimeZone } from "~stencil/time";
@@ -16,6 +16,7 @@ sessionCookies.install(new AsyncLocalStorage<string[]>());
 dbCallLog.install(new AsyncLocalStorage<DbCallLog>());
 requestMemo.install(new AsyncLocalStorage<Map<symbol, Promise<unknown>>>());
 executionCtx.install(new AsyncLocalStorage<ExecutionContext>());
+requestLanguage.install(new AsyncLocalStorage<{ language: string; languages: string[] }>());
 
 // Every context field is declared in the file that supplies it, so a copy of this file
 // older than the rest of the layer cannot advertise a field it does not pass: that
@@ -141,7 +142,8 @@ export default {
             },
           )),
       };
-      return callTag.run(tag, () => requestHandler(request, context));
+      const serve = () => callTag.run(tag, () => requestHandler(request, context));
+      return locales.length > 1 ? requestLanguage.run({ language: locale, languages: locales }, serve) : serve();
     };
     const run = () =>
       executionCtx.run(ctx, () => requestMemo.run(new Map(), () => sessionCookies.run(jar, handle)));

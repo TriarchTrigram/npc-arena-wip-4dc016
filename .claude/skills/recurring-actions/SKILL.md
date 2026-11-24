@@ -58,6 +58,16 @@ Inside a handler you have the app's normal server-side toolkit: `createDb` (`~st
 
 Absolute links a handler writes (email buttons, calendar files, reminders) come from `new URL(request.url).origin` — the platform triggers the schedule on the app's public host, its custom domain when one is live. Never build them from the slug or a hard-coded host.
 
+**A handler that sends or acts for a person acts as the person who set the work up** — the
+app user on the row it is processing (its `createdBy` / author), never the workspace owner,
+the first admin or any fixed account. That person's name, signature, connected mailbox or
+calendar, recipient rules and permission checks are the ones the handler uses, exactly as
+the screen that does the same thing by hand uses them; read the row's author and pass that
+id wherever the screen passes `user.id`. A teammate's scheduled email that leaves from the
+owner's mailbox under the owner's name is the owner impersonated, whatever the task said. When
+the author is gone or no longer allowed to do it, the row fails visibly (a status the screen
+shows, a log line) instead of running as someone else.
+
 A handler that creates or mutates records an existing screen renders follows CLAUDE.md's "Server entry points that write records the app already shows" rules in full: the existing status vocabulary, the same server function the UI path uses, and one handler-created record seen on the existing screen before the feature is done.
 
 ## Cadence contract — state and respect it

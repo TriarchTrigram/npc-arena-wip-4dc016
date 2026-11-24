@@ -56,6 +56,12 @@ nothing at all. Everything after this section is a recommendation.
   a required column blocks that path.
 - Denormalize `email` and `name` onto `workspace_members` (and `workspace_name` /
   `invited_by_name` onto invites) — the auth user table isn't joinable from app queries.
+- **A member's `email` reaches owners only.** It is on the row for the owners' Members page
+  and for sending. Everything a loader returns is in the page the browser receives, drawn or
+  not, so a page every member opens (an assignee picker, a task list, a calendar, a
+  dashboard) selects `user_id`, `name` and photo, never `email`. Keep two reads: the one
+  shared pages call has no `email` column, and the one that has it runs only after the owner
+  check. One `listMembers` that selects `email` sends it from every page that calls it.
 - **Workspace membership is not the app's own idea of a "member".** A band app has
   players, a clinic has staff — those stay in their own domain table with their own
   roles. `workspace_members` governs who can see the workspace; the domain table governs

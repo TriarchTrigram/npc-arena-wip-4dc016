@@ -69,10 +69,10 @@ export const BOSSES: Record<BossId, FighterDef> = {
       M({ id: "glacial-age", name: "Glacial Age", kind: "zone", anim: "slam", range: 360, cd: 9, dmg: 5, radius: 140, dur: 4.5, status: "slow", statusDur: 0.6, wind: 0.35 }),
     ],
   },
-  // Chapter 5. Bends reality: it can move the whole fight to the Moon or the desert.
+  // Chapter 5. Bends reality: it can move the whole fight to the Moon, the desert, a galaxy, the open universe or a nebula.
   riftmaker: {
     id: "psy", boss: "riftmaker", name: "The Riftmaker", power: "Reality Warping", role: "trickster",
-    ability: "Rewrites reality. It moves the whole fight to the Moon, where everyone floats, or to a scorching desert that burns its enemies.",
+    ability: "Rewrites reality. It moves the whole fight to the Moon or the open Universe, where everyone floats, a scorching desert that burns its enemies, a galaxy whose shooting stars rain on them, or a nebula whose gas slows and blinds them.",
     color: "hsl(252 30% 12%)", glow: "hsl(318 100% 72%)", hp: 320, speed: 98,
     moves: [
       M({ id: "fold-strike", name: "Fold Strike", kind: "melee", anim: "jab", range: 76, cd: 0.9, dmg: 9, kb: 220 }),

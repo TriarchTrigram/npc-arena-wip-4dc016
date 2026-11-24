@@ -2,7 +2,7 @@
 // how its body appears (offset, fade, squash, a solid tint), the pose it holds, the particle bursts it throws
 // and a drawing behind and in front of it. The engine (`arena-engine.ts`) times and plays them; a hybrid,
 // a team-attack fighter or a juggernaut uses the entrance of the element it carries.
-import type { Power } from "./fighters";
+import type { Power, BossDesign } from "./fighters";
 import type { PShape } from "./move-looks";
 
 /** Seconds one entrance lasts. */
@@ -40,6 +40,8 @@ export type IntroDraw = {
 };
 
 export type IntroSpec = {
+  /** Seconds this entrance lasts, when it is not the usual `INTRO_LEN` (a boss takes its time). */
+  len?: number;
   /** The moment it lands: the entrance sound, screen shake and an optional blast ring. */
   hit: number; shake: number; wave?: [string, string];
   body(u: number, s: number): IntroBody;
@@ -826,3 +828,559 @@ export const INTROS: Record<Power, IntroSpec> = {
     },
   },
 };
+
+// ---------- the 7 Story bosses ----------
+// A boss never borrows an element's entrance: each has its own, longer one.
+const BOSS_LEN = 2.2;
+/** A colour string "hsl(h s% l%)" with an alpha added. */
+const withA = (hsl: string, a: number) => hsl.replace(")", ` / ${clamp(a, 0, 1)})`);
+
+export const BOSS_INTROS: Record<BossDesign, IntroSpec> = {
+  // Nullshade: a point of antimatter opens in the air, swallows the light around it, and turns inside out into the boss.
+  antimatter: {
+    len: BOSS_LEN, hit: 0.42, shake: 10, wave: ["hsl(186 100% 70%)", "hsl(268 60% 30%)"],
+    body: (u, s) => base(u < 0.42 ? "float" : settle(u, "guard", 0.66), {
+      alpha: u < 0.4 ? 0 : 1,
+      sx: 0.08 + 0.92 * easeOut(seg(u, 0.4, 0.6)),
+      dy: -(1 - easeOut(seg(u, 0.4, 0.72))) * 40 * s,
+      solid: "hsl(186 100% 88%)", solidA: 1 - seg(u, 0.52, 0.84),
+    }),
+    bursts: [
+      { at: 0.42, n: 34, spd: 560, shape: "spark", a: "hsl(186 100% 72%)", b: "hsl(0 0% 100%)", grav: 0, add: true, from: "body", dir: "out" },
+      { at: 0.44, n: 18, spd: 260, shape: "smoke", a: "hsl(268 45% 12%)", b: "hsl(270 60% 28%)", grav: -40, add: false, from: "body", dir: "out" },
+    ],
+    trickle: { rate: 55, until: 0.4, spd: 0, shape: "dot", a: "hsl(186 100% 76%)", b: "hsl(275 80% 70%)", grav: 0, add: true, from: "body", dir: "in", spread: 150, life: 0.7 },
+    back: ({ ctx, x, y, s, u, t }) => {
+      const cy = y - 55 * s;
+      const open = easeOut(seg(u, 0.02, 0.32)) * (1 - easeIn(seg(u, 0.32, 0.44)));
+      ctx.save();
+      if (open > 0.01) {
+        const r = 38 * s * open;
+        glow(ctx, x, cy, r * 4, r * 4, hsla(268, 50, 6, 0.55 * open), hsla(268, 50, 6, 0));
+        ctx.globalCompositeOperation = "lighter";
+        for (let i = 0; i < 3; i++) {
+          ctx.strokeStyle = i % 2 ? hsla(275, 90, 70, 0.6 * open) : hsla(186, 100, 75, 0.8 * open);
+          ctx.lineWidth = (3 - i) * s;
+          ctx.beginPath();
+          ctx.ellipse(x, cy, r * (1.9 + i * 0.35), r * (0.5 + i * 0.1), -0.25 + Math.sin(t * 2 + i) * 0.05, t * (4 + i), t * (4 + i) + Math.PI * 1.6);
+          ctx.stroke();
+        }
+        ctx.globalCompositeOperation = "source-over";
+        ctx.fillStyle = "hsl(268 60% 3%)";
+        ctx.beginPath();
+        ctx.arc(x, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = hsla(186, 100, 85, open);
+        ctx.lineWidth = 2 * s;
+        ctx.stroke();
+      }
+      // the inversion: a cyan shell flung outward when it turns inside out
+      const k = seg(u, 0.42, 0.72);
+      if (k > 0 && k < 1) {
+        ctx.globalCompositeOperation = "lighter";
+        ctx.strokeStyle = hsla(186, 100, 75, 1 - k);
+        ctx.lineWidth = 6 * s * (1 - k);
+        ctx.beginPath();
+        ctx.arc(x, cy, 30 * s + 200 * s * easeOut(k), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+  },
+
+  // Maelstrom: a whirlpool spins open in the floor, a waterspout lifts the boss high, then it crashes down in a wave.
+  maelstrom: {
+    len: BOSS_LEN, hit: 0.62, shake: 13, wave: ["hsl(200 90% 55%)", "hsl(186 100% 85%)"],
+    body: (u, s) => base(u < 0.55 ? "float" : u < 0.72 ? "land" : u < 0.86 ? "flex" : "stance", {
+      alpha: seg(u, 0.32, 0.45),
+      dy: u < 0.55 ? -(170 + Math.sin(u * 30) * 6) * s * seg(u, 0.2, 0.4) : -170 * s * (1 - easeIn(seg(u, 0.55, 0.62))),
+      solid: "hsl(192 90% 82%)", solidA: 1 - seg(u, 0.5, 0.8),
+    }),
+    bursts: [
+      { at: 0.25, n: 20, spd: 420, shape: "drop", a: "hsl(200 85% 55%)", b: "hsl(188 100% 82%)", grav: 900, add: false, from: "feet", dir: "up" },
+      { at: 0.62, n: 40, spd: 620, shape: "drop", a: "hsl(205 85% 50%)", b: "hsl(186 100% 85%)", grav: 1000, add: false, from: "feet", dir: "up" },
+      { at: 0.62, n: 18, spd: 380, shape: "bubble", a: "hsl(195 90% 70%)", b: "hsl(0 0% 100%)", grav: -60, add: false, from: "feet", dir: "flat" },
+    ],
+    trickle: { rate: 60, until: 0.72, spd: 40, shape: "drop", a: "hsl(205 70% 70%)", b: "hsl(190 80% 88%)", grav: 1100, add: false, from: "sky", dir: "out", spread: 220, life: 1 },
+    back: ({ ctx, x, ground, s, u, t }) => {
+      const k = easeOut(seg(u, 0, 0.22)) * (1 - seg(u, 0.7, 1));
+      if (k <= 0) return;
+      ctx.save();
+      // storm-dark sky
+      ctx.fillStyle = hsla(215, 50, 10, 0.32 * k);
+      ctx.fillRect(-400, -400, 2000, 1200);
+      // the whirlpool, rings turning faster toward the middle
+      glow(ctx, x, ground + 4, 120 * s * k, 22 * s * k, hsla(200, 80, 40, 0.7 * k), hsla(205, 80, 30, 0));
+      for (let i = 0; i < 5; i++) {
+        const r = (110 - i * 20) * s * k;
+        ctx.strokeStyle = i % 2 ? hsla(188, 100, 85, 0.75 * k) : hsla(205, 85, 55, 0.8 * k);
+        ctx.lineWidth = 3 * s;
+        const a0 = t * (3 + i * 2.2);
+        ctx.beginPath();
+        ctx.ellipse(x, ground + 4, r, r * 0.18, 0, a0, a0 + Math.PI * 1.3);
+        ctx.stroke();
+      }
+      // the waterspout
+      const h = 250 * s * easeOut(seg(u, 0.18, 0.4)) * (1 - easeIn(seg(u, 0.55, 0.66)));
+      if (h > 2) {
+        const w0 = 26 * s, w1 = 60 * s;
+        ctx.beginPath();
+        ctx.moveTo(x - w0, ground);
+        for (let i = 1; i <= 10; i++) ctx.lineTo(x - w0 - (w1 - w0) * (i / 10) + Math.sin(t * 14 + i) * 7 * s, ground - (h * i) / 10);
+        for (let i = 10; i >= 1; i--) ctx.lineTo(x + w0 + (w1 - w0) * (i / 10) + Math.sin(t * 12 + i * 1.7) * 7 * s, ground - (h * i) / 10);
+        ctx.lineTo(x + w0, ground);
+        ctx.closePath();
+        const g = ctx.createLinearGradient(x - w1, 0, x + w1, 0);
+        g.addColorStop(0, hsla(205, 85, 45, 0.25));
+        g.addColorStop(0.5, hsla(190, 100, 80, 0.85));
+        g.addColorStop(1, hsla(205, 85, 45, 0.25));
+        ctx.fillStyle = g;
+        ctx.fill();
+        ctx.strokeStyle = hsla(0, 0, 100, 0.55);
+        ctx.lineWidth = 2 * s;
+        for (let i = 0; i < 5; i++) {
+          const yy = ground - ((t * 260 + i * 60 * s) % h);
+          const ww = w0 + (w1 - w0) * ((ground - yy) / h);
+          ctx.beginPath();
+          ctx.ellipse(x, yy, ww * 0.9, 5 * s, 0, 0, Math.PI);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    },
+  },
+
+  // Magmaw: glowing cracks race across the floor, the ground bursts and the volcano climbs out of the lava.
+  magmaw: {
+    len: BOSS_LEN, hit: 0.42, shake: 20, wave: ["hsl(18 100% 50%)", "hsl(42 100% 62%)"],
+    body: (u, s) => base(settle(u, "rise", 0.68), {
+      clip: true, alpha: u < 0.42 ? 0 : 1,
+      dy: (1 - easeOut(seg(u, 0.42, 0.6))) * 175 * s,
+      solid: "hsl(26 100% 56%)", solidA: 1 - seg(u, 0.55, 0.85),
+    }),
+    bursts: [
+      { at: 0.08, n: 14, spd: 180, shape: "dust", a: "hsl(20 20% 30%)", b: "hsl(30 30% 50%)", grav: -20, add: false, from: "feet", dir: "flat" },
+      { at: 0.42, n: 36, spd: 760, shape: "chunk", a: "hsl(14 30% 18%)", b: "hsl(24 90% 48%)", grav: 1400, add: false, from: "feet", dir: "up" },
+      { at: 0.42, n: 30, spd: 620, shape: "ember", a: "hsl(16 100% 52%)", b: "hsl(46 100% 64%)", grav: -120, add: true, from: "feet", dir: "up" },
+      { at: 0.46, n: 16, spd: 220, shape: "smoke", a: "hsl(15 15% 18%)", b: "hsl(20 15% 30%)", grav: -90, add: false, from: "feet", dir: "up", spread: 40 },
+    ],
+    trickle: { rate: 45, until: 0.42, spd: 200, shape: "ember", a: "hsl(18 100% 52%)", b: "hsl(44 100% 64%)", grav: -200, add: true, from: "feet", dir: "up", spread: 80 },
+    back: ({ ctx, x, ground, s, u, t }) => {
+      const k = easeOut(seg(u, 0, 0.4));
+      const fade = 1 - seg(u, 0.72, 1);
+      if (k <= 0 || fade <= 0) return;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      glow(ctx, x, ground + 4, 140 * s * k, 20 * s * k, hsla(28, 100, 55, 0.75 * fade), hsla(10, 100, 40, 0));
+      ctx.lineCap = "round";
+      for (let i = 0; i < 8; i++) {
+        const dir = i % 2 ? 1 : -1;
+        const len = (90 + (i % 4) * 35) * s * k;
+        const yy = ground + 3 + (i % 4) * 10;
+        ctx.strokeStyle = hsla(30 + (i % 3) * 8, 100, 58, 0.9 * fade);
+        ctx.lineWidth = (4 - (i % 3)) * s;
+        jag(ctx, x, ground + 2, x + dir * len, yy, 6, 6 * s, i * 11);
+        ctx.stroke();
+      }
+      // the lava fountain once it breaks through
+      const f2 = seg(u, 0.4, 0.46) * (1 - seg(u, 0.55, 0.85));
+      if (f2 > 0) {
+        const h = 230 * s * f2;
+        const g = ctx.createLinearGradient(0, ground, 0, ground - h);
+        g.addColorStop(0, hsla(18, 100, 52, 0.95));
+        g.addColorStop(0.6, hsla(38, 100, 60, 0.6));
+        g.addColorStop(1, hsla(48, 100, 70, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(x - 50 * s, ground);
+        ctx.quadraticCurveTo(x - 20 * s + Math.sin(t * 20) * 6 * s, ground - h * 0.6, x, ground - h);
+        ctx.quadraticCurveTo(x + 20 * s + Math.sin(t * 17) * 6 * s, ground - h * 0.6, x + 50 * s, ground);
+        ctx.fill();
+      }
+      ctx.restore();
+    },
+    front: ({ ctx, x, ground, s, u }) => {
+      const up = easeOut(seg(u, 0.42, 0.52)) * (1 - seg(u, 0.78, 1));
+      if (up <= 0) return;
+      ctx.save();
+      for (const [ox, hh, w] of [[-70, 58, 18], [-38, 84, 20], [40, 78, 19], [72, 52, 16], [-6, 40, 14]] as const) {
+        const h = hh * s * up;
+        ctx.beginPath();
+        ctx.moveTo(x + (ox - w) * s, ground + 4);
+        ctx.lineTo(x + (ox + w * 0.2) * s, ground - h);
+        ctx.lineTo(x + (ox + w) * s, ground + 4);
+        ctx.closePath();
+        const g = ctx.createLinearGradient(0, ground - h, 0, ground);
+        g.addColorStop(0, "hsl(14 25% 16%)");
+        g.addColorStop(0.7, "hsl(16 50% 22%)");
+        g.addColorStop(1, "hsl(24 100% 48%)");
+        ctx.fillStyle = g;
+        ctx.fill();
+        ctx.strokeStyle = "hsl(28 100% 55%)";
+        ctx.lineWidth = 2 * s;
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+  },
+
+  // Everwinter: a blizzard sweeps in, a great clock face of ice runs backwards and stops, and the frozen boss cracks free.
+  everwinter: {
+    len: BOSS_LEN, hit: 0.62, shake: 9, wave: ["hsl(195 90% 75%)", "hsl(44 90% 72%)"],
+    body: (u) => base(u < 0.62 ? "guard" : settle(u, "flex", 0.66), {
+      alpha: seg(u, 0.1, 0.35),
+      solid: "hsl(196 85% 90%)", solidA: u < 0.62 ? 0.85 : 1 - seg(u, 0.62, 0.74),
+    }),
+    bursts: [
+      { at: 0.62, n: 38, spd: 560, shape: "shard", a: "hsl(196 90% 78%)", b: "hsl(0 0% 100%)", grav: 700, add: false, from: "body", dir: "out" },
+      { at: 0.62, n: 20, spd: 300, shape: "flake", a: "hsl(190 100% 92%)", b: "hsl(44 90% 78%)", grav: 40, add: false, from: "body", dir: "out" },
+    ],
+    trickle: { rate: 70, until: 0.7, spd: 120, shape: "flake", a: "hsl(200 60% 92%)", b: "hsl(0 0% 100%)", grav: 160, add: false, from: "sky", dir: "out", spread: 260, life: 1.4 },
+    back: ({ ctx, x, y, s, u, t }) => {
+      const k = easeOut(seg(u, 0, 0.22)) * (1 - seg(u, 0.72, 1));
+      if (k <= 0) return;
+      const cx = x, cy = y - 78 * s, r = 96 * s * k;
+      ctx.save();
+      glow(ctx, cx, cy, r * 1.5, r * 1.5, hsla(196, 90, 85, 0.35 * k), hsla(196, 90, 85, 0));
+      ctx.strokeStyle = hsla(44, 90, 72, 0.9 * k);
+      ctx.lineWidth = 3 * s;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = hsla(196, 80, 90, 0.8 * k);
+      ctx.lineWidth = 1.5 * s;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.86, 0, Math.PI * 2);
+      ctx.stroke();
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        const r0 = r * (i % 3 === 0 ? 0.7 : 0.78);
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
+        ctx.lineTo(cx + Math.cos(a) * r * 0.86, cy + Math.sin(a) * r * 0.86);
+        ctx.stroke();
+      }
+      // the hands run backwards, slowing, and stop dead when the ice breaks
+      const run = 1 - easeOut(seg(u, 0.1, 0.62));
+      const spin = -(t * 9 * run + (1 - run) * 6.2);
+      ctx.strokeStyle = hsla(44, 90, 75, k);
+      ctx.lineCap = "round";
+      for (const [len, w, m] of [[0.75, 3, 1], [0.5, 5, 1 / 12]] as const) {
+        const a = spin * m - Math.PI / 2;
+        ctx.lineWidth = w * s;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(a) * r * len, cy + Math.sin(a) * r * len);
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+    front: ({ ctx, x, y, s, u }) => {
+      const k = seg(u, 0.15, 0.35);
+      if (k <= 0 || u > 0.66) return;
+      const crack = seg(u, 0.5, 0.62);
+      ctx.save();
+      const cy = y - 55 * s;
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+        ctx.lineTo(x + Math.cos(a) * 52 * s, cy + Math.sin(a) * 78 * s);
+      }
+      ctx.closePath();
+      ctx.fillStyle = hsla(196, 90, 85, 0.22 * k);
+      ctx.fill();
+      ctx.strokeStyle = hsla(0, 0, 100, 0.8 * k);
+      ctx.lineWidth = 2 * s;
+      ctx.stroke();
+      if (crack > 0) {
+        for (let i = 0; i < 5; i++) {
+          const a = i * 1.3;
+          jag(ctx, x, cy, x + Math.cos(a) * 60 * s * crack, cy + Math.sin(a) * 80 * s * crack, 4, 6 * s, i * 5);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    },
+  },
+
+  // The Riftmaker: reality tears open down the middle and the boss squeezes out through the slit; mirror shards orbit it.
+  riftmaker: {
+    len: BOSS_LEN, hit: 0.36, shake: 11, wave: ["hsl(318 100% 70%)", "hsl(186 100% 80%)"],
+    body: (u) => base(u < 0.5 ? "guard" : settle(u, "flex", 0.66), {
+      alpha: seg(u, 0.34, 0.5),
+      sx: 0.15 + 0.85 * easeOut(seg(u, 0.34, 0.6)),
+      solid: "hsl(318 100% 82%)", solidA: 1 - seg(u, 0.5, 0.8),
+    }),
+    bursts: [
+      { at: 0.36, n: 26, spd: 420, shape: "glyph", a: "hsl(318 100% 72%)", b: "hsl(186 100% 80%)", grav: 0, add: true, from: "body", dir: "out" },
+      { at: 0.7, n: 24, spd: 520, shape: "shard", a: "hsl(300 80% 85%)", b: "hsl(0 0% 100%)", grav: 500, add: false, from: "body", dir: "out" },
+    ],
+    trickle: { rate: 36, until: 0.36, spd: 0, shape: "glyph", a: "hsl(318 100% 72%)", b: "hsl(260 90% 75%)", grav: 0, add: true, from: "body", dir: "in", spread: 140, life: 0.6 },
+    back: ({ ctx, x, y, s, u, t }) => {
+      const w = 46 * s * easeOut(seg(u, 0.04, 0.34)) * (1 - easeIn(seg(u, 0.6, 0.76)));
+      if (w < 0.5) return;
+      const top = y - 190 * s, bot = y + 2;
+      ctx.save();
+      // the tear: a jagged lens of another sky, starry and violet
+      ctx.beginPath();
+      ctx.moveTo(x, top);
+      for (let i = 1; i < 12; i++) {
+        const k = i / 12;
+        ctx.lineTo(x - w * Math.sin(k * Math.PI) + wob(i * 2.1) * 6 * s, top + (bot - top) * k);
+      }
+      ctx.lineTo(x, bot);
+      for (let i = 11; i >= 1; i--) {
+        const k = i / 12;
+        ctx.lineTo(x + w * Math.sin(k * Math.PI) + wob(i * 3.3) * 6 * s, top + (bot - top) * k);
+      }
+      ctx.closePath();
+      const g = ctx.createLinearGradient(0, top, 0, bot);
+      g.addColorStop(0, "hsl(262 70% 10%)");
+      g.addColorStop(0.5, "hsl(300 70% 22%)");
+      g.addColorStop(1, "hsl(240 70% 12%)");
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.shadowColor = "hsl(318 100% 70%)";
+      ctx.shadowBlur = 18 * s;
+      ctx.strokeStyle = "hsl(318 100% 82%)";
+      ctx.lineWidth = 3 * s;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "hsl(0 0% 100% / 0.85)";
+      for (let i = 0; i < 14; i++) {
+        const k = (i * 0.37 + t * 0.15) % 1;
+        ctx.fillRect(x + wob(i * 5.7) * w * 0.5, top + (bot - top) * k, 2 * s, 2 * s);
+      }
+      ctx.restore();
+    },
+    front: ({ ctx, x, y, s, u, t }) => {
+      const k = seg(u, 0.36, 0.5) * (1 - seg(u, 0.66, 0.72));
+      if (k <= 0) return;
+      ctx.save();
+      const cy = y - 55 * s;
+      for (let i = 0; i < 8; i++) {
+        const a = t * 2.4 + (i / 8) * Math.PI * 2;
+        const px = x + Math.cos(a) * 80 * s, py = cy + Math.sin(a) * 34 * s;
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(a * 1.5);
+        ctx.beginPath();
+        ctx.moveTo(0, -10 * s); ctx.lineTo(7 * s, 6 * s); ctx.lineTo(-6 * s, 8 * s);
+        ctx.closePath();
+        ctx.fillStyle = hsla(i % 2 ? 318 : 186, 90, 85, 0.75 * k);
+        ctx.fill();
+        ctx.strokeStyle = hsla(0, 0, 100, k);
+        ctx.lineWidth = 1.2 * s;
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.restore();
+    },
+  },
+
+  // The Hollow King: graves rise in a green fog, a ring of runes burns on the floor and the king rises slowly with souls circling.
+  hollow: {
+    len: BOSS_LEN, hit: 0.72, shake: 8, wave: ["hsl(140 80% 50%)", "hsl(150 60% 80%)"],
+    body: (u, s) => base(settle(u, "rise", 0.74), {
+      clip: true, alpha: u < 0.28 ? 0 : 1,
+      dy: (1 - easeInOut(seg(u, 0.28, 0.72))) * 150 * s,
+      solid: "hsl(140 70% 45%)", solidA: 0.7 * (1 - seg(u, 0.62, 0.88)),
+    }),
+    bursts: [
+      { at: 0.28, n: 18, spd: 220, shape: "smoke", a: "hsl(150 40% 18%)", b: "hsl(140 60% 35%)", grav: -60, add: false, from: "feet", dir: "up", spread: 50 },
+      { at: 0.72, n: 30, spd: 420, shape: "smoke", a: "hsl(140 80% 55%)", b: "hsl(150 60% 85%)", grav: -40, add: true, from: "body", dir: "out" },
+    ],
+    trickle: { rate: 45, until: 0.72, spd: 140, shape: "smoke", a: "hsl(150 30% 16%)", b: "hsl(140 70% 40%)", grav: -80, add: false, from: "feet", dir: "up", spread: 90 },
+    back: ({ ctx, x, ground, s, u, t }) => {
+      const k = easeOut(seg(u, 0, 0.25)) * (1 - seg(u, 0.78, 1));
+      if (k <= 0) return;
+      ctx.save();
+      ctx.fillStyle = hsla(160, 40, 6, 0.3 * k);
+      ctx.fillRect(-400, -400, 2000, 1200);
+      glow(ctx, x, ground, 150 * s, 40 * s, hsla(140, 80, 40, 0.45 * k), hsla(140, 80, 30, 0));
+      // headstones rise out of the ground on both sides
+      for (const [ox, hh, w] of [[-120, 46, 20], [-80, 34, 16], [96, 50, 22], [136, 30, 14]] as const) {
+        const h = hh * s * easeOut(seg(u, 0.02, 0.22)) * (1 - easeIn(seg(u, 0.8, 1)));
+        if (h <= 0) continue;
+        const bx = x + ox * s;
+        ctx.fillStyle = "hsl(160 10% 22%)";
+        ctx.beginPath();
+        ctx.moveTo(bx - w * s * 0.5, ground);
+        ctx.lineTo(bx - w * s * 0.5, ground - h + w * s * 0.5);
+        ctx.arc(bx, ground - h + w * s * 0.5, w * s * 0.5, Math.PI, 0);
+        ctx.lineTo(bx + w * s * 0.5, ground);
+        ctx.fill();
+        ctx.strokeStyle = hsla(140, 70, 50, 0.6 * k);
+        ctx.lineWidth = 1.5 * s;
+        ctx.stroke();
+      }
+      // the rune ring burning on the floor
+      ctx.globalCompositeOperation = "lighter";
+      const rr = 90 * s * easeOut(seg(u, 0.08, 0.3));
+      ctx.strokeStyle = hsla(140, 90, 55, 0.85 * k);
+      ctx.lineWidth = 2.5 * s;
+      ctx.beginPath();
+      ctx.ellipse(x, ground + 3, rr, rr * 0.2, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2 + t * 0.8;
+        const px = x + Math.cos(a) * rr * 0.85, py = ground + 3 + Math.sin(a) * rr * 0.17;
+        ctx.fillStyle = hsla(140, 90, 65, 0.8 * k);
+        ctx.fillRect(px - 2 * s, py - 4 * s, 4 * s, 8 * s);
+      }
+      ctx.restore();
+    },
+    front: ({ ctx, x, y, s, u, t }) => {
+      const k = seg(u, 0.3, 0.45) * (1 - seg(u, 0.75, 0.9));
+      if (k <= 0) return;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 5; i++) {
+        const a = t * 3 + (i / 5) * Math.PI * 2;
+        const climb = ((t * 0.6 + i * 0.2) % 1);
+        const px = x + Math.cos(a) * 58 * s, py = y - (10 + climb * 120) * s;
+        const front = Math.sin(a) > 0;
+        const r = (front ? 9 : 6) * s;
+        glow(ctx, px, py, r * 2.2, r * 2.2, hsla(140, 90, 70, 0.55 * k), hsla(140, 90, 50, 0));
+        ctx.fillStyle = hsla(150, 70, 88, 0.85 * k);
+        ctx.beginPath();
+        ctx.arc(px, py, r * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = hsla(160, 50, 10, 0.9 * k);
+        ctx.fillRect(px - r * 0.35, py - r * 0.15, r * 0.2, r * 0.25);
+        ctx.fillRect(px + r * 0.15, py - r * 0.15, r * 0.2, r * 0.25);
+      }
+      ctx.restore();
+    },
+  },
+
+  // The Black Sun: the sky goes dark, a black sun with a gold corona sinks, and the boss descends in front of it.
+  blacksun: {
+    len: BOSS_LEN, hit: 0.7, shake: 15, wave: ["hsl(44 100% 60%)", "hsl(30 30% 8%)"],
+    body: (u, s) => base(u < 0.7 ? "float" : u < 0.78 ? "land" : u < 0.88 ? "flex" : "stance", {
+      alpha: seg(u, 0.18, 0.38),
+      dy: -(1 - easeOut(seg(u, 0.18, 0.7))) * 270 * s,
+      solid: "hsl(44 100% 72%)", solidA: 1 - seg(u, 0.55, 0.82),
+    }),
+    bursts: [
+      { at: 0.7, n: 32, spd: 520, shape: "star", a: "hsl(44 100% 62%)", b: "hsl(0 0% 100%)", grav: 0, add: true, from: "body", dir: "out" },
+      { at: 0.7, n: 18, spd: 360, shape: "dust", a: "hsl(30 20% 25%)", b: "hsl(40 30% 45%)", grav: -20, add: false, from: "feet", dir: "flat" },
+    ],
+    trickle: { rate: 30, until: 0.7, spd: 160, shape: "spark", a: "hsl(44 100% 65%)", b: "hsl(36 100% 55%)", grav: 0, add: true, from: "body", dir: "out", life: 0.5 },
+    back: ({ ctx, x, y, s, u, t }) => {
+      const dark = easeOut(seg(u, 0, 0.2)) * (1 - seg(u, 0.75, 1));
+      if (dark <= 0) return;
+      ctx.save();
+      ctx.fillStyle = hsla(30, 30, 4, 0.5 * dark);
+      ctx.fillRect(-400, -400, 2000, 1200);
+      const cy = y - 85 * s - (1 - easeOut(seg(u, 0.1, 0.7))) * 220 * s;
+      const r = 70 * s;
+      ctx.globalCompositeOperation = "lighter";
+      glow(ctx, x, cy, r * 2.4, r * 2.4, hsla(44, 100, 60, 0.55 * dark), hsla(36, 100, 50, 0));
+      ctx.strokeStyle = hsla(44, 100, 68, 0.7 * dark);
+      ctx.lineCap = "round";
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2 + t * 0.6;
+        const len = (i % 2 ? 40 : 70) * s;
+        ctx.lineWidth = (i % 2 ? 2 : 3.5) * s;
+        ctx.beginPath();
+        ctx.moveTo(x + Math.cos(a) * r * 1.05, cy + Math.sin(a) * r * 1.05);
+        ctx.lineTo(x + Math.cos(a) * (r + len), cy + Math.sin(a) * (r + len));
+        ctx.stroke();
+      }
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = "hsl(30 30% 3%)";
+      ctx.beginPath();
+      ctx.arc(x, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = hsla(48, 100, 80, dark);
+      ctx.lineWidth = 2.5 * s;
+      ctx.stroke();
+      ctx.restore();
+    },
+  },
+};
+
+// ---------- hybrids ----------
+/**
+ * A hybrid's own entrance: both parents' entrances play side by side, drawn in from either side, while two orbs of
+ * their colours circle in and meet; at the moment they touch the hybrid bursts into being in both colours.
+ * `ca` and `cb` are each parent's [colour, glow].
+ */
+export function fusionIntro(a: Power, b: Power, ca: [string, string], cb: [string, string]): IntroSpec {
+  const A = INTROS[a], B = INTROS[b];
+  const FUSE = 0.5;
+  const sub = (u: number) => clamp(u / FUSE, 0, 1) * 0.78;
+  const off = (u: number, s: number) => 120 * s * (1 - easeInOut(seg(u, 0.1, FUSE)));
+  const parents = (which: "back" | "front", d: IntroDraw) => {
+    const fade = 1 - seg(d.u, FUSE - 0.06, FUSE + 0.06);
+    const su = sub(d.u);
+    if (fade <= 0 || su <= 0) return;
+    for (const [spec, side] of [[A, -1], [B, 1]] as const) {
+      const fn = spec[which];
+      if (!fn) continue;
+      d.ctx.save();
+      d.ctx.globalAlpha = fade;
+      fn({ ...d, x: d.x + side * off(d.u, d.s), u: su, t: su * INTRO_LEN, body: spec.body(su, d.s) });
+      d.ctx.restore();
+    }
+  };
+  return {
+    len: 1.8, hit: FUSE, shake: 11, wave: [ca[1], cb[1]],
+    body: (u, s) => u < FUSE
+      ? base("guard", { alpha: 0, echo: { spread: off(u, s), alpha: 0.8 * seg(u, 0.08, 0.28) }, solid: "hsl(0 0% 100%)", solidA: 0.85 })
+      : base(settle(u, "land", 0.64), { solid: "hsl(0 0% 100%)", solidA: 1 - seg(u, FUSE, FUSE + 0.22) }),
+    bursts: [
+      { at: FUSE, n: 26, spd: 560, shape: "spark", a: ca[0], b: ca[1], grav: 0, add: true, from: "body", dir: "out" },
+      { at: FUSE, n: 26, spd: 480, shape: "star", a: cb[0], b: cb[1], grav: 0, add: true, from: "body", dir: "out" },
+      { at: FUSE, n: 12, spd: 300, shape: "dust", a: "hsl(250 15% 60%)", b: "hsl(250 15% 80%)", grav: -20, add: false, from: "feet", dir: "flat" },
+    ],
+    back: (d) => parents("back", d),
+    front: (d) => {
+      parents("front", d);
+      const { ctx, x, y, s, u, t } = d;
+      const cy = y - 55 * s;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      if (u < FUSE) {
+        const k = seg(u, 0.04, 0.2);
+        const o = off(u, s);
+        const orbs = [[-1, ca], [1, cb]] as const;
+        for (const [side, c] of orbs) {
+          const a = t * 9 + (side > 0 ? Math.PI : 0);
+          const px = x + side * o + Math.cos(a) * 16 * s * (o / (120 * s) + 0.2);
+          const py = cy + Math.sin(a) * 12 * s;
+          glow(ctx, px, py, 26 * s, 26 * s, withA(c[1], 0.9 * k), withA(c[0], 0));
+          ctx.fillStyle = withA("hsl(0 0% 100%)", k);
+          ctx.beginPath();
+          ctx.arc(px, py, 5 * s, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // the two powers reach for each other as they close in
+        if (u > 0.3) {
+          const reach = seg(u, 0.3, FUSE);
+          ctx.lineWidth = 2.5 * s;
+          for (let i = 0; i < 2; i++) {
+            ctx.strokeStyle = withA(i ? cb[1] : ca[1], 0.8 * reach);
+            jag(ctx, x - o, cy, x + o, cy, 7, 10 * s, Math.floor(t * 24) + i * 9);
+            ctx.stroke();
+          }
+        }
+      } else {
+        const k = seg(u, FUSE, FUSE + 0.32);
+        if (k < 1) {
+          for (const [c, d0] of [[ca, 0], [cb, 0.06]] as const) {
+            const kk = clamp(k - d0, 0, 1);
+            ctx.strokeStyle = withA(c[1], 1 - kk);
+            ctx.lineWidth = 7 * s * (1 - kk);
+            ctx.beginPath();
+            ctx.arc(x, cy, 20 * s + 190 * s * easeOut(kk), 0, Math.PI * 2);
+            ctx.stroke();
+          }
+          glow(ctx, x, cy, 90 * s * (1 - k * 0.5), 90 * s * (1 - k * 0.5), withA("hsl(0 0% 100%)", 0.7 * (1 - k)), withA("hsl(0 0% 100%)", 0));
+        }
+      }
+      ctx.restore();
+    },
+  };
+}

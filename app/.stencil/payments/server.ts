@@ -671,6 +671,42 @@ export async function cancelSubscription(
 }
 
 /**
+ * After a paid one-time purchase that stands for a plan (a lifetime unlock), give the
+ * signed-in app user that plan for good, so `requireSubscription`, `hasPlan` and seller
+ * onboarding all let them in. Refuses unless the platform holds a paid purchase of
+ * `productId` by this app user (`reason: "no_purchase"`; right after checkout the
+ * payment can take a few seconds to land, so call it again on the next load). A live
+ * paid subscription is never replaced (`reason: "paid_subscription"`): cancel it with
+ * `cancelSubscription` and call this again once it has ended. Safe to repeat: an
+ * existing grant of the same plan returns `reason: "already"`. Throws with
+ * `code: "tier_mismatch"` when `tierId` is not one of the app's plans. A later refund
+ * does not remove the plan; the app builder ends it under More → Users.
+ *
+ *   export async function action({ request, context }: Route.ActionArgs) {
+ *     const { granted, reason } = await grantPlanFromPurchase(request, context, {
+ *       productId: products.lifetime.id,
+ *       tierId: tiers.pro.id,
+ *     });
+ *     return { granted, reason };
+ *   }
+ */
+export async function grantPlanFromPurchase(
+  request: Request,
+  context: AppContext,
+  input: { productId: string; tierId: string },
+): Promise<{ granted: boolean; reason?: "no_purchase" | "paid_subscription" | "already" }> {
+  const env = context.cloudflare.env;
+  const { user } = await requireAuth(request, env);
+  const appId = await resolveAppId(env);
+  return paymentsPost<{ granted: boolean; reason?: "no_purchase" | "paid_subscription" | "already" }>(
+    env,
+    `/v1/apps/${appId}/subscriptions/grant-from-purchase`,
+    { endUserId: user.id, productId: input.productId, tierId: input.tierId },
+    "Failed to grant the plan",
+  );
+}
+
+/**
  * Let the current user end their free trial and start paying now: Stripe
  * charges the first period to their saved card at once, and `getSubscription`
  * reports `status: "active"` within seconds. Redirects to /upgrade if they

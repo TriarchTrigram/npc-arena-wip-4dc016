@@ -73,10 +73,17 @@ banner, guide or nudge wants a prompt for app users to put the Published app on
 their phone. The platform owns the detection; you own only the design.
 
 `window.stencil.install` is injected (no import), typed in `app/env.d.ts`,
-browser-only, and absent in the editor preview — always optional-chain. It is
-present on share links opened in their own tab, so the prompt can appear there. The
+browser-only, and absent in the editor preview — always optional-chain. On a share
+link the handle exists but `status()` stays `"unsupported"` (no manifest there), so
+the prompt shows only on the Published app. The
 injector script is async, so the handle can appear after your component mounts;
 it is guaranteed present once the window `load` event has fired.
+
+Tell the app builder where the prompt will and won't appear, so nobody spends a build
+hunting a "missing" banner: only on the Published app with Mobile app on, on iPhone and
+iPad, and in Chrome on Android or a computer once the browser offers the install. Never
+in the App preview, on a share link, in desktop Safari or Firefox, or once installed.
+You cannot see it in the preview either — say so instead of claiming you checked it.
 
 - `status()` is **synchronous** and returns `"installed"` (already on the home
   screen — show nothing), `"promptable"` (Android and desktop Chrome — one tap
@@ -94,6 +101,9 @@ it is guaranteed present once the window `load` event has fired.
   default). A session flag nags on every visit; a permanent flag never asks again.
 - Do not write Android steps for iPhone or vice versa — the copy is chosen by
   `status`, not by the user agent.
+- Use the iPhone steps below as written unless the app builder gives their own.
+  Current Safari keeps Share inside the ••• menu beside the address bar; never
+  write "the Share button at the bottom of the screen".
 
 ```tsx
 import { useEffect, useState } from "react";
@@ -146,7 +156,11 @@ export function InstallPrompt() {
           <button onClick={install}>Install</button>
         </>
       ) : (
-        <p>To install: tap the Share button, then “Add to Home Screen”.</p>
+        <ol>
+          <li>Open this page in Safari.</li>
+          <li>Tap the ••• button beside the address bar, then Share. If Share is already on the toolbar, tap it there.</li>
+          <li>Scroll down and tap Add to Home Screen, then Add.</li>
+        </ol>
       )}
       <button onClick={dismiss}>Not now</button>
     </div>

@@ -58,16 +58,29 @@ for it, so nothing keyed on it can open there.
   behind an admin-only screen, an import or sync screen that attaches to or deletes those rows,
   an export. Hiding a nav item is not enforcement; the POST still works, and a sibling route
   gated on `requireAuth` alone is open to every app user.
-- **A screen both an admin and a plain app user open shapes its loader data per viewer.**
-  When only the admin may see a field on a shared page — a studio's notes on a project its
-  client also views, a cost price, a private link — the loader decides on the server which
-  fields leave it: declare the column on the entity's access rule (`"visible_to":
+- **A screen two kinds of app user open shapes its loader data per viewer.** The pair is any
+  two roles, not only an admin and a plain app user: a partner's support staff and a business
+  owner, a team's member and its owner, two roles the app invented (the membership row's
+  `role`, a helper from the bullet above). When only one of them may see a field on a shared
+  page — a studio's notes on a project its client also views, a cost price, an owner's billing,
+  another person's email — the loader decides on the server which fields leave it: declare the column on the entity's access rule (`"visible_to":
   { "internal_notes": ["me.role = 'admin'"] }`) so the data SDK strips it for everyone else,
   or read it in a second query that runs only when `hasRole(env, user.id, "admin")` is true.
   Everything a loader returns is serialised into the page the browser receives, so a
   component that gets the field and does not draw it (`isAdmin && <Notes />`) has already
   leaked it to the client. The view-mode cookie in section 2 is read by the loader, so client
   view takes the client's branch and never carries admin fields either.
+  - **The access rule strips a column only on a data SDK read.** A hand-written query
+    (Drizzle, raw SQL) returns every column it selects to whoever the loader let in, so there
+    the loader names its columns per viewer: one `select({...})` for the role that sees less,
+    the wider one on the branch behind the role check.
+  - **Shape every loader that reaches the record, not only the one you are editing.** A role
+    given a new page, or access to more records, gets the stripped shape on the list, the
+    detail page and any export alike; put the per-viewer shaping in one helper they all call,
+    so a second page cannot return what the first strips.
+  - **A section taken off a screen leaves its loader too.** "Remove X from this page" or
+    "hide X from role Y" deletes the read behind it in the same change, and any query
+    parameter that selects such a record is checked against what this viewer may open.
 
 ```ts
 import { requireRole } from "~stencil/auth/roles";
@@ -97,6 +110,11 @@ plain app user never sees the link.
 - **Admin screens that must read every app user's rows** use `system(env)` **after**
   `requireRole` in the same loader. Never widen an entity's access rule to `anyone` to make an
   admin page work: that opens the rows to every signed-in app user, not just the admin.
+- **An admin who may see only one group** (a partner's admins, a regional manager) is a named
+  role plus one helper that resolves the group on the server and refuses a caller with no
+  role; every read and write on that admin's pages, the lists beside each other included,
+  filters by the group it returns. The `admin-area` skill has the shape. Never a check that
+  passes when no role is found: that admits every signed-in app user.
 - **When the app already uses `workspaces`,** a workspace member's role is the membership row's
   `role`; the platform admin is still the one who may reach app-wide admin screens. Do not add
   a third role system.

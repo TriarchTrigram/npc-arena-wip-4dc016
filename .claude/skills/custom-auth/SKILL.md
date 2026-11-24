@@ -1,6 +1,6 @@
 ---
 name: custom-auth
-description: Any change to how the app itself handles sign-in in app code — magic link, email OTP, passwordless, custom login/signup flows, "restyle the login page", "make the sign-in page match my brand", "login goes to the upgrade page", "the login page disappeared", where a Sign in link should go, auth hooks, "email me a code", "change my email", "change my password", "edit my name/photo", account settings, profile page, "where do my users manage their account", two-factor ("2FA", "authenticator app", "TOTP", "backup codes"). Load BEFORE touching auth code. NOT for which sign-in methods the app offers, whether signup is open, or the hosted sign-in page's wording, logo and colours (settings — see `login-settings`), and NOT for beta testers or adding named people (see `app-users`). Email+password, Stencil OAuth, magic link and email OTP already ship on the platform's auth and its `~stencil/auth/browser.client`; you almost never need new auth code, and must NEVER call betterAuth() or createAuthClient() yourself — a parallel instance silently severs signup tracking and email sync.
+description: Any change to how the app itself handles sign-in in app code — magic link, email OTP, passwordless, custom login/signup flows, "restyle the login page", "make the sign-in page match my brand", "login goes to the upgrade page", "the login page disappeared", where a Sign in link should go, auth hooks, "email me a code", "change my email", "change my password", "edit my name/photo", account settings, profile page, "where do my users manage their account", a public profile other people can open ("member profiles", "seller page", "see who posted this"), two-factor ("2FA", "authenticator app", "TOTP", "backup codes"). Load BEFORE touching auth code. NOT for which sign-in methods the app offers, whether signup is open, or the hosted sign-in page's wording, logo and colours (settings — see `login-settings`), and NOT for beta testers or adding named people (see `app-users`). Email+password, Stencil OAuth, magic link and email OTP already ship on the platform's auth and its `~stencil/auth/browser.client`; you almost never need new auth code, and must NEVER call betterAuth() or createAuthClient() yourself — a parallel instance silently severs signup tracking and email sync.
 metadata:
   agents: [chat, builder]
 ---
@@ -194,6 +194,45 @@ fake and must never ship. Read `user.name` and `user.image` from `useAuth()` for
 `user.image` holds the Google photo for an app user who signed up with Google, or the photo
 they set on the account page; show initials when it is null, and never say there is no
 profile photo.
+
+## A public profile other people can open: `/profile/:userId` (opt-in)
+
+A directory, marketplace, community or client portal needs the other half: a page where
+*other people* see an app user's name and photo. The platform ships it switched **off**.
+Turn it on only when the app builder asks for profiles other people can see, because from
+then on anyone with the link, signed in or not, sees that app user's name and photo. Say
+so when you turn it on. It never shows an email.
+
+Switch it on by spreading the pack into `app/routes.ts`, above the catch-all:
+
+```ts
+import { stencilPublicProfileRoutes } from "./.stencil/react-router/profile/routes";
+// ...
+  ...stencilPublicProfileRoutes,
+```
+
+Then link each name or avatar to `/profile/${person.id}`. The page reads the same name and
+photo `/auth/account` edits, and shows the owner an edit link back to it.
+
+To add a bio, links or listings, or to change the look or who may open it, write the app's
+own route instead of spreading the pack, on the same two pieces, and never hand-build the
+lookup or a second photo route:
+
+```tsx
+import { getPublicProfile } from "~stencil/auth/public-profile";
+import { PublicProfileCard } from "~stencil/ui/auth/public-profile";
+
+export async function loader({ params, context }: Route.LoaderArgs) {
+  const profile = await getPublicProfile(context.cloudflare.env, params.userId);
+  if (!profile) throw new Response("Not Found", { status: 404 });
+  return { profile /* plus the app's own rows for this person */ };
+}
+// <PublicProfileCard profile={profile}>…bio, links, listings…</PublicProfileCard>
+```
+
+`getPublicProfile` returns `{ id, name, image }` only. Extra profile fields live in the
+app's own table keyed by the app user's id, with an access rule that fits who may read
+them. For signed-in app users only, call `requireAuth` first in that loader.
 
 ## App-authored account settings: close my account
 

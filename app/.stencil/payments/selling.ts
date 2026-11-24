@@ -1,6 +1,6 @@
 import { redirect } from "../http";
 import { requireAuth, getSession } from "~stencil/auth/server";
-import { requireSubscription } from "./server";
+import { getSubscription as getAppSubscription, hasPlan } from "./server";
 import type { AppContext } from "../types/context";
 import { buyerRefCandidates, guestBuyerRef } from "./buyer-refs";
 
@@ -163,14 +163,23 @@ export type CheckoutPaymentMethod = "card" | "us_bank_account";
  *  a surcharge. Shown to the buyer with its label and added to the total. */
 export type CheckoutExtraLine = { label: string; amountCents: number };
 
+// Only an app user on a plan may become a seller. The redirect carries a reason so the
+// root notice can say why they landed there instead of on Stripe.
+async function requireSellerPlan(request: Request, context: AppContext) {
+  const { user } = await requireAuth(request, context.cloudflare.env);
+  const { sub, paymentsEnabled } = await getAppSubscription(request, context);
+  if (!hasPlan(sub, paymentsEnabled)) throw redirect("/upgrade?reason=seller-needs-plan");
+  return { user };
+}
+
 /**
  * Start (or resume) Stripe-hosted seller onboarding for the current user, then
  * throw a redirect to Stripe's hosted KYC. Also the "fix it" entry point when a
  * seller is `restricted` — Stripe re-collects whatever is missing.
  *
  * Gated on an active subscription: only a paying subscriber of this app may
- * become a seller, so this throws a redirect to `/upgrade` if the user isn't
- * subscribed.
+ * become a seller, so this throws a redirect to `/upgrade?reason=seller-needs-plan`
+ * if the user isn't subscribed. The platform renders the reason on the page they land on.
  *
  * The first time a seller onboards you MUST pass their `country` (ISO 3166-1
  * alpha-2, e.g. "GB") — collect it in your own UI, because a Stripe account's
@@ -193,7 +202,7 @@ export async function onboardSeller(
   opts?: { country?: string; returnUrl?: string; refreshUrl?: string },
 ): Promise<never> {
   const env = context.cloudflare.env;
-  const { user } = await requireSubscription(request, context);
+  const { user } = await requireSellerPlan(request, context);
   const appId = await resolveAppId(env);
   const base = new URL(request.url).origin;
 
@@ -246,7 +255,7 @@ export async function connectExistingStripeAccount(
   opts?: { returnUrl?: string },
 ): Promise<never> {
   const env = context.cloudflare.env;
-  const { user } = await requireSubscription(request, context);
+  const { user } = await requireSellerPlan(request, context);
   const appId = await resolveAppId(env);
   const base = new URL(request.url).origin;
 

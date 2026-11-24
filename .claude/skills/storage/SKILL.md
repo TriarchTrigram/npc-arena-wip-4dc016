@@ -81,7 +81,22 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 `key` names where the file lands (keep `crypto.randomUUID()` in it). `maxBytes` is the biggest file the route stores and `accept` the types it stores, exact or by family; both are the server's own rules, built per request, so an allowance goes in `maxBytes` (`Math.min(MAX_FILE_BYTES, await storageRemainingFor(user.id))`) and `onComplete({ key, size, contentType, name })` records the measured size against it (count it with a `claim` — the `data-sdk` skill's "Claim before a side effect"). The screen saves the key to its row afterwards (the pattern at the end); `onComplete` is only for bookkeeping the route itself owns.
 
-**Client — in the screen:**
+**Screen — `<UploadZone>`, the default for every upload field:**
+
+```tsx
+import * as uploader from "~stencil/upload/client";
+import { UploadZone } from "~stencil/ui/upload/zone";
+
+<UploadZone
+  uploader={uploader}
+  batch={`gallery:${gallery.id}`}
+  onUploaded={(files) => fetcher.submit({ keys: files.map((f) => f.key) }, { method: "post", encType: "application/json" })}
+/>
+```
+
+It is the whole field: a drop area that takes files and whole folders, "Choose files" and "Choose a folder" buttons, the allowed formats and size cap shown before anything is picked, a progress row per file, each refusal's sentence beside its file, Retry for the files that failed, Cancel for the batch, and the offer to continue a batch a reload cut short. It asks the upload route what it takes, so the help text and `<input accept>` always match the route's own `accept` and `maxBytes`; never write them a second time in the screen. `onUploaded(files)` is called once per batch with what reached storage (after a Cancel too); save each `key` there, by key, as in the pattern at the end. Props: `multiple={false}` for a field that holds one file, `route` when the screen uses a route other than `/api/upload`, `batch` as described below, `label` for the line inside the drop area. Never hand-build a drop area, a file input, progress rows or a retry list; build a screen of your own on the functions below only when the field is not a drop area at all (an avatar button, a paste into an editor).
+
+**Client — the functions under it:**
 
 ```tsx
 import { uploadFile, uploadFiles, UploadError } from "~stencil/upload/client";
@@ -98,9 +113,9 @@ const { uploaded, failed } = await uploadFiles(input.files, {
 });
 ```
 
-A refusal or a failure is an `UploadError`: show `error.message` as it is — "That file is over 500 MB.", "That file type isn't accepted here (images, videos or PDF).", "That file isn't the type its name says it is." or "The upload didn't finish. Check your connection and try again." — never a message of your own. Pass `signal` from an `AbortController` for a Cancel button. Tell app users what the field takes before they pick: the formats and the size cap go in the field's help text and in `<input accept>`, from the same values the route uses.
+A refusal or a failure is an `UploadError`: show `error.message` as it is — "That file is over 500 MB.", "That file type isn't accepted here (images, videos or PDF).", "That file isn't the type its name says it is." or "The upload didn't finish. Check your connection and try again." — never a message of your own. Pass `signal` from an `AbortController` for a Cancel button. A screen of its own tells app users what the field takes before they pick: `await uploadRules(route)` from the same module answers `{ accept, maxBytes, hint }` from the route itself, with `hint` the sentence for the help text ("Images or PDF, up to 20 MB per file.") and `accept.join(",")` the value for `<input accept>`.
 
-**An interrupted batch continues.** `uploadFiles` remembers its batch in the browser until it returns, so a reload, a closed laptop or a crashed tab loses nothing that already landed. Every screen that calls `uploadFiles` names the record it uploads into as `batch`, checks for that record's batch on load and offers to continue it:
+**An interrupted batch continues.** `uploadFiles` remembers its batch in the browser until it returns, so a reload, a closed laptop or a crashed tab loses nothing that already landed. `<UploadZone>` does all of this when it is given `batch`. A screen that calls `uploadFiles` itself names the record it uploads into as `batch`, checks for that record's batch on load and offers to continue it:
 
 ```tsx
 import { interruptedUploads, forgetInterruptedUploads } from "~stencil/upload/client";

@@ -12,6 +12,7 @@ import {
 import { z, type ZodType } from "zod";
 import { BACKEND_BASE, createBackendFetch, withFeature } from "./backend";
 import { createImage } from "./image";
+import { requestLanguage } from "./request-context";
 import { createStorage, sniffImageType } from "./storage";
 
 export interface TranscribeParams {
@@ -115,6 +116,12 @@ export interface AICallOptions {
    * route that made it. Renaming the label starts a new row; it does not change the feature.
    */
   feature?: string;
+  /**
+   * The language the model writes in, as an ISO 639-1 code (`"es"`). On an app with a second
+   * language it defaults to the language of the request being served; pass it for work done for
+   * someone else (a schedule, a send to many), from `appUserLanguage` in `~stencil/locale`.
+   */
+  language?: string;
 }
 
 /** One in-app feature's AI spend this billing period, as `ai.usage()` reads it. */
@@ -282,6 +289,35 @@ const tagFeature = (feature: string): LanguageModelMiddleware => ({
   wrapStream: ({ doStream }) => withFeature(feature, doStream),
 });
 
+const LANGUAGE_NAMES = new Intl.DisplayNames(["en"], { type: "language" });
+
+function languageName(language: string): string {
+  try {
+    return LANGUAGE_NAMES.of(language) ?? language;
+  } catch {
+    // Not a language tag, so it is already a name ("Spanish"): used as written.
+    return language;
+  }
+}
+
+// The instruction goes after the call's own system messages and before the first turn:
+// Anthropic refuses a system message that follows a user message.
+const writeIn = (language: string): LanguageModelMiddleware => ({
+  specificationVersion: "v3",
+  transformParams: async ({ params }) => {
+    const turn = params.prompt.findIndex((message) => message.role !== "system");
+    const prompt = [...params.prompt];
+    prompt.splice(turn === -1 ? prompt.length : turn, 0, {
+      role: "system",
+      content:
+        `Write everything a person will read in ${languageName(language)}. Everything else in this ` +
+        `request may be in another language; answer in ${languageName(language)} anyway. Only an ` +
+        "instruction naming a different output language overrides this.",
+    });
+    return { ...params, prompt };
+  },
+});
+
 /**
  * Create an AI provider registry proxied through the Stencil gateway, which serves only chat
  * (`languageModel`), embeddings (`textEmbeddingModel`), `transcribe()`, `readDocument()` and
@@ -316,9 +352,15 @@ export function createAI(env: Env): AI {
   const baseLanguageModel = registry.languageModel.bind(registry);
   const ai: Omit<AI, "languageModel" | "transcribe" | "readDocument" | "usage"> = registry;
 
-  const languageModel = (id: string, options?: AICallOptions) => {
+  const featureModel = (id: string, feature?: string) => {
     const model = baseLanguageModel(id as ModelId);
-    return options?.feature ? wrapLanguageModel({ model, middleware: tagFeature(options.feature) }) : model;
+    return feature ? wrapLanguageModel({ model, middleware: tagFeature(feature) }) : model;
+  };
+
+  const languageModel = (id: string, options?: AICallOptions) => {
+    const model = featureModel(id, options?.feature);
+    const language = options?.language ?? requestLanguage.getStore()?.language;
+    return language ? wrapLanguageModel({ model, middleware: writeIn(language) }) : model;
   };
 
   /**
@@ -360,7 +402,8 @@ export function createAI(env: Env): AI {
     const prompt = params.schema ? FIELDS_PROMPT : TRANSCRIBE_PROMPT;
     content.push({ type: "text", text: params.instructions ? `${prompt}\n\n${params.instructions}` : prompt });
     const { object } = await generateObject({
-      model: languageModel(params.model ?? DOCUMENT_MODEL, { feature: params.feature }),
+      // A document is read as written, so this call takes no language instruction.
+      model: featureModel(params.model ?? DOCUMENT_MODEL, params.feature),
       providerOptions: { anthropic: { thinking: { type: "disabled" } } },
       maxOutputTokens: 16384,
       schema: params.schema

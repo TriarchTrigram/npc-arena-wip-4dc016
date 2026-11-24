@@ -1,5 +1,5 @@
-import type { AppLoadContext, EntryContext } from "react-router";
-import { ServerRouter } from "react-router";
+import type { AppLoadContext, EntryContext, HandleErrorFunction } from "react-router";
+import { isRouteErrorResponse, ServerRouter } from "react-router";
 import { isbot } from "isbot";
 import { renderToReadableStream } from "react-dom/server";
 import appHooks from "~/auth-hooks.server";
@@ -48,3 +48,14 @@ export default async function handleRequest(
     status: responseStatusCode,
   });
 }
+
+// Logged as a string: the Workers trace of a logged Error object keeps only its
+// `name: message`, and the stack frames are what locates the failing loader or action.
+export const handleError: HandleErrorFunction = (error, { request }) => {
+  if (request.signal.aborted) return;
+  if (isRouteErrorResponse(error)) {
+    if (error.status < 500) return;
+    error = (error as { error?: unknown }).error ?? `${error.status} ${error.statusText}`;
+  }
+  console.error(error instanceof Error ? error.stack || `${error.name}: ${error.message}` : String(error));
+};

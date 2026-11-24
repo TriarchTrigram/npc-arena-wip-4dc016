@@ -55,6 +55,7 @@ import { handleSignupFanout } from "./signup-fanout";
 import { handleActivityFanout } from "./activity-fanout";
 import { readAttributionCookie } from "./attribution";
 import { twoFactorChallengeHook } from "./two-factor";
+import { mcpOAuthGuard } from "../mcp/oauth-guard";
 import { reportAuthFailure, reportUncaughtAuthError } from "./report-failure";
 
 /** The env keys that hold a string, so `injected` cannot be pointed at a binding. */
@@ -173,7 +174,7 @@ export function createAuth(
       // rotate it to defeat the rate limiter.
       ipAddress: { ipAddressHeaders: ["cf-connecting-ip"] },
     },
-    hooks: { after: twoFactorChallengeHook },
+    hooks: { before: mcpOAuthGuard, after: twoFactorChallengeHook },
     onAPIError: { onError: reportUncaughtAuthError },
     databaseHooks: withConsumerHooks(env, {
       user: {

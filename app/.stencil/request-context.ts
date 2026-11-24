@@ -20,6 +20,10 @@ export function requestStore<T>(): RequestStore<T> & { install(backing: RequestS
   };
 }
 
+/** The language the current request reads and every language the app speaks, default first;
+ *  open only on an app with a second language. */
+export const requestLanguage = requestStore<{ language: string; languages: string[] }>();
+
 /** The worker fetch's own execution context, for work that must outlive the response. */
 export const executionCtx = requestStore<ExecutionContext>();
 
