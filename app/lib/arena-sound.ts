@@ -196,6 +196,20 @@ const CAST: Record<Power, Voice> = {
     s.tone(900 * p, 140 * p, 0.25 * len, 0.18, { type: "sawtooth", lp: 1800, delay: 0.16 * len });
     for (let i = 0; i < 2 + v; i++) s.tone(1200 + Math.random() * 1600, 800, 0.03, 0.1, { type: "square", delay: 0.05 + i * 0.07 });
   },
+  // Parallax: space bending, a swell sucked inward, then a glassy fold that rings like a struck pane
+  spatio: (s, p, len, v) => {
+    s.noise(200 * p, 4200 * p, 0.22 * len, 0.35, { type: "bandpass", q: 4, attack: 0.18 * len });
+    s.tone(1400 * p, 260 * p, 0.3 * len, 0.16, { type: "sine", vib: [22 + v * 6, 40], delay: 0.08 * len });
+    s.fm(880 * p * (1 + v * 0.12), 1.414, 6, 0.6 * len, 0.14, 0.2 * len);
+    s.fm(1320 * p, 2.76, 3, 0.4 * len, 0.06, 0.26 * len);
+  },
+  // Hexizon: an 8-bit arpeggio, a square-wave charge and a crunchy little burst
+  hexizon: (s, p, len, v) => {
+    const arp = v === 0 ? [523, 659, 784, 1047] : v === 1 ? [440, 554, 659, 880] : [392, 494, 587, 784, 988];
+    arp.forEach((n, i) => s.tone(n * p, n * p, 0.05, 0.13, { type: "square", delay: i * 0.035 * len, lp: 6000 }));
+    s.tone(110 * p, 880 * p, 0.2 * len, 0.12, { type: "square", lp: 3200, delay: 0.12 * len });
+    s.noise(3000, 900, 0.12 * len, 0.25, { type: "bandpass", q: 6, delay: 0.26 * len });
+  },
 };
 
 const IMPACT: Record<Power, Voice> = {
@@ -218,6 +232,18 @@ const IMPACT: Record<Power, Voice> = {
   magneto: (s, p) => { [520, 1243, 1890].forEach((n) => s.tone(n * p, n * p * 0.98, 0.35, 0.14, { type: "triangle" })); s.noise(3000, 1500, 0.05, 0.4); },
   psy: (s, p) => { s.tone(500 * p, 250 * p, 0.2, 0.25, { vib: [18, 80] }); },
   shift: (s, p) => { for (let i = 0; i < 3; i++) s.tone(400 + Math.random() * 1800, 300, 0.04, 0.15, { type: "square", delay: i * 0.035 }); },
+  // a pane of space cracking: a sharp glassy snap with a low fold under it
+  spatio: (s, p) => {
+    s.noise(7000, 2500, 0.1, 0.5, { type: "highpass", q: 2 });
+    s.fm(1760 * p, 3.1, 4, 0.25, 0.12);
+    s.tone(160 * p, 50, 0.2, 0.4, { type: "sine" });
+  },
+  // a retro hit: a square-wave drop and a burst of crushed noise
+  hexizon: (s, p) => {
+    s.tone(900 * p, 90, 0.12, 0.3, { type: "square", lp: 4000 });
+    s.noise(2400, 600, 0.1, 0.5, { type: "bandpass", q: 8 });
+    s.tone(60, 40, 0.15, 0.35, { type: "triangle" });
+  },
 };
 
 /** How long each kind of move sounds, relative to its fighter's voice. */

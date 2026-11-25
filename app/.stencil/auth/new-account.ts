@@ -6,7 +6,8 @@ export function newAccountData(
   email: string,
   name: string,
   signupAttribution: string | undefined,
-): { email: string; name: string; emailVerified: false; signupAttribution?: string } {
+  emailVerified = false,
+): { email: string; name: string; emailVerified: boolean; signupAttribution?: string } {
   const attribution = sanitizeAttribution(signupAttribution);
-  return { email, name, emailVerified: false, ...(attribution ? { signupAttribution: attribution } : {}) };
+  return { email, name, emailVerified, ...(attribution ? { signupAttribution: attribution } : {}) };
 }

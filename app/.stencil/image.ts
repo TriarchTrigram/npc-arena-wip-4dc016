@@ -9,16 +9,17 @@ export interface GenerateImageParams {
   /**
    * Which text-to-image model to use. Defaults to Cloudflare Workers AI
    * `@cf/black-forest-labs/flux-1-schnell`; any Workers AI image model id is
-   * accepted. OpenAI's `gpt-image-1` and Google's `gemini-3.1-flash-image` are
+   * accepted. OpenAI's `gpt-image-2.5-sunburst` and Google's `gemini-3.1-flash-image` are
    * also available but cost more — reach for them only when the app builder
    * specifically asks. See the runtime-image skill.
    */
   model?: string;
   /**
-   * Up to 2 pictures the model should match — the same person, product or art
-   * style kept consistent across many images. Only the Gemini image models and
-   * FLUX.2 (`@cf/black-forest-labs/flux-2-*`) accept them; any other model
-   * answers 400. Raw bytes, a base64 string or a data URL; under 10 MB each.
+   * Up to 6 pictures the model should match — the same person, product or art
+   * style kept consistent across many images, in the order given. Only the Gemini
+   * image models and FLUX.2 (`@cf/black-forest-labs/flux-2-*`) accept them; any
+   * other model answers 400. Raw bytes, a base64 string or a data URL; under
+   * 10 MB each and under 40 MB together.
    */
   references?: Array<Uint8Array | ArrayBuffer | string>;
 }

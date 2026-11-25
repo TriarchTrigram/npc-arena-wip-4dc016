@@ -391,7 +391,7 @@ type StoredFileRef = string | null | undefined;
 
 // A stored key, or the `/api/files/<key>` URL (relative or absolute, with or without
 // transform params) an app saved instead of the key.
-function keyFromStoredFileRef(ref: string): string | null {
+export function keyFromStoredFileRef(ref: string): string | null {
   const trimmed = ref.trim();
   const at = trimmed.indexOf(FILES_ROUTE);
   if (at === -1) return trimmed || null;

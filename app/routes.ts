@@ -9,6 +9,7 @@ import { stencilWaitlistRoutes } from "./.stencil/react-router/waitlist/routes";
 export default [
   index("routes/home.tsx"),
   route("roster", "routes/roster.tsx"),
+  route("quests", "routes/quests.tsx"),
   // Trusted route the platform calls to run recurring actions (bearer-gated).
   // Keep it registered at this path.
   route("api/internal/scheduled", "routes/api.internal.scheduled.tsx"),

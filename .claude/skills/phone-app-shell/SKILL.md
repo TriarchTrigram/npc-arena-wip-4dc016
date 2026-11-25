@@ -45,6 +45,11 @@ On phones, the app is a fixed full-screen frame with one scrolling area inside i
   bottom: 0`, not `sticky`, and never placed from `visualViewport` or
   `innerHeight` math. Those numbers are wrong in exactly the moments the bar
   floats, so a self-check built on them never fires.
+- Tabs share the bar's width equally (`flex: 1; min-width: 0`). A label too long
+  for its tab wraps to a second line, centred under the icon, and ends in an
+  ellipsis after two lines (`line-clamp-2`, `overflow-wrap: anywhere`,
+  `hyphens: auto`); every tab is as tall as the tallest. Never one clipped line: a
+  phone has no hover to show the rest, and a translated label is often longer.
 - A post or comment composer that holds more than a line of text is its own
   full-screen route on phones, not a sheet or dialog over a scrolled page. So is
   any text field that sits inside the scrolling content area: a comment or reply

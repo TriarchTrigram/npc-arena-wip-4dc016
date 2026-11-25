@@ -5,7 +5,7 @@
 
 import type { Move, Power } from "./fighters";
 
-export type FormKind = "rage" | "perfected" | "awakened" | "mastery" | "mystic";
+export type FormKind = "rage" | "perfected" | "awakened" | "mastery" | "mystic" | "nightmare";
 
 export type Form = {
   power: Power;
@@ -35,6 +35,7 @@ export const FORM_NAME: Record<FormKind, string> = {
   awakened: "Awakened Mode",
   mastery: "Mastery Mode",
   mystic: "Mystic Mode",
+  nightmare: "Nightmare Mode",
 };
 
 /** The big title the cutscene shouts. */
@@ -44,6 +45,7 @@ export const FORM_SHOUT: Record<FormKind, string> = {
   awakened: "AWAKENED",
   mastery: "MASTERY MODE",
   mystic: "MYSTIC MODE",
+  nightmare: "NIGHTMARE MODE",
 };
 
 const M = (m: Omit<Move, "wind" | "act" | "rec"> & Partial<Pick<Move, "wind" | "act" | "rec">>): Move => ({
@@ -58,7 +60,7 @@ const AWAKE = { at: 0.4, regen: 1.6 };
 const MASTER = { at: 0.45, dodge: 0.22 };
 const MYSTIC = { at: 0.42, drain: 0.2 };
 
-export const FORMS: Record<Power, Form> = {
+export const FORMS = {
   // ----- Rage Mode: raw fury -----
   pyro: {
     power: "pyro", kind: "rage", title: "BLUE FLAME", ...RAGE_STATS,
@@ -226,6 +228,33 @@ export const FORMS: Record<Power, Form> = {
       M({ id: "psychic-maelstrom", name: "Psychic Maelstrom", kind: "burst", anim: "raise", range: 160, cd: 6.5, dmg: 16, radius: 185, kb: 300, lift: -480, wind: 0.32 }),
     ],
   },
+} as Record<Power, Form>;
+
+// ----- Nightmare Mode: the quest fighters' dark form -----
+// Darker body, a black-and-colour aura, 3 new moves, and a little of every passive.
+const NIGHTMARE = { at: 0.4, regen: 2, drain: 0.12, guard: 0.85 };
+
+FORMS.spatio = {
+  power: "spatio", kind: "nightmare", title: "COLLAPSED SPACE", ...NIGHTMARE,
+  blurb: "Space caves in around him. Cracks of nothing split the air, and his prisons crush whatever they hold.",
+  body: "hsl(250 50% 8%)", glow: "hsl(280 100% 64%)", a: "hsl(268 80% 30%)", b: "hsl(188 100% 72%)", dark: "hsl(250 60% 3%)",
+  dmg: 1.35, kb: 1.25, cd: 0.7, speed: 1.2, act: 1.2,
+  moves: [
+    M({ id: "world-severance", name: "World Severance", kind: "beam", anim: "thrust", range: 900, minRange: 60, cd: 5, dmg: 24, act: 0.3, kb: 420, wind: 0.4 }),
+    M({ id: "absolute-prison", name: "Absolute Prison", kind: "zone", anim: "raise", range: 420, cd: 9, dmg: 8, radius: 150, dur: 4, pullIn: 340, erase: true, status: "slow", statusDur: 0.6, wind: 0.36 }),
+    M({ id: "event-collapse", name: "Event Collapse", kind: "burst", anim: "slam", range: 170, cd: 7, dmg: 22, radius: 210, kb: 560, lift: -420, status: "stun", statusDur: 0.6, wind: 0.34, rec: 0.35 }),
+  ],
+};
+FORMS.hexizon = {
+  power: "hexizon", kind: "nightmare", title: "CORRUPTED SAVE", ...NIGHTMARE,
+  blurb: "His save file corrupts. The green turns to glitching black and red, blasters fill the sky and he refuses to stay down.",
+  body: "hsl(0 0% 2%)", glow: "hsl(350 100% 56%)", a: "hsl(128 100% 50%)", b: "hsl(350 100% 62%)", dark: "hsl(0 0% 0%)",
+  dmg: 1.35, kb: 1.2, cd: 0.7, speed: 1.2, act: 1.2,
+  moves: [
+    M({ id: "blaster-storm", name: "Blaster Storm", kind: "rain", anim: "raise", range: 560, cd: 6, dmg: 10, count: 6, radius: 170, wind: 0.34, rec: 0.3 }),
+    M({ id: "bad-time", name: "Bad Time", kind: "eruption", anim: "slam", range: 640, minRange: 40, cd: 6.5, dmg: 13, radius: 46, count: 6, lift: -700, status: "poison", statusDur: 2, wind: 0.36 }),
+    M({ id: "determination", name: "Determination", kind: "heal", anim: "raise", range: 2000, cd: 14, dmg: 0, heal: 30, below: 0.45, wind: 0.36 }),
+  ],
 };
 
 /** Pyro's second step: from Blue Flame into red and blue fire at once. Stronger and faster than his Rage Mode. */

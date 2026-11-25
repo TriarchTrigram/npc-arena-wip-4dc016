@@ -116,6 +116,11 @@
       "title": "Hybrids",
       "count": "{{count}} saved",
       "empty": "No hybrids yet. Fuse two fighters and the hybrid shows up here, ready to pick."
+    },
+    "quest": {
+      "title": "Quest fighters",
+      "empty": "Earn quest fighters on the Quests page. Each one is strong enough to take on a Story boss alone.",
+      "link": "See quests"
     }
   },
   "title": {
@@ -138,7 +143,8 @@
   "common": {
     "arena": "Arena",
     "fighters": "Fighters",
-    "appName": "NPC Arena"
+    "appName": "NPC Arena",
+    "quests": "Quests"
   },
   "roster": {
     "eyebrow": "The roster",
@@ -155,7 +161,8 @@
       "moves": "Moves ({{count}})",
       "hybrid": "Hybrid",
       "form": "Form",
-      "formAt": "Below {{at}}% health"
+      "formAt": "Below {{at}}% health",
+      "quest": "Quest fighter"
     },
     "forms": {
       "title": "Forms",
@@ -164,7 +171,8 @@
       "perfected": "Pyro only, after Blue Flame.",
       "awakened": "Slowly heals while fighting.",
       "mastery": "Slips some hits entirely.",
-      "mystic": "Every hit drains health back."
+      "mystic": "Every hit drains health back.",
+      "nightmare": "Quest fighters only. Darker, stronger, three new moves."
     },
     "role": {
       "attacker": "Attacker",
@@ -202,7 +210,14 @@
       "title": "No hybrids yet",
       "body": "Fuse two fighters and the hybrid joins the roster here. Hybrids you make in Story mode show up too."
     },
-    "hybridsFiltered": "No hybrids with this style yet."
+    "hybridsFiltered": "No hybrids with this style yet.",
+    "sectionQuest": "Quest fighters",
+    "questCount": "{{count}} earned",
+    "questLocked": {
+      "title": "Not earned yet",
+      "body": "Finish its quest to add {{name}} to your roster.",
+      "action": "See quests"
+    }
   },
   "story": {
     "title": "Story",
@@ -338,5 +353,64 @@
     "fuse": "Fuse and save",
     "saved": "Already in your hybrids",
     "savedNote": "{{name}} is saved. Pick it under Hybrids in the arena, or find it on the Fighters page."
+  },
+  "quests": {
+    "eyebrow": "Quests",
+    "title": "Earn new fighters",
+    "subtitle": "Every quest earns a quest fighter for good: 12 moves, its own entrance and a Nightmare Mode. Fights in any mode count, and progress is saved in this browser.",
+    "card": {
+      "number": "Quest {{n}}",
+      "claim": "Claim fighter",
+      "locked": "Finish every goal to claim",
+      "fight": "Fight as {{name}}",
+      "moves": "{{count}} moves",
+      "sealed": "This quest opens when its fighter arrives in a later update."
+    },
+    "state": {
+      "open": "In progress",
+      "ready": "Ready to claim",
+      "claimed": "Earned",
+      "sealed": "Sealed"
+    },
+    "goal": {
+      "fights": "Finish {{need}} fights in any mode",
+      "kos": "See {{need}} fighters knocked out",
+      "tournaments": "Crown a Tournament champion",
+      "bosses": "Beat a Story boss",
+      "forms": "See {{need}} forms break loose"
+    },
+    "list": {
+      "fold": {
+        "title": "A Tear in Space",
+        "reward": "Earns Parallax, Spatiokinesis",
+        "story": "Something keeps watching the arena from the other side of the air. Give it enough fights to study and it will step through."
+      },
+      "gameover": {
+        "title": "Game Over",
+        "reward": "Earns Hexizon, Indie Game Manipulation",
+        "story": "A black figure with one green eye has been glitching into the background. Prove the arena is worth playing and he'll load in."
+      },
+      "gamma": {
+        "title": "Critical Mass",
+        "reward": "Reward: a Gamma Radiation fighter",
+        "story": "Readings off the scale under the arena floor."
+      },
+      "speed": {
+        "title": "Faster Than Sound",
+        "reward": "Reward: a superspeed fighter",
+        "story": "Afterimages in the replays that nobody can explain."
+      },
+      "portal": {
+        "title": "Between Worlds",
+        "reward": "Reward: a Portal and Matter fighter",
+        "story": "A door keeps opening where no door should be."
+      }
+    },
+    "cutscene": {
+      "eyebrow": "Quest complete",
+      "joined": "{{name}} has joined your roster.",
+      "close": "Done",
+      "skip": "Skip"
+    }
   }
 }

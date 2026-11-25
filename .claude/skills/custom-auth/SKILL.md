@@ -439,3 +439,7 @@ get one. Use `~stencil/access-codes` (the `access-codes` skill): it stores the c
 one-way, mints unguessable ones, counts and slows guesses, and issues a revocable pass.
 Mint any code with `crypto.getRandomValues`, never `Math.random()`, and email a code only
 to the address already stored on the record — never to one the visitor typed.
+
+A PIN or code a signed-in app user types — a vault PIN, a code confirming a second
+address — is not sign-in either. Never hand-write its wrong-guess lockout: count each
+guess with `limitGuess` from the same module before comparing (the `access-codes` skill).

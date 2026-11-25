@@ -14,7 +14,7 @@ Everything a seller sells is a **product** in one catalog: the `seller_products`
 database, written and read through the SDK below. A product is one of two kinds, and a seller can sell both:
 
 - **One-time** — pay once (`buyProduct`, gated with `hasPurchased({ productId })`). Buyers can be guests.
-- **Recurring** — monthly or yearly (`subscribeToProduct`, gated with `hasActiveSubscription`).
+- **Recurring** — every month, 3 months, 6 months or year (`subscribeToProduct`, gated with `hasActiveSubscription`).
   **Buyers must be signed in**; see "Seller subscriptions" below.
 
 Creating a product is one row in the app's database — nothing is created in Stripe until someone buys.
@@ -108,7 +108,7 @@ The catalog (both kinds of product):
 
 | Function | What it does |
 |---|---|
-| `createProduct(request, context, { name, description?, kind, amountCents, interval?, position? })` | The signed-in seller adds a product. `kind` is `"one_time"` or `"recurring"`; `interval` (`"month"` \| `"year"`) is required for recurring and not allowed for one-time. Needs `getSellerStatus()` `active`. Returns `{ ok: true, product }` or `{ ok: false, code, error }`. |
+| `createProduct(request, context, { name, description?, kind, amountCents, interval?, position? })` | The signed-in seller adds a product. `kind` is `"one_time"` or `"recurring"`; `interval` (`"month"` \| `"quarter"` \| `"half_year"` \| `"year"`; a quarter is every 3 months, a half year every 6) is required for recurring and not allowed for one-time. Needs `getSellerStatus()` `active`. Returns `{ ok: true, product }` or `{ ok: false, code, error }`. |
 | `updateProduct(request, context, { productId, name?, description?, amountCents?, position? })` | Edits one of the seller's own products. `kind` and `interval` never change. Same result shape. |
 | `archiveProduct(request, context, { productId })` | Retires a product: no new buyers, everyone who bought or subscribes keeps access. Products are never deleted. |
 | `listProducts(request, context, { sellerUserId?, includeArchived? })` | A seller's products in `position` order. Pass `sellerUserId` on a public storefront; omit it for the signed-in seller's own. |
@@ -448,7 +448,7 @@ for (const inst of due) {
 
 ## Seller subscriptions — recurring products a seller sells
 
-A seller can sell their own recurring products (a monthly coaching membership, a yearly class pass). They
+A seller can sell their own recurring products (a monthly coaching membership, a quarterly box, a yearly class pass). They
 are ordinary catalog rows with `kind: "recurring"`, made with `createProduct` and listed with
 `listProducts` like any other product. The seller onboarding, eligibility, country and live-money rules
 above all still apply. These functions, also in `~stencil/payments/selling`:
@@ -532,12 +532,13 @@ The rules:
 - **Only for an `active` seller.** Show the create/edit/archive screen only when `getSellerStatus()` is
   `active`; otherwise send the seller to finish onboarding. Show a rejected write's `error` next to the
   form (`below_minimum`, `name_taken`, `interval_invalid`, `seller_not_ready`, …).
-- **One page for both kinds.** A kind picker (one-time / monthly / yearly) on the create form; the list
-  shows each product's kind and price, with edit and archive. Archive, never delete — past buyers and
+- **One page for both kinds.** A kind picker (one-time / every month / every 3 months / every 6 months /
+  every year) on the create form; the list shows each product's kind and price, with edit and archive.
+  Show `quarter` as "every 3 months" and `half_year` as "every 6 months", never the stored value. Archive, never delete — past buyers and
   current subscribers keep their access.
 - **What a seller can change.** Name, description, price and order. A new price applies to **new buyers
   only**; current subscribers keep the price they signed up at. Kind and interval never change — to go
-  from monthly to yearly, archive the product and create a new one. Say both in the editor. Product names
+  from one interval to another, archive the product and create a new one. Say both in the editor. Product names
   are unique among a seller's active products (`name_taken`). Everything is USD, $5 minimum.
 - **Never write to `seller_products` with raw SQL.** Go through `createProduct` / `updateProduct` /
   `archiveProduct`, which check the seller, the kind and the price.

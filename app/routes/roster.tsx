@@ -14,7 +14,9 @@ import {
   EmptyState,
 } from "~/components/design";
 import { cn } from "~/lib/utils";
-import { FIGHTERS, defOf, type FighterDef, type Role } from "~/lib/fighters";
+import { FIGHTERS, QUESTERS, defOf, type FighterDef, type Role } from "~/lib/fighters";
+import { QUESTS, unlockedOf, useQuests } from "~/lib/quests";
+import { FighterPortrait } from "~/components/quest-scenes";
 import { FORMS, FORM_NAME, PERFECTED_FLAME, formsOf, type Form, type FormKind } from "~/lib/forms";
 import { useHybrids } from "~/lib/hybrids";
 import { FusionSheet, HybridParents } from "~/components/fusion-sheet";
@@ -53,11 +55,16 @@ function TopBar() {
           <Text id="common.fighters" />
         </Link>
       </Button>
+      <Button asChild variant="ghost" size="sm">
+        <Link to="/quests">
+          <Text id="common.quests" />
+        </Link>
+      </Button>
     </nav>
   );
 }
 
-function FighterCard({ fighter, index }: { fighter: Fighter; index: number | null }) {
+function FighterCard({ fighter, index, quest = false }: { fighter: Fighter; index: number | null; quest?: boolean }) {
   const hybrid = !!fighter.parents;
   return (
     <Panel className="h-full">
@@ -71,7 +78,9 @@ function FighterCard({ fighter, index }: { fighter: Fighter; index: number | nul
             {fighter.name.charAt(0)}
           </div>
           <div className="min-w-0 flex-1">
-            {index == null ? (
+            {quest ? (
+              <Text id="roster.card.quest" className="text-xs uppercase tracking-widest text-muted-foreground" />
+            ) : index == null ? (
               <Text id="roster.card.hybrid" className="text-xs uppercase tracking-widest text-muted-foreground" />
             ) : (
               <Text
@@ -118,6 +127,7 @@ const FORM_TONE: Record<FormKind, "neutral" | "info" | "success" | "warning" | "
   awakened: "warning",
   mastery: "info",
   mystic: "success",
+  nightmare: "danger",
 };
 
 /** A fighter's form: its mode, its own name, what it does and the moves it adds. */
@@ -146,7 +156,7 @@ function FormBlock({ form }: { form: Form }) {
   );
 }
 
-const FORM_GROUPS: FormKind[] = ["rage", "awakened", "mastery", "mystic", "perfected"];
+const FORM_GROUPS: FormKind[] = ["rage", "awakened", "mastery", "mystic", "perfected", "nightmare"];
 
 /** Who has which form, at a glance. */
 function FormsOverview() {
@@ -154,9 +164,9 @@ function FormsOverview() {
     <section className="mt-8" data-forms-overview>
       <SectionHeading title={<Text id="roster.forms.title" />} />
       <Text id="roster.forms.subtitle" as="p" className="-mt-2 mb-6 max-w-prose text-foreground-secondary" />
-      <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {FORM_GROUPS.map((kind) => {
-          const members = kind === "perfected" ? [PERFECTED_FLAME] : FIGHTERS.map((f) => FORMS[f.id]).filter((fm) => fm.kind === kind);
+          const members = kind === "perfected" ? [PERFECTED_FLAME] : [...FIGHTERS, ...QUESTERS].map((f) => FORMS[f.id]).filter((fm) => fm.kind === kind);
           return (
             <li key={kind}>
               <Panel className="h-full">
@@ -167,7 +177,7 @@ function FormsOverview() {
                     {members.map((fm) => (
                       <li key={fm.power + fm.kind} className="flex items-center gap-2 text-sm">
                         <span aria-hidden="true" className="size-3 shrink-0 rounded-full border-2 border-foreground" style={{ background: kind === "perfected" ? `linear-gradient(90deg, ${fm.a} 50%, ${fm.b} 50%)` : fm.a }} />
-                        <span className="font-semibold text-foreground">{FIGHTERS.find((f) => f.id === fm.power)?.name}</span>
+                        <span className="font-semibold text-foreground">{[...FIGHTERS, ...QUESTERS].find((f) => f.id === fm.power)?.name}</span>
                         <span className="ml-auto truncate text-xs text-muted-foreground">{fm.title}</span>
                       </li>
                     ))}
@@ -188,6 +198,7 @@ export default function Roster() {
   const hybridKeys = useHybrids();
   const hybrids = hybridKeys.map(defOf);
   const shownHybrids = hybrids.filter((f) => role === "all" || f.role === role);
+  const earned = unlockedOf(useQuests());
 
   return (
     <PageContainer>
@@ -252,6 +263,37 @@ export default function Roster() {
           </ul>
         )}
       </div>
+
+      <section className="mt-12" data-roster-questers>
+        <SectionHeading
+          title={<Text id="roster.sectionQuest" />}
+          action={<Text id="roster.questCount" vars={{ count: earned.length }} className="text-sm text-muted-foreground tabular-nums" />}
+        />
+        <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {QUESTERS.map((q) => (
+            <li key={q.id}>
+              {earned.includes(q.id) ? (
+                <FighterCard fighter={q} index={null} quest />
+              ) : (
+                <Panel className="h-full overflow-hidden">
+                  <div className="border-b-2 border-border-subtle bg-[hsl(250_32%_10%)]">
+                    <FighterPortrait def={q} locked />
+                  </div>
+                  <PanelBody className="flex flex-col gap-3">
+                    <Text id="roster.card.quest" className="text-xs uppercase tracking-widest text-muted-foreground" />
+                    <Text id="roster.questLocked.title" as="h3" className="font-display text-xl text-foreground" />
+                    <Text id="roster.questLocked.body" vars={{ name: q.name }} as="p" className="text-sm text-foreground-secondary" />
+                    <Text id={`quests.list.${QUESTS.find((x) => x.reward === q.id)?.id ?? "fold"}.title` as StringKey} as="p" className="text-sm font-semibold text-foreground" />
+                    <Button asChild variant="outline" size="sm" className="self-start">
+                      <Link to="/quests"><Text id="roster.questLocked.action" /></Link>
+                    </Button>
+                  </PanelBody>
+                </Panel>
+              )}
+            </li>
+          ))}
+        </ul>
+      </section>
 
       <section className="mt-12" data-roster-hybrids>
         <SectionHeading

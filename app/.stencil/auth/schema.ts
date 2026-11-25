@@ -27,6 +27,17 @@ export const releasedSubdomain = sqliteTable("released_subdomain", {
   releasedAt: integer("released_at", { mode: "timestamp" }).notNull(),
 });
 
+/** Install branding an app stored for the app user who holds a subdomain. */
+export const tenantBranding = sqliteTable("tenant_branding", {
+  userId: text("user_id").primaryKey(),
+  name: text("name").notNull(),
+  shortName: text("short_name").notNull(),
+  iconPath: text("icon_path"),
+  themeColor: text("theme_color"),
+  startPath: text("start_path"),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
 export const session = sqliteTable("session", {
   id: text("id").primaryKey(),
   expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),

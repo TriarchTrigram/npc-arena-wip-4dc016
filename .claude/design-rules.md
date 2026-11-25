@@ -121,6 +121,16 @@ The app's look already belongs to someone. Highest first:
 
 - Mobile-first and responsive: every grid or multi-column layout carries `sm:`/`md:`/`lg:`
   variants; no sideways scrolling on a phone.
+- A navigation label is shown whole or cut after two lines with an ellipsis: never clipped
+  by its slot, never a fixed width, never pushing the page sideways. Size each slot for the
+  longest of the app's languages. A top bar entry stays on one line (`whitespace-nowrap`)
+  and is never truncated: when the app name, the entries and the user menu do not fit one
+  row at 768px, the shell is a sidebar. A sidebar or menu drawer entry wraps to a second
+  line and ends in an ellipsis after two (`line-clamp-2 wrap-anywhere hyphens-auto` on the
+  label, in a `min-w-0` box); its row grows with the label, never a fixed height, and the
+  icon stays beside the first line. A phone bottom-bar tab follows `phone-app-shell`. A
+  label that can be cut carries its full text as the link's `title`. A turn that adds or
+  renames a nav entry, or adds a language, checks every entry of the shell against this.
 - Use <Sheet> panels for forms, detail views and edit flows — never <Dialog> for those. Reserve <Dialog> for brief destructive confirmations. Import SheetBody from ~/components/ui/sheet and always use it inside SheetContent.
 - Never hide a control behind hover. Every button, link and row action is visible at rest on every screen size: `opacity-0 group-hover:opacity-100` is unreachable on a touch
   screen, and a `:hover` rule that changes what a row shows costs an iPhone a wasted first

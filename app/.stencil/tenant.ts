@@ -16,10 +16,11 @@ import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import * as authSchema from "./auth/schema";
 import type { AuthUser } from "./types/auth";
-import type { Tenant } from "./types/tenant";
+import type { Tenant, TenantBranding } from "./types/tenant";
 import { memoPerRequest, requestMemo } from "./request-context";
+import { FILES_ROUTE, createStorage, keyFromStoredFileRef } from "./storage";
 
-export type { Tenant } from "./types/tenant";
+export type { Tenant, TenantBranding } from "./types/tenant";
 
 /** The subdomain the request arrived on. */
 const TENANT_HEADER = "x-stencil-tenant";
@@ -31,8 +32,8 @@ const TENANT_MISS_HEADER = "x-stencil-tenant-miss";
 let ensured = false;
 
 /**
- * Add the user columns and the released-word table that apps provisioned
- * before them lack. Runs once per isolate; a duplicate column is what an
+ * Add the user columns and the released-word and branding tables that apps
+ * provisioned before them lack. Runs once per isolate; a duplicate column is what an
  * already-migrated app looks like, so it is the expected path, not an error.
  */
 export async function ensureTenantSchema(env: Env): Promise<void> {
@@ -50,6 +51,9 @@ export async function ensureTenantSchema(env: Env): Promise<void> {
     ),
     env.DB.prepare(
       "CREATE TABLE IF NOT EXISTS `released_subdomain` (`subdomain` text PRIMARY KEY NOT NULL, `user_id` text, `released_at` integer NOT NULL);",
+    ),
+    env.DB.prepare(
+      "CREATE TABLE IF NOT EXISTS `tenant_branding` (`user_id` text PRIMARY KEY NOT NULL, `name` text NOT NULL, `short_name` text NOT NULL, `icon_path` text, `theme_color` text, `start_path` text, `updated_at` integer NOT NULL);",
     ),
   ]);
   ensured = true;
@@ -275,4 +279,74 @@ export async function setSubdomain(
       .delete(authSchema.releasedSubdomain)
       .where(eq(authSchema.releasedSubdomain.subdomain, subdomain));
   return { ok: true };
+}
+
+/** Whether the branding was saved, and why not when it was not. */
+export type TenantBrandingResult = { ok: true } | { ok: false; reason: string };
+
+const THEME_COLOR_RE = /^#[0-9a-f]{6}$/;
+// One leading slash only: "//host" and "/\host" are other sites to a browser.
+const START_PATH_RE = /^\/(?![/\\])\S{0,499}$/;
+
+/**
+ * Save what a phone shows when someone installs `userId`'s own address (name,
+ * icon, colour, start page), or clear it with `null`. Only `name` is required;
+ * a field left out keeps the app's own value.
+ *
+ * Takes the app user id rather than reading the session, so the caller owns the
+ * authorization decision: call it from the app's own route, behind its own check.
+ */
+export async function setTenantBranding(
+  env: Env,
+  userId: string,
+  branding: TenantBranding | null,
+): Promise<TenantBrandingResult> {
+  await ensureTenantSchema(env);
+  const db = drizzle(env.DB, { schema: authSchema });
+  if (!branding) {
+    await db.delete(authSchema.tenantBranding).where(eq(authSchema.tenantBranding.userId, userId));
+    return { ok: true };
+  }
+
+  const name = branding.name.trim();
+  if (name.length < 1 || name.length > 60) return { ok: false, reason: "The name must be 1 to 60 characters." };
+  const shortName = branding.shortName?.trim() || name.slice(0, 12).trim();
+  if (shortName.length > 12) return { ok: false, reason: "The short name must be 1 to 12 characters." };
+  const themeColor = branding.themeColor?.trim().toLowerCase() || null;
+  if (themeColor && !THEME_COLOR_RE.test(themeColor))
+    return { ok: false, reason: "The colour must look like #1a2b3c." };
+  const startPath = branding.startPath?.trim() || null;
+  if (startPath && !START_PATH_RE.test(startPath))
+    return { ok: false, reason: "The start page must be a path on this app, such as /home." };
+
+  let iconPath: string | null = null;
+  if (branding.iconPath?.trim()) {
+    const key = keyFromStoredFileRef(branding.iconPath);
+    const segments = key?.split("/") ?? [];
+    const stored = key && !segments.includes("..") ? await createStorage(env).head(key) : null;
+    if (!stored) return { ok: false, reason: "The icon must be a file uploaded to this app." };
+    iconPath = FILES_ROUTE + segments.map(encodeURIComponent).join("/");
+  }
+
+  const values = { name, shortName, iconPath, themeColor, startPath, updatedAt: new Date() };
+  await db
+    .insert(authSchema.tenantBranding)
+    .values({ userId, ...values })
+    .onConflictDoUpdate({ target: authSchema.tenantBranding.userId, set: values });
+  return { ok: true };
+}
+
+/** The install branding of the app user whose subdomain this request arrived on, or null. */
+export async function getTenantBranding(request: Request, env: Env): Promise<TenantBranding | null> {
+  const tenant = await getTenant(request, env);
+  if (!tenant) return null;
+  const db = drizzle(env.DB, { schema: authSchema });
+  const [row] = await db
+    .select()
+    .from(authSchema.tenantBranding)
+    .where(eq(authSchema.tenantBranding.userId, tenant.user.id))
+    .limit(1);
+  if (!row) return null;
+  const { name, shortName, iconPath, themeColor, startPath } = row;
+  return { name, shortName, iconPath, themeColor, startPath };
 }

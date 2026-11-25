@@ -62,6 +62,18 @@ export type AccessCheck =
   | { ok: false; reason: "wrong" }
   | { ok: false; reason: "too_many"; retryAfterSeconds: number };
 
+export interface LimitGuessOptions {
+  /** The thing being guessed, never the guesser's own row or account: `"vault-pin:" + sectionId`,
+   *  `"email-link:" + address`. Everyone guessing at it shares one budget. */
+  key: string;
+  /** Guesses allowed in one window. */
+  max: number;
+  /** Seconds until a full budget returns. Defaults to 15 minutes. */
+  windowSeconds?: number;
+}
+
+export type GuessLimit = { ok: true } | { ok: false; reason: "too_many"; retryAfterSeconds: number };
+
 interface CodeRow {
   id: string;
   subject: string;
@@ -224,7 +236,7 @@ export async function mintAccessCode(env: Env, options: MintAccessCodeOptions): 
 /** Count one guess against `scope` in one statement, so concurrent guesses are all
  *  counted and none slips through while another is being judged. Returns the seconds
  *  until the window reopens, or 0 when this guess may proceed. */
-async function countGuess(env: Env, scope: string, max: number): Promise<number> {
+async function countGuess(env: Env, scope: string, max: number, windowSeconds = WINDOW_SECONDS): Promise<number> {
   const now = nowSeconds();
   const row = await env.DB.prepare(
     "INSERT INTO `stencil_access_attempt` (`scope`, `guesses`, `window_start`) VALUES (?, 1, ?) " +
@@ -233,10 +245,29 @@ async function countGuess(env: Env, scope: string, max: number): Promise<number>
       "`window_start` = CASE WHEN `window_start` <= ? THEN excluded.`window_start` ELSE `window_start` END " +
       "RETURNING `guesses`, `window_start`",
   )
-    .bind(scope, now, now - WINDOW_SECONDS, now - WINDOW_SECONDS)
+    .bind(scope, now, now - windowSeconds, now - windowSeconds)
     .first<{ guesses: number; window_start: number }>();
   if (!row || row.guesses <= max) return 0;
-  return Math.max(1, row.window_start + WINDOW_SECONDS - now);
+  return Math.max(1, row.window_start + windowSeconds - now);
+}
+
+/** Count one guess at a secret the app compares itself (a PIN, an emailed code), before the
+ *  compare. Concurrent guesses are all counted, and the count lives outside the app's own
+ *  rows, so a new code, a re-added row or a closed account never restores the budget. */
+export async function limitGuess(env: Env, options: LimitGuessOptions): Promise<GuessLimit> {
+  if (!options.key) throw new Error("limitGuess needs a key.");
+  await ensureTables(env);
+  const windowSeconds = options.windowSeconds ?? WINDOW_SECONDS;
+  const retryAfterSeconds = await countGuess(env, `guess:${options.key}`, options.max, windowSeconds);
+  return retryAfterSeconds > 0 ? { ok: false, reason: "too_many", retryAfterSeconds } : { ok: true };
+}
+
+/** Uncount the guess `limitGuess` just counted under `key`, once it proved right, so correct
+ *  entries never lock anyone out. Wrong guesses before it stay counted. */
+export async function forgiveGuess(env: Env, key: string): Promise<void> {
+  await env.DB.prepare("UPDATE `stencil_access_attempt` SET `guesses` = `guesses` - 1 WHERE `scope` = ? AND `guesses` > 0")
+    .bind(`guess:${key}`)
+    .run();
 }
 
 function callerKey(request: Request): string {

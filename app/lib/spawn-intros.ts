@@ -827,6 +827,165 @@ export const INTROS: Record<Power, IntroSpec> = {
       ctx.restore();
     },
   },
+  // ----- quest fighters -----
+  // Parallax: a thin cut opens in the air, peels wide into a pane of open space, he steps out unfolding,
+  // and the pane folds shut behind him into a spinning cube that snaps away.
+  spatio: {
+    len: 1.9, hit: 0.5, shake: 9, wave: ["hsl(188 100% 70%)", "hsl(250 70% 50%)"],
+    body: (u, s) => base(u < 0.5 ? "guard" : settle(u, "flex", 0.7), {
+      alpha: seg(u, 0.3, 0.46),
+      sx: 0.1 + 0.9 * easeOut(seg(u, 0.32, 0.55)),
+      dy: -(1 - easeOut(seg(u, 0.3, 0.55))) * 30 * s,
+      solid: "hsl(188 100% 82%)", solidA: 1 - seg(u, 0.5, 0.8),
+    }),
+    bursts: [
+      { at: 0.08, n: 14, spd: 180, shape: "shard", a: "hsl(188 100% 70%)", b: "hsl(0 0% 100%)", grav: 0, add: true, from: "body", dir: "out" },
+      { at: 0.5, n: 36, spd: 520, shape: "shard", a: "hsl(250 70% 60%)", b: "hsl(188 100% 80%)", grav: 0, add: true, from: "body", dir: "out" },
+      { at: 0.5, n: 14, spd: 300, shape: "ring", a: "hsl(188 100% 70%)", b: "hsl(270 90% 74%)", grav: 0, add: true, from: "feet", dir: "flat" },
+    ],
+    trickle: { rate: 40, until: 0.45, spd: 0, shape: "spark", a: "hsl(188 100% 76%)", b: "hsl(260 90% 76%)", grav: 0, add: true, from: "body", dir: "in", spread: 120, life: 0.6 },
+    back: ({ ctx, x, y, s, u, t }) => {
+      const cy = y - 55 * s;
+      // the cut, then the pane peeling open
+      const cut = easeOut(seg(u, 0, 0.18));
+      const open = easeOut(seg(u, 0.16, 0.42)) * (1 - easeInOut(seg(u, 0.6, 0.82)));
+      if (cut <= 0) return;
+      const h = 150 * s * cut;
+      const w = 4 * s + 70 * s * open;
+      ctx.save();
+      ctx.fillStyle = "hsl(245 60% 5% / 0.92)";
+      ctx.beginPath();
+      ctx.moveTo(x, cy - h * 0.6);
+      ctx.lineTo(x + w, cy - h * 0.3);
+      ctx.lineTo(x + w * 0.8, cy + h * 0.5);
+      ctx.lineTo(x, cy + h * 0.6);
+      ctx.lineTo(x - w, cy + h * 0.3);
+      ctx.lineTo(x - w * 0.8, cy - h * 0.5);
+      ctx.closePath();
+      ctx.fill();
+      // stars seen through the opening
+      for (let i = 0; i < 18; i++) {
+        const sx = x + wob(i * 1.3) * w * 0.8, sy = cy + wob(i * 2.9 + 4) * h * 0.45;
+        ctx.fillStyle = hsla(i % 3 ? 188 : 280, 100, 85, open * (0.5 + 0.5 * Math.abs(Math.sin(t * 4 + i))));
+        ctx.fillRect(sx, sy, 2 * s, 2 * s);
+      }
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = hsla(188, 100, 72, 0.9 * (open + 0.3 * cut));
+      ctx.lineWidth = 2.5 * s;
+      ctx.stroke();
+      // the pane folding shut into a cube that spins off upward
+      const fold = seg(u, 0.78, 1);
+      if (fold > 0 && fold < 1) {
+        const cs = 16 * s * (1 - fold), cx2 = x, cyy = cy - 60 * s * easeIn(fold);
+        ctx.strokeStyle = hsla(188, 100, 75, 1 - fold);
+        ctx.lineWidth = 2 * s;
+        ctx.strokeRect(cx2 - cs, cyy - cs, cs * 2, cs * 2);
+        ctx.strokeRect(cx2 - cs * 0.5 + cs * 0.4 * Math.sin(t * 9), cyy - cs * 1.4, cs * 2, cs * 2);
+      }
+      ctx.restore();
+    },
+    front: ({ ctx, x, y, s, u }) => {
+      // a flash of a second cut across the first, the moment space gives way
+      const k = seg(u, 0.44, 0.58);
+      if (k <= 0 || k >= 1) return;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = hsla(0, 0, 100, 1 - k);
+      ctx.lineWidth = 3 * s * (1 - k);
+      ctx.beginPath();
+      ctx.moveTo(x - 120 * s * k - 20 * s, y - 120 * s);
+      ctx.lineTo(x + 120 * s * k + 20 * s, y + 4 * s);
+      ctx.stroke();
+      ctx.restore();
+    },
+  },
+
+  // Hexizon: the screen glitches green, a skull blaster opens its jaw in the sky and fires straight down,
+  // and he drops out of the beam in a burst of pixels, staff first, his flare eye lighting last.
+  hexizon: {
+    len: 1.9, hit: 0.56, shake: 11, wave: ["hsl(128 100% 55%)", "hsl(150 30% 6%)"],
+    body: (u, s) => base(u < 0.5 ? "air" : settle(u, "land", 0.7), {
+      alpha: u < 0.36 ? 0 : Math.floor(u * 60) % 3 === 0 && u < 0.56 ? 0.3 : 1,
+      dy: u < 0.56 ? -(1 - easeIn(seg(u, 0.36, 0.56))) * 230 * s : 0,
+      solid: "hsl(128 100% 60%)", solidA: 1 - seg(u, 0.56, 0.86),
+    }),
+    bursts: [
+      { at: 0.1, n: 18, spd: 260, shape: "pixel", a: "hsl(128 100% 55%)", b: "hsl(0 0% 100%)", grav: 0, add: true, from: "sky", dir: "out" },
+      { at: 0.56, n: 40, spd: 560, shape: "pixel", a: "hsl(128 100% 55%)", b: "hsl(150 30% 8%)", grav: 400, add: false, from: "feet", dir: "up" },
+      { at: 0.56, n: 16, spd: 360, shape: "dust", a: "hsl(45 25% 85%)", b: "hsl(128 100% 60%)", grav: -20, add: false, from: "feet", dir: "flat" },
+    ],
+    trickle: { rate: 50, until: 0.56, spd: 160, shape: "pixel", a: "hsl(128 100% 55%)", b: "hsl(0 0% 100%)", grav: 600, add: true, from: "sky", dir: "out", spread: 40 },
+    back: ({ ctx, x, ground, s, u, t }) => {
+      const top = ground - 330 * s;
+      const skull = easeOut(seg(u, 0.08, 0.3)) * (1 - seg(u, 0.62, 0.8));
+      const beam = seg(u, 0.3, 0.36) * (1 - seg(u, 0.56, 0.7));
+      ctx.save();
+      // glitch bars across the arena
+      if (u < 0.6) {
+        for (let i = 0; i < 5; i++) {
+          if (Math.floor(t * 20 + i * 3) % 4) continue;
+          ctx.fillStyle = hsla(128, 100, 50, 0.18);
+          ctx.fillRect(x - 300 * s, top + wob(i + Math.floor(t * 20)) * 160 * s + 160 * s, 600 * s, 6 * s);
+        }
+      }
+      // the beam
+      if (beam > 0) {
+        ctx.globalCompositeOperation = "lighter";
+        const bw = 34 * s * beam * (1 + 0.1 * Math.sin(t * 50));
+        const g = ctx.createLinearGradient(x - bw, 0, x + bw, 0);
+        g.addColorStop(0, hsla(190, 100, 70, 0));
+        g.addColorStop(0.3, hsla(190, 100, 80, 0.8));
+        g.addColorStop(0.5, hsla(0, 0, 100, 1));
+        g.addColorStop(0.7, hsla(190, 100, 80, 0.8));
+        g.addColorStop(1, hsla(190, 100, 70, 0));
+        ctx.fillStyle = g;
+        ctx.fillRect(x - bw, top + 20 * s, bw * 2, ground - top - 20 * s);
+        ctx.globalCompositeOperation = "source-over";
+      }
+      // the skull blaster: long horse-like skull, jaw dropping open before it fires
+      if (skull > 0.01) {
+        const jaw = easeOut(seg(u, 0.22, 0.32)) * 14 * s;
+        ctx.globalAlpha = skull;
+        ctx.translate(x, top);
+        ctx.scale(skull * s, skull * s);
+        ctx.fillStyle = "hsl(45 25% 92%)";
+        ctx.strokeStyle = "hsl(150 30% 6%)";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(-26, -30); ctx.quadraticCurveTo(0, -46, 26, -30); ctx.lineTo(18, 6); ctx.lineTo(-18, 6); ctx.closePath();
+        ctx.fill(); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(-16, 6 + jaw / s); ctx.lineTo(16, 6 + jaw / s); ctx.lineTo(10, 22 + jaw / s); ctx.lineTo(-10, 22 + jaw / s); ctx.closePath();
+        ctx.fill(); ctx.stroke();
+        // eye sockets, one lit green
+        ctx.fillStyle = "hsl(150 30% 6%)";
+        ctx.beginPath(); ctx.ellipse(-11, -16, 7, 9, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(11, -16, 7, 9, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "hsl(128 100% 60%)";
+        ctx.beginPath(); ctx.arc(11, -16, 3 + Math.sin(t * 20), 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    },
+    front: ({ ctx, x, y, s, u, t }) => {
+      // the flare eye igniting once he has landed
+      const k = seg(u, 0.72, 0.9);
+      if (k <= 0 || k >= 1) return;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      glow(ctx, x, y - 115 * s, 40 * s * k, 40 * s * k, hsla(128, 100, 60, 0.8 * (1 - k)), hsla(128, 100, 50, 0));
+      ctx.strokeStyle = hsla(128, 100, 70, 1 - k);
+      ctx.lineWidth = 2 * s;
+      for (let i = 0; i < 6; i++) {
+        const an = (i / 6) * Math.PI * 2 + t;
+        ctx.beginPath();
+        ctx.moveTo(x + Math.cos(an) * 10 * s, y - 115 * s + Math.sin(an) * 10 * s);
+        ctx.lineTo(x + Math.cos(an) * (10 + 40 * k) * s, y - 115 * s + Math.sin(an) * (10 + 40 * k) * s);
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+  },
+
 };
 
 // ---------- the 7 Story bosses ----------

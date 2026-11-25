@@ -142,6 +142,41 @@ const share = tenantUrl(request, tenant, `/gallery/${gallery.id}`);
 Email itself is unchanged: the sender and the From name stay the app's. Only the
 links inside change.
 
+## Install branding per app user
+
+A phone that saves an app user's address to its home screen can show that app user's
+own name, icon, colour and start page instead of the app's. The app stores them with
+`setTenantBranding`; Stencil reads them back on that subdomain and falls back to the
+app's own values for any field left out, and everywhere else.
+
+1. The icon is an upload: the existing upload field and file route (the `storage`
+   skill), a square picture, kept as its key or `/api/files/<key>` address. The file
+   route must serve it to a visitor with no session, or the phone gets no icon.
+2. The app's own settings route saves it, behind the app's own authorization (the app
+   user editing their own space, or an admin). The pack has no write endpoint.
+
+   ```ts
+   import { setTenantBranding } from "~stencil/tenant";
+
+   const result = await setTenantBranding(env, user.id, {
+     name: "Soft Business Club",       // 1 to 60 characters, required
+     shortName: "SBC",                 // optional, up to 12, under the icon
+     iconPath: "/api/files/icons/sbc.png",
+     themeColor: "#aa3366",            // optional, #rrggbb
+     startPath: "/home",               // optional, a path on their address
+   });
+   if (!result.ok) return { error: result.reason };
+   ```
+
+   `setTenantBranding(env, userId, null)` clears it. `getTenantBranding(request, env)`
+   reads it for the current subdomain, to prefill the form.
+3. Tell the app builder what phones show: the icon on every phone at once; the name,
+   colour and start page once the app is installable (More → Settings → Mobile app).
+   Someone who already saved the address removes it and adds it again to see a change.
+
+Never write the `tenant_branding` table directly, and never build a per-subdomain
+manifest, icon route or service worker in the app: the platform serves those.
+
 ## Login
 
 One login covers the domain and every address under it — the session cookie is

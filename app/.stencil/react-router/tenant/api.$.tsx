@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { getSession } from "../../auth/server";
-import { checkSubdomain, setSubdomain, tenantUrl } from "../../tenant";
+import { checkSubdomain, getTenantBranding, setSubdomain, tenantUrl } from "../../tenant";
 
 /**
  * `/api/subdomain/*` — what `<SubdomainField />` talks to. Fetch endpoints, so a
@@ -17,6 +17,13 @@ import { checkSubdomain, setSubdomain, tenantUrl } from "../../tenant";
  */
 export async function loader({ request, context, params }: LoaderFunctionArgs) {
   const env = context.cloudflare.env;
+  // Public on purpose: it answers only what a phone installing this subdomain
+  // shows anyway, and Stencil reads it without a session.
+  if (params["*"] === "branding") {
+    const branding = await getTenantBranding(request, env);
+    if (!branding) throw new Response("Not found", { status: 404 });
+    return Response.json(branding);
+  }
   if (params["*"] !== "check") throw new Response("Not found", { status: 404 });
 
   const session = await getSession(request, env);

@@ -119,6 +119,11 @@ export interface GrantAccessInput {
    * signup would. An existing account keeps its own value.
    */
   signupAttribution?: string;
+  /**
+   * Create a new account with its email already verified (default false), for an
+   * address another system verified before the move. An existing account keeps its own value.
+   */
+  emailVerified?: boolean;
 }
 
 export interface GrantAccessResult {
@@ -184,7 +189,9 @@ export async function grantAccess(
       // `isPlatformGrant(ctx)` reads its header. The helper only takes the base `AuthContext`.
       const endpoint = { context: authContext as unknown as AuthContext, request };
       row = await runWithEndpointContext(endpoint, () =>
-        authContext.internalAdapter.createUser(newAccountData(email, name, input.signupAttribution)),
+        authContext.internalAdapter.createUser(
+          newAccountData(email, name, input.signupAttribution, input.emailVerified),
+        ),
       );
       outcome = "created";
     } catch (err) {

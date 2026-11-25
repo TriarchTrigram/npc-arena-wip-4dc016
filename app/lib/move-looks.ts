@@ -204,6 +204,47 @@ const FORM_LOOKS: Record<string, Look> = {
   "twin-dragon-flame": F("fireball", "hsl(2 95% 54%)", "hsl(214 100% 64%)", "ember", true, -140, "flare"),
   "crimson-azure-nova": F("sun-flare", "hsl(2 95% 54%)", "hsl(214 100% 64%)", "ember", true, -200, "starburst"),
 };
+// ---------- quest fighters ----------
+// Parallax (space) and Hexizon (indie games). Their signature moves have hand-drawn looks of their own
+// (Spatial Cut, Spatial Prison, Gaster Blaster, Bone Barrage, Bone Zone, Jumbo Roundabout, Blaster Storm);
+// the rest borrow a signature (`sig`) drawn in their own colours, like the form moves.
+Object.assign(LOOKS, {
+  "spatial-cut": L("hsl(245 70% 8%)", "hsl(188 100% 74%)", "shard", true, 0, "slash"),
+  "spatial-prison": L("hsl(250 60% 30%)", "hsl(188 100% 74%)", "shard", true, 0),
+  "gaster-blaster": L("hsl(190 100% 70%)", "hsl(0 0% 100%)", "pixel", true, 0, "starburst"),
+  "bone-barrage": L("hsl(45 25% 88%)", "hsl(128 100% 60%)", "dust", false, 200, "crater"),
+  "bone-zone": L("hsl(45 25% 88%)", "hsl(128 100% 60%)", "dust", false, 600, "crater"),
+  "jumbo-roundabout": L("hsl(330 90% 62%)", "hsl(50 100% 70%)", "star", true, 0, "starburst"),
+  "blaster-storm": L("hsl(350 100% 60%)", "hsl(0 0% 100%)", "pixel", true, 0, "starburst", "sky", 1.1),
+} satisfies Record<string, Look>);
+const QUEST_LOOKS: Record<string, Look> = {
+  // Parallax
+  "fold-palm": F("mind-jab", "hsl(234 60% 40%)", "hsl(188 100% 76%)", "ring", true, 0, "ripple"),
+  "rend-reach": F("blade-arm", "hsl(245 70% 14%)", "hsl(188 100% 76%)", "shard", true, 0, "slash"),
+  "space-fold": F("warp-kick", "hsl(250 70% 40%)", "hsl(188 100% 80%)", "shard", true, 0, "portal"),
+  "pocket-pull": F("gravity-pull", "hsl(240 60% 30%)", "hsl(188 100% 74%)", "ring", true, 0, "implode"),
+  "repulse-plane": F("rift-burst", "hsl(230 60% 40%)", "hsl(188 100% 82%)", "shard", true, 200, "ripple"),
+  "lattice-shards": F("shard-storm", "hsl(220 60% 60%)", "hsl(188 100% 88%)", "shard", true, 0, "shatter"),
+  "compression": F("psychic-lift", "hsl(248 60% 34%)", "hsl(188 100% 78%)", "ring", true, 0, "implode"),
+  "fracture-rain": F("light-lances", "hsl(240 60% 50%)", "hsl(188 100% 86%)", "shard", true, 200, "shatter"),
+  "distance-zero": F("blink-barrage", "hsl(250 70% 50%)", "hsl(188 100% 80%)", "shard", true, 0, "portal"),
+  "rift-disc": F("phase-shot", "hsl(255 70% 30%)", "hsl(188 100% 78%)", "shard", true, 0, "portal"),
+  "world-severance": F("spatial-cut", "hsl(250 60% 3%)", "hsl(280 100% 70%)", "shard", true, 0, "slash"),
+  "absolute-prison": F("spatial-prison", "hsl(268 80% 30%)", "hsl(280 100% 72%)", "shard", true, 0),
+  "event-collapse": F("mind-crush", "hsl(260 70% 12%)", "hsl(188 100% 76%)", "star", true, 0, "implode"),
+  // Hexizon
+  "bone-staff": F("shade-slash", "hsl(45 25% 85%)", "hsl(128 100% 60%)", "pixel", true, 0, "slash"),
+  "staff-vault": F("gale-kick", "hsl(128 90% 40%)", "hsl(128 100% 74%)", "pixel", true, 0, "crater"),
+  "blue-soul": F("magnet-pull", "hsl(222 100% 55%)", "hsl(200 100% 80%)", "pixel", true, 0, "implode"),
+  "spread-shot": F("phase-shot", "hsl(128 100% 45%)", "hsl(90 100% 78%)", "pixel", true, 0, "sparks"),
+  "parry-dash": F("blink-barrage", "hsl(320 90% 62%)", "hsl(330 100% 84%)", "star", true, 0, "starburst"),
+  "glitch-step": F("warp-kick", "hsl(128 100% 45%)", "hsl(300 100% 70%)", "pixel", true, 0, "portal"),
+  "abyss-shriek": F("mind-crush", "hsl(150 30% 6%)", "hsl(0 0% 96%)", "smoke", false, -60, "ripple"),
+  "karma-field": F("miasma-cloud", "hsl(290 70% 40%)", "hsl(350 100% 66%)", "pixel", true, -40, "fizz"),
+  "bad-time": F("bone-zone", "hsl(45 25% 88%)", "hsl(350 100% 60%)", "dust", false, 600, "crater"),
+  "determination": F("mend", "hsl(350 100% 55%)", "hsl(45 100% 70%)", "plus", true, -120),
+};
+for (const [id, lk] of Object.entries(QUEST_LOOKS)) FORM_LOOKS[id] = lk;
 for (const [id, lk] of Object.entries(FORM_LOOKS)) {
   const base = LOOKS[lk.sig!];
   LOOKS[id] = { ...lk, cast: base?.cast, castLife: base?.castLife };
@@ -1504,6 +1545,55 @@ export function drawShotLook(ctx: CanvasRenderingContext2D, id: string, p: Shot,
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   switch (sigOf(id)) {
+    case "bone-barrage": {
+      // a bone tumbling end over end
+      ctx.translate(p.x, p.y);
+      ctx.rotate(ang + t * 14);
+      ctx.strokeStyle = al(b, 0.5);
+      ctx.lineWidth = r * 1.1;
+      ctx.beginPath(); ctx.moveTo(-r * 1.6, 0); ctx.lineTo(r * 1.6, 0); ctx.stroke();
+      ctx.strokeStyle = a;
+      ctx.lineWidth = r * 0.55;
+      ctx.stroke();
+      ctx.fillStyle = a;
+      for (const ex of [-r * 1.6, r * 1.6]) for (const sd of [-1, 1]) { ctx.beginPath(); ctx.arc(ex, sd * r * 0.42, r * 0.48, 0, TAU); ctx.fill(); }
+      break;
+    }
+    case "jumbo-roundabout": {
+      // a big wheel of orbs spinning round a bright core, swinging up and down as it rolls forward
+      ctx.globalCompositeOperation = "lighter";
+      glow(ctx, p.x, p.y, r * 2.4, a, 0.45);
+      const n = 8;
+      for (let i = 0; i < n; i++) {
+        const an = t * 9 * dir + (i / n) * TAU;
+        const ox = p.x + Math.cos(an) * r * 1.4, oy = p.y + Math.sin(an) * r * 1.4;
+        glow(ctx, ox, oy, r * 0.62, i % 2 ? a : b, 0.95);
+        ctx.fillStyle = "white";
+        ctx.beginPath(); ctx.arc(ox, oy, r * 0.18, 0, TAU); ctx.fill();
+      }
+      ctx.strokeStyle = al(b, 0.6);
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r * 1.4, 0, TAU); ctx.stroke();
+      glow(ctx, p.x, p.y, r * 0.7, "hsl(0 0% 100%)", 1);
+      break;
+    }
+    case "blaster-storm": {
+      // a small skull diving down, firing a beam ahead of it
+      ctx.globalCompositeOperation = "lighter";
+      ctx.translate(p.x, p.y);
+      ctx.rotate(ang - Math.PI / 2);
+      const gr = ctx.createLinearGradient(0, 0, 0, r * 6);
+      gr.addColorStop(0, "white");
+      gr.addColorStop(1, al(a, 0));
+      ctx.fillStyle = gr;
+      ctx.fillRect(-r * 0.5, 0, r, r * 6);
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = "hsl(45 25% 92%)";
+      ctx.beginPath(); ctx.moveTo(-r, -r * 1.8); ctx.quadraticCurveTo(0, -r * 2.5, r, -r * 1.8); ctx.lineTo(r * 0.7, 0); ctx.lineTo(-r * 0.7, 0); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = a;
+      ctx.beginPath(); ctx.arc(-r * 0.4, -r * 1.1, r * 0.28, 0, TAU); ctx.arc(r * 0.4, -r * 1.1, r * 0.28, 0, TAU); ctx.fill();
+      break;
+    }
     case "fireball": {
       ctx.globalCompositeOperation = "lighter";
       glow(ctx, p.x, p.y, r * 2.8, b, 0.6);
@@ -1970,6 +2060,62 @@ export function drawBeamLook(ctx: CanvasRenderingContext2D, id: string, bm: Beam
   ctx.translate(bm.x, bm.y);
   ctx.rotate(bm.ang);
   switch (sigOf(id)) {
+    case "spatial-cut": {
+      // a line where space is sliced: a black gap with bright edges, the world on either side slipping apart
+      const slip = Math.sin(t * 40) * w * 0.12;
+      ctx.globalCompositeOperation = "lighter";
+      glow(ctx, len * 0.5, 0, w * 3, b, 0.25);
+      for (const sd of [-1, 1]) {
+        ctx.strokeStyle = al(b, 0.9);
+        ctx.lineWidth = w * 0.18;
+        ctx.beginPath(); ctx.moveTo(0, sd * w * 0.32 + slip * sd); ctx.lineTo(len, sd * w * 0.14); ctx.stroke();
+      }
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = a;
+      ctx.beginPath(); ctx.moveTo(0, -w * 0.3); ctx.lineTo(len, -w * 0.1); ctx.lineTo(len + w, 0); ctx.lineTo(len, w * 0.1); ctx.lineTo(0, w * 0.3); ctx.closePath(); ctx.fill();
+      // shards of displaced space flaking off the edges
+      ctx.fillStyle = al(b, 0.8);
+      for (let i = 0; i < 8; i++) {
+        const xx = len * noise(i, Math.floor(t * 12)), yy = (noise(i, 3) - 0.5) * w * 2.4;
+        ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx + w * 0.4, yy - w * 0.2); ctx.lineTo(xx + w * 0.2, yy + w * 0.3); ctx.closePath(); ctx.fill();
+      }
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = "white";
+      ctx.lineWidth = Math.max(1, w * 0.06);
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(len + w, 0); ctx.stroke();
+      break;
+    }
+    case "gaster-blaster": {
+      // the skull hangs at the hand with its jaw open, firing a white beam that shudders
+      ctx.globalCompositeOperation = "lighter";
+      const bw = w * (1.1 + Math.sin(t * 60) * 0.12);
+      const gr = ctx.createLinearGradient(0, -bw, 0, bw);
+      gr.addColorStop(0, al(a, 0));
+      gr.addColorStop(0.3, al(a, 0.8));
+      gr.addColorStop(0.5, "hsl(0 0% 100%)");
+      gr.addColorStop(0.7, al(a, 0.8));
+      gr.addColorStop(1, al(a, 0));
+      ctx.fillStyle = gr;
+      ctx.fillRect(w * 1.2, -bw, len - w * 1.2, bw * 2);
+      glow(ctx, len, 0, bw * 1.4, a, 0.7);
+      ctx.globalCompositeOperation = "source-over";
+      const k = Math.max(w * 0.9, 14) / 20;
+      ctx.save();
+      ctx.translate(-w * 0.2, 0);
+      ctx.scale(k, k);
+      ctx.fillStyle = "hsl(45 25% 92%)";
+      ctx.strokeStyle = "hsl(150 30% 6%)";
+      ctx.lineWidth = 2;
+      // skull seen side-on, snout toward the beam
+      ctx.beginPath(); ctx.moveTo(-30, -22); ctx.quadraticCurveTo(-34, 0, -24, 12); ctx.lineTo(20, 4); ctx.lineTo(26, -6); ctx.quadraticCurveTo(0, -30, -30, -22); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-20, 16); ctx.lineTo(22, 16); ctx.lineTo(18, 26); ctx.lineTo(-16, 24); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "hsl(150 30% 6%)";
+      ctx.beginPath(); ctx.ellipse(-6, -10, 7, 6, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = "hsl(128 100% 60%)";
+      ctx.beginPath(); ctx.arc(-5, -10, 2.6, 0, TAU); ctx.fill();
+      ctx.restore();
+      break;
+    }
     case "thunder-bolt": {
       ctx.globalCompositeOperation = "lighter";
       glow(ctx, 0, 0, w * 2.4, "hsl(0 0% 100%)", 1);
@@ -2242,6 +2388,24 @@ export function drawEruptionLook(ctx: CanvasRenderingContext2D, id: string, x: n
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   switch (sigOf(id)) {
+    case "bone-zone": {
+      // a fence of bones stabbing up out of the floor, tallest in the middle
+      const n = 5;
+      for (let i = 0; i < n; i++) {
+        const dx = (i / (n - 1) - 0.5) * r * 1.8;
+        const hh = h * (1 - Math.abs(dx) / (r * 1.4)) * (0.85 + 0.15 * Math.sin(i * 2.1));
+        const cx = x + dx, top = gy - hh, bw = r * 0.16;
+        ctx.strokeStyle = al(b, 0.45);
+        ctx.lineWidth = bw * 2.4;
+        ctx.beginPath(); ctx.moveTo(cx, gy); ctx.lineTo(cx, top); ctx.stroke();
+        ctx.strokeStyle = a;
+        ctx.lineWidth = bw * 1.2;
+        ctx.stroke();
+        ctx.fillStyle = a;
+        for (const sd of [-1, 1]) { ctx.beginPath(); ctx.arc(cx + sd * bw * 0.8, top, bw * 0.95, 0, TAU); ctx.fill(); }
+      }
+      break;
+    }
     case "flame-pillar": {
       ctx.globalCompositeOperation = "lighter";
       glow(ctx, x, gy - h * 0.3, r * 1.6, a, 0.5);
@@ -2491,6 +2655,29 @@ export function drawZoneLook(ctx: CanvasRenderingContext2D, id: string, x: numbe
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   switch (sigOf(id)) {
+    case "spatial-prison": {
+      // a cage of folded space: a wireframe cube turning slowly around the spot, its faces shimmering
+      const cy = gy - r * 0.85, sz = r * 0.8;
+      const ry = t * 0.9, rx = 0.35;
+      const pts: [number, number][] = [];
+      for (const [px, py, pz] of [[-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1], [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]]) {
+        const x1 = px * Math.cos(ry) - pz * Math.sin(ry), z1 = px * Math.sin(ry) + pz * Math.cos(ry);
+        pts.push([x + x1 * sz, cy + (py * Math.cos(rx) - z1 * Math.sin(rx)) * sz]);
+      }
+      ctx.fillStyle = al(a, 0.28);
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]); [1, 2, 3].forEach((i) => ctx.lineTo(pts[i][0], pts[i][1])); ctx.closePath();
+      ctx.fill();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = b;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      for (const [i, j] of [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]]) { ctx.moveTo(pts[i][0], pts[i][1]); ctx.lineTo(pts[j][0], pts[j][1]); }
+      ctx.stroke();
+      for (const [px, py] of pts) glow(ctx, px, py, 8, b, 0.9);
+      glow(ctx, x, cy, r * 0.9, b, 0.18 + 0.08 * Math.sin(t * 6));
+      break;
+    }
     case "frozen-floor": {
       glow(ctx, x, gy - 10, r * 0.9, b, 0.35);
       const gr = ctx.createLinearGradient(0, gy - 14, 0, gy + 14);

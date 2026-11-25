@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~
 import { cn } from "~/lib/utils";
 import { FIGHTERS, defOf, type FighterDef, type Power, type RosterId } from "~/lib/fighters";
 import { rememberHybrid, useHybrids } from "~/lib/hybrids";
+import { recordFight, recordTournament, unlockedOf, useQuests } from "~/lib/quests";
 import { FusionSheet } from "~/components/fusion-sheet";
 import { FighterDot } from "~/components/fighter-dot";
 import { W, H, TEAM_COLORS, newGame, step, drawScene, buildBackdrop, type Game, type FeedItem } from "~/lib/arena-engine";
@@ -78,6 +79,7 @@ export default function Home() {
   const [mode, setMode] = useState<Mode>("ffa");
   const [picked, setPicked] = useState<RosterId[]>(ALL);
   const hybrids = useHybrids();
+  const questers = unlockedOf(useQuests());
   const [status, setStatus] = useState<Status>("ready");
   const [speed, setSpeed] = useState<number>(1);
   const [snap, setSnap] = useState<Snapshot>({ alive: [], feed: [] });
@@ -194,8 +196,17 @@ export default function Home() {
     const at = matchRef.current;
     if (mode === "tournament" && at && g.winnerId) {
       const id = g.winnerId;
-      setBracket((b) => (b ? recordWinner(b, at, id) : b));
+      const next = bracket ? recordWinner(bracket, at, id) : bracket;
+      setBracket(next);
+      // the final just crowned a champion: that counts toward quests
+      if (next && champion(next) && !(bracket && champion(bracket))) recordTournament();
     }
+    // every fight played to the end counts toward quests
+    recordFight({
+      kos: g.fighters.filter((f) => !f.alive).length,
+      forms: g.fighters.filter((f) => f.form).length,
+      boss: mode === "story" && stageRef.current?.i === STAGES_PER_CHAPTER - 1 && g.winnerTeam === 0,
+    });
     matchRef.current = null;
     const at0 = stageRef.current;
     if (mode === "story" && at0 != null && g.winnerTeam === 0) {
@@ -389,6 +400,7 @@ export default function Home() {
         )}
         <Button asChild variant="secondary" size="sm"><Link to="/"><Text id="common.arena" /></Link></Button>
         <Button asChild variant="ghost" size="sm"><Link to="/roster"><Text id="common.fighters" /></Link></Button>
+        <Button asChild variant="ghost" size="sm"><Link to="/quests"><Text id="common.quests" /></Link></Button>
       </nav>
 
       {screen === "title" ? (
@@ -560,7 +572,7 @@ export default function Home() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {[...ALL, ...hybrids].map((id) => (
+                    {[...ALL, ...questers, ...hybrids].map((id) => (
                       <SelectItem key={id} value={id}>
                         <FighterDot def={defOf(id)} />
                         {defOf(id).name}
@@ -580,6 +592,17 @@ export default function Home() {
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
               {ALL.map(chip)}
             </div>
+            <div className="mt-6 flex flex-wrap items-center gap-3" data-arena-questers>
+              <Text id="arena.quest.title" as="h3" className="font-display text-xl text-foreground" />
+              <Button asChild variant="ghost" size="sm" className="ml-auto"><Link to="/quests"><Text id="arena.quest.link" /></Link></Button>
+            </div>
+            {questers.length === 0 ? (
+              <Text id="arena.quest.empty" as="p" className="mt-3 max-w-prose text-sm text-muted-foreground" />
+            ) : (
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+                {questers.map(chip)}
+              </div>
+            )}
             <div className="mt-6 flex flex-wrap items-center gap-3" data-arena-hybrids>
               <Text id="arena.hybrids.title" as="h3" className="font-display text-xl text-foreground" />
               {hybrids.length > 0 && <Text id="arena.hybrids.count" vars={{ count: hybrids.length }} className="text-sm text-muted-foreground tabular-nums" />}

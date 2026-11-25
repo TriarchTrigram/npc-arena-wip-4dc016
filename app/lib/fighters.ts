@@ -2,7 +2,9 @@
 
 export type Power =
   | "pyro" | "cryo" | "electro" | "terra" | "aero" | "hydro" | "umbra" | "lux"
-  | "gravi" | "tele" | "vita" | "toxi" | "chrono" | "magneto" | "psy" | "shift";
+  | "gravi" | "tele" | "vita" | "toxi" | "chrono" | "magneto" | "psy" | "shift"
+  // quest fighters, earned on the Quests page
+  | "spatio" | "hexizon";
 
 export type Role = "attacker" | "control" | "tank" | "support" | "trickster";
 
@@ -283,7 +285,55 @@ export const FIGHTERS: FighterDef[] = [
   },
 ];
 
-export const DEF_BY_ID = Object.fromEntries(FIGHTERS.map((f) => [f.id, f])) as Record<Power, FighterDef>;
+// ---------- Quest fighters ----------
+// Earned on the Quests page and kept in this browser (app/lib/quests.ts). Each has 12 moves, its own look
+// (app/lib/quest-designs.ts), entrance, stance, voice and a Nightmare Mode form. Strong enough to beat a Story boss alone.
+
+export const QUESTERS: FighterDef[] = [
+  {
+    id: "spatio", name: "Parallax", power: "Spatiokinesis", role: "control",
+    ability: "Bends space itself. Folds the arena to step anywhere, cuts through distance and locks enemies in spatial prisons.",
+    color: "hsl(234 48% 26%)", glow: "hsl(188 100% 70%)", hp: 300, speed: 104,
+    moves: [
+      M({ id: "fold-palm", name: "Fold Palm", kind: "melee", anim: "thrust", range: 78, cd: 0.8, dmg: 10, kb: 260 }),
+      M({ id: "rend-reach", name: "Rend Reach", kind: "melee", anim: "lunge", range: 150, minRange: 50, cd: 1.6, dmg: 13, kb: 300, wind: 0.2 }),
+      M({ id: "spatial-cut", name: "Spatial Cut", kind: "beam", anim: "thrust", range: 560, minRange: 70, cd: 2.6, dmg: 15, act: 0.22, kb: 200, wind: 0.24 }),
+      M({ id: "space-fold", name: "Space Fold", kind: "blink", anim: "kick", range: 640, minRange: 110, cd: 3, dmg: 14, kb: 320, lift: -260 }),
+      M({ id: "pocket-pull", name: "Pocket Pull", kind: "pull", anim: "cast", range: 460, minRange: 110, cd: 3.4, dmg: 10, status: "stun", statusDur: 0.35 }),
+      M({ id: "repulse-plane", name: "Repulse Plane", kind: "burst", anim: "thrust", range: 140, cd: 5, dmg: 14, radius: 165, kb: 620, lift: -240, wind: 0.24 }),
+      M({ id: "spatial-prison", name: "Spatial Prison", kind: "zone", anim: "raise", range: 420, minRange: 40, cd: 8, dmg: 6, radius: 110, dur: 3.5, pullIn: 260, status: "slow", statusDur: 0.6, wind: 0.32 }),
+      M({ id: "lattice-shards", name: "Lattice Shards", kind: "projectile", anim: "cast", range: 580, minRange: 80, cd: 2.2, dmg: 6, speed: 700, size: 9, count: 4, spread: 0.16, shape: "shard" }),
+      M({ id: "compression", name: "Compression", kind: "eruption", anim: "slam", range: 480, minRange: 50, cd: 4.5, dmg: 16, radius: 50, lift: -700, status: "stun", statusDur: 0.4, wind: 0.32 }),
+      M({ id: "fracture-rain", name: "Fracture Rain", kind: "rain", anim: "raise", range: 520, cd: 5.5, dmg: 8, count: 6, radius: 150, shape: "shard", wind: 0.32 }),
+      M({ id: "distance-zero", name: "Distance Zero", kind: "dash", anim: "lunge", range: 340, cd: 3.6, dmg: 13, dist: 340, act: 0.2, kb: 340 }),
+      M({ id: "rift-disc", name: "Rift Disc", kind: "projectile", anim: "thrust", range: 620, minRange: 90, cd: 3, dmg: 12, speed: 520, size: 15, shape: "disc", pierce: true, kb: 240 }),
+    ],
+  },
+  {
+    id: "hexizon", name: "Hexizon", power: "Indie Game Manipulation", role: "attacker",
+    ability: "Pulls powers out of indie games. Skull blasters, walls of bones, a roundabout of orbs and a bone staff swung like a monk's.",
+    color: "hsl(150 30% 4%)", glow: "hsl(128 100% 58%)", hp: 290, speed: 108,
+    moves: [
+      M({ id: "bone-staff", name: "Bone Staff", kind: "melee", anim: "spin", range: 104, cd: 0.85, dmg: 11, kb: 260 }),
+      M({ id: "staff-vault", name: "Staff Vault Kick", kind: "melee", anim: "kick", range: 96, cd: 1.3, dmg: 12, kb: 300, lift: -380 }),
+      M({ id: "gaster-blaster", name: "Gaster Blaster", kind: "beam", anim: "cast", range: 600, minRange: 70, cd: 3.2, dmg: 18, act: 0.4, wind: 0.36, kb: 260 }),
+      M({ id: "bone-barrage", name: "Bone Barrage", kind: "projectile", anim: "thrust", range: 580, minRange: 80, cd: 2.2, dmg: 5, speed: 680, size: 9, count: 5, spread: 0.14, shape: "blade" }),
+      M({ id: "bone-zone", name: "Bone Zone", kind: "eruption", anim: "slam", range: 560, minRange: 40, cd: 5, dmg: 12, radius: 44, count: 4, lift: -620, wind: 0.34 }),
+      M({ id: "blue-soul", name: "Blue Soul", kind: "pull", anim: "cast", range: 460, minRange: 110, cd: 4, dmg: 10, status: "stun", statusDur: 0.5 }),
+      M({ id: "jumbo-roundabout", name: "Jumbo Roundabout", kind: "projectile", anim: "thrust", range: 620, minRange: 90, cd: 4.2, dmg: 15, speed: 300, size: 24, pierce: true, kb: 300, wind: 0.26 }),
+      M({ id: "spread-shot", name: "Spread Shot", kind: "projectile", anim: "jab", range: 420, minRange: 60, cd: 1.5, dmg: 5, speed: 760, size: 7, count: 3, spread: 0.26 }),
+      M({ id: "parry-dash", name: "Parry Dash", kind: "dash", anim: "lunge", range: 320, cd: 3.4, dmg: 12, dist: 320, act: 0.22, kb: 320, lift: -200 }),
+      M({ id: "glitch-step", name: "Glitch Step", kind: "blink", anim: "uppercut", range: 600, minRange: 110, cd: 3.2, dmg: 13, lift: -560, kb: 160 }),
+      M({ id: "abyss-shriek", name: "Abyss Shriek", kind: "burst", anim: "raise", range: 150, cd: 6, dmg: 16, radius: 175, kb: 440, lift: -420, status: "blind", statusDur: 1.2, wind: 0.3 }),
+      M({ id: "karma-field", name: "Karma Field", kind: "zone", anim: "slam", range: 380, cd: 8, dmg: 5, radius: 130, dur: 4, status: "poison", statusDur: 1.5, wind: 0.32 }),
+    ],
+  },
+];
+
+export const QUEST_IDS = new Set<Power>(QUESTERS.map((q) => q.id));
+export const isQuester = (id: string) => QUEST_IDS.has(id as Power);
+
+export const DEF_BY_ID = Object.fromEntries([...FIGHTERS, ...QUESTERS].map((f) => [f.id, f])) as Record<Power, FighterDef>;
 
 // ---------- Juggernaut ----------
 // A juggernaut keeps its own 4 moves and gains 6 wing moves in its element, for 10 in all, with double health.
@@ -307,6 +357,8 @@ const WINGS: Record<Power, Wing> = {
   magneto: { word: "Iron", shape: "shard", status: "stun", statusDur: 0.2 },
   psy: { word: "Mind", shape: "disc", status: "stun", statusDur: 0.25 },
   shift: { word: "Morph", shape: "blade", status: "slow", statusDur: 1 },
+  spatio: { word: "Rift", shape: "shard", status: "slow", statusDur: 1 },
+  hexizon: { word: "Bone", shape: "blade", status: "poison", statusDur: 1.5 },
 };
 
 export function wingMoves(id: Power): Move[] {
@@ -400,7 +452,7 @@ export type RosterId = string;
 /** The same two fighters always share one key, in either order. */
 export const hybridKey = (a: Power, b: Power): RosterId => [a, b].sort().join("+");
 
-const ROSTER_ORDER = new Map(FIGHTERS.map((f, i) => [f.id, i]));
+const ROSTER_ORDER = new Map([...FIGHTERS, ...QUESTERS].map((f, i) => [f.id, i]));
 /** The same two fighters make the same hybrid whichever is picked first. */
 export function fusionOrder(a: Power, b: Power): [Power, Power] {
   return (ROSTER_ORDER.get(a) ?? 0) <= (ROSTER_ORDER.get(b) ?? 0) ? [a, b] : [b, a];

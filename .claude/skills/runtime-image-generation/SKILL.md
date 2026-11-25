@@ -1,6 +1,6 @@
 ---
 name: runtime-image-generation
-description: Generating images AT RUNTIME from user input — an avatar maker, an "illustrate my note" button, an AI art tool, anywhere the running app must create an image on demand. Uses createImage from ~stencil/image (Cloudflare Workers AI, keyless, server-side). Load when the brief asks the app to generate images WHILE RUNNING in response to user input. NOT for static build-time assets (heroes, logos, backgrounds, textures) — those use generateImage (the generate-image skill), not this.
+description: Generating images AT RUNTIME from user input — an avatar maker, an "illustrate my note" button, an AI art tool, anywhere the running app must create an image on demand. Uses createImage from ~stencil/image (Cloudflare Workers AI, keyless, server-side). Load when the brief asks the app to generate images WHILE RUNNING in response to user input. NOT for static build-time assets (heroes, logos, backgrounds, textures) — those are drawn at build time with the generate-image skill, not this.
 allowed-tools: createEntity
 metadata:
   agents: [chat, builder]
@@ -15,9 +15,8 @@ time, proxied through the Stencil backend (Cloudflare Workers AI). No API keys.
 Use this **only** when the app must generate an image in response to user input
 while running (avatar generators, "illustrate this" buttons, AI art features). For
 static assets baked into the design at build time — hero images, logos,
-backgrounds, textures — use `generateImage` instead (see the
-`generate-image` skill). Don't wire this in unless the brief asks for runtime
-generation.
+backgrounds, textures — the Builder Agent draws them with the `generate-image`
+skill instead. Don't wire this in unless the brief asks for runtime generation.
 
 ## API
 
@@ -27,13 +26,16 @@ const { body, contentType } = await createImage(env).generate({ prompt, model })
 
 - `prompt` (required) — what to draw.
 - `model` (optional) — any Cloudflare Workers AI text-to-image model **id**.
-  Defaults to `@cf/black-forest-labs/flux-1-schnell`. OpenAI's `gpt-image-1` and
+  Defaults to `@cf/black-forest-labs/flux-1-schnell`. OpenAI's `gpt-image-2.5-sunburst` and
   Google's `gemini-3.1-flash-image` also work but cost significantly more per
   image — only pass one if the app builder specifically asks for that provider;
   otherwise stay on the default.
-- `references` (optional) — up to 2 pictures the model should match (raw bytes, a base64
-  string or a data URL, under 10 MB each). Only the Gemini image models and FLUX.2
-  (`@cf/black-forest-labs/flux-2-*`) accept them; any other model answers 400.
+- A model id the provider no longer serves fails with `Image model "<id>" is not available
+  through Stencil` (HTTP 400). Switch the model; do not retry it or treat it as an outage.
+- `references` (optional) — up to 6 pictures the model should match (raw bytes, a base64
+  string or a data URL, under 10 MB each and under 40 MB together). Only the Gemini image
+  models and FLUX.2 (`@cf/black-forest-labs/flux-2-*`) accept them; any other model
+  answers 400. The order is kept as passed.
 
 Returns the image as a byte **stream** (`body`) plus the `contentType` the model
 produced — pipe it straight into R2, never buffered in the worker.
@@ -96,7 +98,7 @@ style frame as `references` with a Gemini image model:
 const { body, contentType } = await createImage(env).generate({
   prompt: "Page 4: Mia feeds the ducks at the pond, watercolor",
   model: "gemini-3.1-flash-image",
-  references: [childPhotoBytes, styleFrameBytes], // max 2
+  references: [childPhotoBytes, styleFrameBytes], // max 6, under 40 MB together
 });
 ```
 
@@ -104,11 +106,11 @@ Read the reference bytes from the app's storage (`createStorage(env).get(key)`) 
 from the upload in the request. Gemini costs more per image than the default, so
 reach for this only when consistency across pictures is the point of the feature.
 
-OpenAI (`gpt-image-1`) and Google (`gemini-3.1-flash-image`) are also reachable
+OpenAI (`gpt-image-2.5-sunburst`) and Google (`gemini-3.1-flash-image`) are also reachable
 through the same `model` param, but each costs significantly more per image than
 the Workers AI default — only pass one when the app builder asks for that
 provider by name. DALL·E is retired at OpenAI: an app builder who asks for
-"DALL·E" gets `gpt-image-1`.
+"DALL·E" gets `gpt-image-2.5-sunburst`.
 
 ## Store in R2, keep the key in D1
 

@@ -22,8 +22,10 @@ metadata:
 
 Stencil has four built-in mailing list services: **Flodesk, Kit (formerly ConvertKit),
 ActiveCampaign and MailerLite**. They connect and behave the same way. The app builder
-connects one, then picks per app where new signups go, and the
-platform sends every new app user signup and every waitlist join there. No code, no webhook,
+connects one, then picks per app where new signups go. The platform sends every new app user
+signup there, and every waitlist join to a separate "<app name> waitlist" segment (tag or group
+in the other services) that it finds or creates in the account, never to the picked ones, so an
+email meant for new app users is not sent to someone who only joined the waitlist. No code, no webhook,
 no API key typed into the chat. One tool, `connectMailingList`, shows the same card for each;
 its `service` id is `"flodesk"`, `"kit"`, `"activecampaign"` or `"mailerlite"`. An app can
 use more than one at the same time; they are independent.
@@ -304,7 +306,8 @@ them or skip them. That choice is the app builder's.
 
 **App account signups** through the platform's auth and every **waitlist join** (the hosted
 sign-up page of an invite-only app, or `joinWaitlist` from `~stencil/waitlist`) reach the
-saved destinations with no code. Never write a call for those. A newsletter box or footer
+service with no code: signups go to the saved destinations, waitlist joins to the app's own
+"<app name> waitlist" destination, while at least one destination is saved. Never write a call for those. A newsletter box or footer
 sign-up that only collects an email is a waitlist join too: use `<WaitlistForm>` from
 `~stencil/ui/waitlist/form` (`landing-page` skill, rule 4). Any other email the app
 collects — a lead form with its own fields, a quiz, a guest purchase — gets there with one

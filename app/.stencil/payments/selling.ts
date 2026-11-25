@@ -1002,6 +1002,10 @@ export async function revokePanelViewer(
 /** Card checkout's floor, in cents. The payments service enforces it again at checkout. */
 const MIN_PRICE_CENTS = 500;
 
+/** How often a recurring product renews: `quarter` is every 3 months, `half_year` every 6. */
+export const SELLER_INTERVALS = ["month", "quarter", "half_year", "year"] as const;
+export type SellerInterval = (typeof SELLER_INTERVALS)[number];
+
 export type SellerProduct = {
   id: string;
   sellerUserId: string;
@@ -1011,8 +1015,8 @@ export type SellerProduct = {
   kind: "one_time" | "recurring";
   amountCents: number;
   currency: string;
-  /** `month` or `year` for a recurring product; null for a one-time one. */
-  interval: "month" | "year" | null;
+  /** Set for a recurring product; null for a one-time one. */
+  interval: SellerInterval | null;
   /** Display order, low → high. */
   position: number;
   /** Archived products take no new buyers; they are never deleted. */
@@ -1136,7 +1140,7 @@ export async function createProduct(
     description?: string;
     kind: SellerProduct["kind"];
     amountCents: number;
-    interval?: "month" | "year";
+    interval?: SellerInterval;
     position?: number;
   },
 ): Promise<ProductResult> {
@@ -1150,8 +1154,8 @@ export async function createProduct(
   const badAmount = checkAmount(opts.amountCents);
   if (badAmount) return badAmount;
   const interval = opts.kind === "recurring" ? opts.interval : null;
-  if (opts.kind === "recurring" && interval !== "month" && interval !== "year") {
-    return rejected("interval_invalid", "A recurring product needs an interval of month or year.");
+  if (opts.kind === "recurring" && !SELLER_INTERVALS.includes(interval as SellerInterval)) {
+    return rejected("interval_invalid", "A recurring product needs an interval of month, quarter, half_year or year.");
   }
   if (opts.kind === "one_time" && opts.interval != null) {
     return rejected("interval_invalid", "A one-time product has no interval.");

@@ -1,6 +1,6 @@
 ---
 name: access-codes
-description: Use whenever a page or record should open for someone without an account after they type a short code or password — a gallery or event code, a classroom PIN, a password on a shared page, a members-only area behind one shared password, an invite or booking code, a six-digit code emailed to a client before they open their portal or sign a contract, a passcode an app user sets on their own thing. Covers setAccessCode / syncAccessCode / mintAccessCode / verifyAccessCode / getAccessPass / revokeAccessPasses / clearAccessCode from ~stencil/access-codes. Reach for this instead of storing a code on a record and comparing it, minting one with Math.random(), or writing an "unlocked" cookie yourself. NOT for signing an app user in (that is a login setting, see `custom-auth` and `login-settings`) and NOT for a link that opens one record with no code typed (that is a long token minted with crypto.getRandomValues, stored by hash, with an expiry).
+description: Use whenever a page or record should open for someone without an account after they type a short code or password — a gallery or event code, a classroom PIN, a password on a shared page, a members-only area behind one shared password, an invite or booking code, a six-digit code emailed to a client before they open their portal or sign a contract, a passcode an app user sets on their own thing — and whenever the app limits wrong guesses at a PIN or code it checks itself, signed in or not: a vault or parental PIN, a lock screen, a code emailed or texted to confirm an address, "lock after 5 wrong tries", a scan finding about a guess limit. Covers setAccessCode / syncAccessCode / mintAccessCode / verifyAccessCode / limitGuess / forgiveGuess / getAccessPass / revokeAccessPasses / clearAccessCode from ~stencil/access-codes. Reach for this instead of storing a code on a record and comparing it, minting one with Math.random(), or writing an "unlocked" cookie yourself. NOT for signing an app user in (that is a login setting, see `custom-auth` and `login-settings`) and NOT for a link that opens one record with no code typed (that is a long token minted with crypto.getRandomValues, stored by hash, with an expiry).
 metadata:
   agents: [chat, builder]
 ---
@@ -107,6 +107,38 @@ Wrong guesses are capped at 10 per record and 30 per caller in 15 minutes; a rig
 does not count and does not forgive the wrong ones before it. For the code-names-the-record
 shape, omit `subject` and redirect to `result.pass.subject`.
 
+## A wrong-guess limit on a check the app does itself
+
+A PIN a signed-in app user unlocks their own vault with, a code emailed to confirm a second
+address: the app compares these itself, and being signed in does not make a guess safe.
+Never write the lockout: a counter column read, checked, then written lets every guess
+sent at once through, and one that lives in the app's rows resets with a new code, a
+re-added row or a closed account. `limitGuess` counts the guess in one statement, in a
+platform table, before the compare:
+
+```ts
+const { user } = await requireAuth(request, env);
+const key = `vault-pin:${section.id}`;
+const limit = await limitGuess(env, { key, max: 5, windowSeconds: 15 * 60 });
+if (!limit.ok) return { error: `Too many tries. Wait ${Math.ceil(limit.retryAfterSeconds / 60)} minutes.` };
+if (!(await pinMatches(section, typed))) return { error: "That PIN is not right." };
+await forgiveGuess(env, key); // a right entry does not use up the budget
+```
+
+- **`limitGuess` runs first, on every attempt**, before the secret is read or compared,
+  and a refusal returns at once. Nothing else counts or resets guesses: no attempts
+  column, no "recent failures" query, no reset when a new code is sent.
+- **The key names the thing being guessed**: the vault section, or the address a code was
+  sent to (`"email-link:" + address.toLowerCase()`), never the pending row or the
+  guesser's account, which a guesser can make again. One `key` uses one `max` and window.
+- **Size the budget to the secret**: 5 per 15 minutes for a PIN an app user re-enters; 10
+  a day (`windowSeconds: 86400`) on the address for a six-digit emailed code.
+- **An app that already has a hand-built lockout** is moved onto this when a build touches
+  that check or fixes a scan finding about it; drop its counter columns.
+
+A code or password that only opens a page or record still goes through `setAccessCode` /
+`verifyAccessCode` above, which limit guesses themselves.
+
 ## Gate the page
 
 ```ts
@@ -144,5 +176,7 @@ responds with `clearAccessPassCookie(purpose)` in `Set-Cookie`.
 - **`subject` is one row id or one fixed page name**, never a workspace or a list.
 - **A gate is a loader or action check**, never a component that hides a tab.
 - **Refuse the same way for every failure**: wrong code, no such record, expired pass.
+- **Any limit on wrong guesses is `limitGuess`**, signed in or not, never a counter the
+  app reads and then writes.
 - **Never call `verifyAccessCode` with the real code** (it writes a pass nobody uses).
   `syncAccessCode` stores a code the app already knows.

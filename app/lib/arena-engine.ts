@@ -1,9 +1,10 @@
 // Side-view stickman fight engine for the arena canvas. Runs entirely in the browser.
-import { DEF_BY_ID, juggernautOf, rosterIdOf, type Anim, type BossDesign, type FighterDef, type Move, type Power, type StatusEffect } from "./fighters";
+import { DEF_BY_ID, isQuester, juggernautOf, rosterIdOf, type Anim, type BossDesign, type FighterDef, type Move, type Power, type StatusEffect } from "./fighters";
 import type { Sfx } from "./arena-sound";
 import { INTROS, BOSS_INTROS, fusionIntro, INTRO_LEN, INTRO_ARRIVED, type IntroBurst, type IntroPose, type IntroSpec } from "./spawn-intros";
 import { LOOKS, setLookTint, drawFx, drawSpark, drawShotLook, drawBeamLook, drawEruptionLook, drawZoneLook, drawRushLook, drawAnnihilation, eruptionColors, type Fx, type PShape } from "./move-looks";
 import { drawBossDesign, type BossAct } from "./boss-designs";
+import { drawQuestDesign, type QuestAct } from "./quest-designs";
 import { FORMS, PERFECTED_FLAME, FORM_SHOUT, type Form, type FormKind } from "./forms";
 
 export const W = 960;
@@ -96,10 +97,19 @@ const HYBRID_STANCES: Pose[] = [
   // upright, one hand raised over the head, the other forward
   { t: 0.04, aF1: 1.55, aF2: 1.6, aB1: 2.55, aB2: 2.9, lF1: 0.35, lF2: 0.02, lB1: -0.3, lB2: -0.12 },
 ];
+/** Quest fighters stand their own way too. */
+const QUEST_STANCE: Partial<Record<Power, Pose>> = {
+  // Parallax: side-on, one palm pushed out flat as if pressing on a pane of space, the other hand cocked back
+  spatio: { t: 0.06, aF1: 1.5, aF2: 1.62, aB1: -0.6, aB2: 0.9, lF1: 0.45, lF2: 0.05, lB1: -0.4, lB2: -0.18 },
+  // Hexizon: low monk's stance, the bone staff held across the body in both hands
+  hexizon: { t: 0.22, aF1: 0.95, aF2: 1.9, aB1: 0.55, aB2: 1.45, lF1: 0.68, lF2: -0.05, lB1: -0.58, lB2: -0.42 },
+};
 const pairHash = (a: Power, b: Power) => [a, b].sort().join("+").split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
 /** The rest stance this fighter stands in. */
 function stanceOf(def: FighterDef): Pose {
   if (def.boss) return BOSS_STANCE[def.boss];
+  const qs = QUEST_STANCE[def.id];
+  if (qs && !def.parents) return qs;
   if (def.parents) return HYBRID_STANCES[pairHash(def.parents[0], def.parents[1]) % HYBRID_STANCES.length];
   return STANCE;
 }
@@ -115,6 +125,12 @@ function idlePose(f: Fighter, gt: number): Pose {
     // two powers pulsing in turn: one hand, then the other
     const b = Math.sin(gt * 5 + f.key), c = Math.cos(gt * 5 + f.key);
     return { ...st, t: st.t + b * 0.025, aF2: st.aF2 + b * 0.12, aB2: st.aB2 + c * 0.12 };
+  }
+  if (QUEST_STANCE[f.def.id]) {
+    // Parallax drifts slowly, Hexizon bobs on the balls of his feet
+    const hz = f.def.id === "hexizon" ? 5.5 : 1.8;
+    const b = Math.sin(gt * hz + f.key);
+    return { ...st, t: st.t + b * 0.03, aF2: st.aF2 + b * 0.06, aB2: st.aB2 + b * 0.06, lF1: st.lF1 + b * 0.04, lB1: st.lB1 - b * 0.04 };
   }
   const b = Math.sin(gt * 4 + f.key);
   return { ...STANCE, t: STANCE.t + b * 0.03, aF2: STANCE.aF2 + b * 0.08, aB2: STANCE.aB2 - b * 0.06 };
@@ -213,6 +229,8 @@ const FX: Record<Power, { shape: PShape; add: boolean; grav: number }> = {
   magneto: { shape: "shard", add: false, grav: 700 },
   psy: { shape: "ring", add: true, grav: -20 },
   shift: { shape: "dot", add: true, grav: 0 },
+  spatio: { shape: "shard", add: true, grav: 0 },
+  hexizon: { shape: "pixel", add: true, grav: -60 },
 };
 
 // ---------- Forms ----------
@@ -240,6 +258,7 @@ const CUT_POSES: Record<FormKind, [Pose, Pose]> = {
   perfected: [RAGE_POSE, { ...ROAR_POSE, ...ANIMS.raise.strike, t: -0.36 }],
   awakened: [{ ...RAGE_POSE, t: 0.35, aF1: 0.2, aB1: -0.2 }, { ...STANCE, t: -0.25, aF1: 2.4, aF2: 2.6, aB1: -2.4, aB2: -2.6, lF1: 0.3, lB1: -0.3 }],
   mastery: [{ ...STANCE, t: 0.05, aF1: 1.1, aF2: 2.2, aB1: 1.0, aB2: 2.3, lF1: 0.35, lF2: 0.1, lB1: -0.35, lB2: -0.1 }, { ...STANCE, t: 0.1, ...ANIMS.thrust.strike, lF1: 0.6, lF2: 0.1, lB1: -0.6, lB2: -0.3 }],
+  nightmare: [{ ...RAGE_POSE, t: 0.7, aF1: 0.3, aF2: 0.1, aB1: 0.2, aB2: 0.05, lF1: 0.9, lF2: -0.3, lB1: -0.4, lB2: -0.9 }, { ...ROAR_POSE, t: -0.45, aF1: 2.2, aF2: 1.9, aB1: -2.2, aB2: -1.9 }],
   mystic: [{ ...STANCE, t: 0, aF1: 0.9, aF2: 1.7, aB1: -0.9, aB2: -1.7, lF1: 0.9, lF2: -1.2, lB1: -0.9, lB2: 1.2 }, { ...STANCE, t: -0.15, aF1: 1.9, aF2: 2.2, aB1: -1.9, aB2: -2.2, lF1: 0.15, lF2: 0.1, lB1: -0.15, lB2: -0.1 }],
 };
 /** Whose rage colours new particles and effects take while a fighter acts. */
@@ -400,7 +419,7 @@ export function newGame(ids: (Power | FighterDef)[], preview = false, teams?: nu
     const slot = slotOf.get(i) ?? i;
     const x = n === 2 ? (slot === 0 ? 270 : W - 270) : 70 + ((W - 140) * (slot + 0.5)) / n;
     // a hybrid stands a little taller than a pure-blooded fighter
-    const sc = isJugg ? scale * 1.25 : def.boss ? scale * 1.22 : def.parents ? scale * 1.12 : scale;
+    const sc = isJugg ? scale * 1.25 : def.boss ? scale * 1.22 : def.parents ? scale * 1.12 : isQuester(def.id) ? scale * 1.1 : scale;
     const hoverY = GROUND - HOVER_HIGH * sc;
     return {
       key: i, def,
@@ -1418,7 +1437,7 @@ function startForm(g: Game, f: Fighter, fm: Form) {
   f.vx = 0;
   // a crowded free for all gets a shorter cutscene so the fight keeps moving
   const crowd = g.fighters.filter((o) => o.alive).length > 4;
-  g.cut = { key: f.key, t: 0, max: crowd ? 1.6 : fm.kind === "perfected" ? CUT_TIME + 0.6 : CUT_TIME };
+  g.cut = { key: f.key, t: 0, max: crowd ? 1.6 : fm.kind === "perfected" || fm.kind === "nightmare" ? CUT_TIME + 0.6 : CUT_TIME };
   g.hitstop = 0;
   sfx(g, { k: "rage", power: f.def.id });
 }
@@ -1443,7 +1462,7 @@ function stepCut(g: Game, dt: number) {
     if (Math.random() < dt * 30) emit(g, f.def.id, f.x + rand(-20, 20) * s, f.y - rand(0, 110) * s, 1, 90);
     if (k > 0.72 && !f.ghosts.length) f.ghosts.push({ x: f.x, y: f.y, pose: { ...f.pose }, face: f.facing, life: 0.4 });
     const [gather, loose] = CUT_POSES[rg.kind];
-    const quiver = rg.kind === "rage" || rg.kind === "perfected" ? 0.03 : 0.012;
+    const quiver = rg.kind === "rage" || rg.kind === "perfected" || rg.kind === "nightmare" ? 0.03 : 0.012;
     smoothPose(f, k < 0.62 ? { ...gather, t: gather.t + Math.sin(cut.t * 30) * quiver } : loose, dt, k < 0.62 ? 10 : 26);
     paint = null;
   }
@@ -2909,10 +2928,22 @@ function drawFighterBody(ctx: CanvasRenderingContext2D, g: Game, f: Fighter, o: 
     bossAct = { kind: m.kind, id: m.id, phase, u: clamp(u, 0, 1) };
   }
   if (f.def.boss && !o.solid) drawBossDesign(ctx, f.def.boss, "back", bossPts, s, face, bt, f.alive, f.vx, bossAct);
+  // a quest fighter (not a hybrid carrying its power) wears its own design
+  const quest = isQuester(f.def.id) && !f.def.parents && !f.def.boss && !o.solid;
+  let questAct: QuestAct | undefined;
+  const questPaint = { glow: rg?.glow ?? f.def.glow, a: rg?.a ?? f.def.color, b: rg?.b ?? f.def.glow, nightmare: rg?.kind === "nightmare" };
+  if (quest && f.act && f.alive) {
+    const m = f.act.move, at = f.act.t;
+    const strikeLen = Math.max(0.12, m.act + m.rec * 0.5);
+    const phase = at < m.wind ? "wind" : at < m.wind + strikeLen ? "strike" : "after";
+    const u = phase === "wind" ? at / Math.max(0.01, m.wind) : phase === "strike" ? (at - m.wind) / strikeLen : 1;
+    questAct = { kind: m.kind, id: m.id, phase, u: clamp(u, 0, 1) };
+  }
+  if (quest) drawQuestDesign(ctx, f.def.id, "back", bossPts, s, face, bt, f.alive, questAct, questPaint);
 
   // scarf trailing from the neck (a boss wears its own design instead)
   const wave = Math.sin((g.t + (g.intro?.t ?? 0)) * 12 + f.key) * 4 * s;
-  if (!f.def.boss) {
+  if (!f.def.boss && !quest) {
   const sx = -face * (16 + Math.abs(f.vx) * 0.03) * s;
   ctx.beginPath();
   ctx.moveTo(neck.x, neck.y + 2 * s);
@@ -2981,7 +3012,7 @@ function drawFighterBody(ctx: CanvasRenderingContext2D, g: Game, f: Fighter, o: 
     ctx.beginPath();
     ctx.moveTo(ex - 3.5 * s, ey); ctx.lineTo(ex + 3.5 * s, ey);
     ctx.stroke();
-  } else {
+  } else if (!quest) {
     ctx.fillStyle = "white";
     ctx.beginPath();
     ctx.ellipse(ex, ey, 3.6 * s, 4.4 * s, 0, 0, Math.PI * 2);
@@ -2992,6 +3023,7 @@ function drawFighterBody(ctx: CanvasRenderingContext2D, g: Game, f: Fighter, o: 
     ctx.fill();
   }
   if (f.def.boss && !o.solid) drawBossDesign(ctx, f.def.boss, "front", bossPts, s, face, bt, f.alive, f.vx, bossAct);
+  if (quest) drawQuestDesign(ctx, f.def.id, "front", bossPts, s, face, bt, f.alive, questAct, questPaint);
   ctx.globalAlpha = 1;
 
   if (!f.alive) return;
@@ -3140,6 +3172,29 @@ function drawRageAura(ctx: CanvasRenderingContext2D, g: Game, f: Fighter, rg: Ra
       ctx.closePath();
       ctx.fill();
     }
+  } else if (rg.kind === "nightmare") {
+    // black smoke pouring upward with the form's colour flickering through it, and a jagged dark halo
+    for (let i = 0; i < 9; i++) {
+      const ph = (t * 1.6 + i / 9) % 1;
+      const x = f.x + Math.sin(i * 2.3 + t * 3) * 22 * s;
+      const y = f.y - ph * 120 * s;
+      const r = (14 + 10 * Math.sin(i)) * s * (1 - ph * 0.5);
+      ctx.fillStyle = shade(rg.dark ?? rg.body, 0, 0.55 * (1 - ph));
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = shade(Math.floor(t * 12) % 3 ? rg.b : rg.a, 0, 0.8);
+    ctx.lineWidth = 2.4 * s;
+    ctx.beginPath();
+    for (let i = 0; i <= 18; i++) {
+      const an = (i / 18) * Math.PI * 2;
+      const rr = (58 + (i % 2 ? -10 : 8) + Math.sin(t * 9 + i) * 4) * s;
+      const px = cx + Math.cos(an) * rr, py = cy + Math.sin(an) * rr * 1.15;
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    }
+    ctx.stroke();
   } else if (rg.kind === "mystic") {
     // a turning rune circle behind the body
     runeCircle(ctx, cx, cy, 58 * s, t, rg.a, rg.b, 0.75);
@@ -3904,6 +3959,28 @@ function drawCutBackdrop(ctx: CanvasRenderingContext2D, f: Fighter, k: number, t
   } else if (rg.kind === "mystic") {
     runeCircle(ctx, c.x, c.y, 120 + 40 * Math.min(1, k * 3), t, rg.a, rg.b, 0.9);
     runeCircle(ctx, c.x, f.y, 70, -t * 1.4, rg.b, rg.a, 0.6);
+  } else if (rg.kind === "nightmare") {
+    // the world goes black: everything outside a ring of the form's colour is swallowed, with cracks running out
+    ctx.fillStyle = `hsl(0 0% 0% / ${0.55 * Math.min(1, k * 2)})`;
+    ctx.fillRect(-W, -H, W * 3, H * 3);
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 9; i++) {
+      const an = i * 0.7 + 0.3;
+      const reach = 80 + 520 * Math.min(1, k * 1.6);
+      ctx.strokeStyle = shade(i % 2 ? rg.a : rg.b, 0, 0.85);
+      ctx.beginPath();
+      ctx.moveTo(c.x, c.y);
+      for (let j = 1; j <= 6; j++) {
+        const d = (reach * j) / 6;
+        ctx.lineTo(c.x + Math.cos(an + Math.sin(i * 5 + j) * 0.25) * d, c.y + Math.sin(an + Math.sin(i * 3 + j) * 0.25) * d);
+      }
+      ctx.stroke();
+    }
+    ctx.strokeStyle = shade(rg.b, 0, 0.9);
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, 70 + 30 * Math.sin(t * 6), 0, Math.PI * 2);
+    ctx.stroke();
   } else if (rg.kind === "perfected") {
     // red fire on one side, blue on the other, meeting in them
     const side = ctx.createLinearGradient(c.x - 420, 0, c.x + 420, 0);

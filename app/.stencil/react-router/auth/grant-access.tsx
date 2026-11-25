@@ -7,15 +7,15 @@ import { SignupRefusedError } from "../../auth/hooks";
  * POST /api/auth/internal/grant-access — the platform→app entry point for
  * `grantAccess`, bearer-gated with the same injected secret as the scheduled
  * route. Body: { email, name?, linkOrigin?, signInLink?, welcomeEmail?,
- * welcomeCopy?, signupAttribution? } →
+ * welcomeCopy?, signupAttribution?, emailVerified? } →
  * { userId, outcome, signInUrl? } as JSON, or 422 { error } when the app's own
  * sign-up rules decline the address; the welcome token is only ever
  * emailed, never part of the response — except under `signInLink` (see
  * `GrantAccessInput`), which additionally returns a short-lived sign-in URL.
- * `signInLink`, `welcomeEmail` and `welcomeCopy` are honoured only with the
- * `x-stencil-internal` header, which the dispatcher strips from public traffic
- * — so a caller holding just the bearer secret can neither obtain a URL nor
- * suppress the email.
+ * `signInLink`, `welcomeEmail`, `welcomeCopy` and `emailVerified` are honoured
+ * only with the `x-stencil-internal` header, which the dispatcher strips from
+ * public traffic — so a caller holding just the bearer secret can neither obtain
+ * a URL, suppress the email, nor create a verified account.
  */
 export async function action({ request, context }: HandlerArgs) {
   if (request.method !== "POST") {
@@ -34,6 +34,7 @@ export async function action({ request, context }: HandlerArgs) {
     welcomeEmail?: unknown;
     welcomeCopy?: unknown;
     signupAttribution?: unknown;
+    emailVerified?: unknown;
   } | null;
   const email = typeof body?.email === "string" ? body.email.trim() : "";
   if (!email.includes("@")) {
@@ -66,6 +67,7 @@ export async function action({ request, context }: HandlerArgs) {
         welcomeEmail: body?.welcomeEmail === false && internal ? false : true,
         welcomeCopy,
         signupAttribution,
+        emailVerified: body?.emailVerified === true && internal,
       },
       context.cloudflare.ctx,
     );
