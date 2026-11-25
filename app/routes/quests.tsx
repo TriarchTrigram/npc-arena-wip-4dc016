@@ -57,7 +57,7 @@ function QuestCard({ quest, n, stats, claimed, onClaim }: { quest: Quest; n: num
     <Panel className="h-full overflow-hidden">
       <div
         className="relative border-b-2 border-border-subtle"
-        style={{ background: def ? `radial-gradient(ellipse at 50% 85%, ${def.glow}33, transparent 70%), hsl(250 32% 10%)` : "hsl(250 32% 10%)" }}
+        style={{ background: def ? `radial-gradient(ellipse at 50% 80%, ${def.glow.replace(")", " / 0.22)")}, transparent 70%), hsl(250 32% 10%)` : "hsl(250 32% 10%)" }}
       >
         {def ? (
           <FighterPortrait def={def} locked={!claimed} />

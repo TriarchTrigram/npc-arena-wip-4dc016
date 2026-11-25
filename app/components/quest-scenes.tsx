@@ -34,8 +34,8 @@ export function FighterPortrait({ def, locked, className }: { def: FighterDef; l
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       // frame the fighter: zoom on where it stands
-      const z = 1.9;
-      ctx.setTransform(z, 0, 0, z, canvas.width / 2 - W / 2 * z, canvas.height * 0.86 - GROUND * z);
+      const z = 1.3;
+      ctx.setTransform(z, 0, 0, z, canvas.width / 2 - W / 2 * z, canvas.height * 0.9 - GROUND * z);
       drawScene(ctx, g, back);
       raf = requestAnimationFrame(loop);
     };
